@@ -12,7 +12,6 @@ export async function POST(
   const formData = await request.formData();
 
   const file = formData.get("photo");
-  let authorName = (formData.get("authorName") as string | null) ?? "익명";
   const imageWidth = Number(formData.get("imageWidth") ?? 800);
   const imageHeight = Number(formData.get("imageHeight") ?? 600);
 
@@ -21,23 +20,20 @@ export async function POST(
   }
 
   const routeClient = createRouteClient(request);
-  let userId: string | null = null;
-  const supabaseForAccess = routeClient?.supabase ?? null;
-
-  if (routeClient) {
-    const user = await getRouteUser(routeClient.supabase, request);
-    if (user) {
-      userId = user.id;
-      const profile = await ensureProfile(routeClient.supabase, user);
-      if (profile?.displayName) authorName = profile.displayName;
-    }
-  }
-
-  if (!supabaseForAccess) {
+  if (!routeClient) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
   }
 
-  const access = await checkWallAccess(supabaseForAccess, id, userId);
+  const user = await getRouteUser(routeClient.supabase, request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let authorName = (formData.get("authorName") as string | null) ?? "익명";
+  const profile = await ensureProfile(routeClient.supabase, user);
+  if (profile?.displayName) authorName = profile.displayName;
+
+  const access = await checkWallAccess(routeClient.supabase, id, user.id);
   if (!access.canGuestbook) {
     return NextResponse.json(
       { error: "Guestbook photos not allowed on this wall" },
@@ -50,12 +46,13 @@ export async function POST(
   const imageDataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
 
   const result = await addGuestbookPhoto(
+    routeClient.supabase,
     id,
     authorName,
     imageDataUrl,
     imageWidth,
     imageHeight,
-    userId,
+    user.id,
   );
 
   if (!result) {

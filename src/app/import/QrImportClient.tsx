@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Html5Qrcode } from "html5-qrcode";
 import { savePendingImports } from "@/lib/booth-import/import-session";
 import type { BoothImportFailure, BoothImportResult } from "@/lib/booth-import/types";
+import { authFetch } from "@/lib/auth/api-fetch";
 
 type ImportState = "idle" | "scanning" | "loading" | "error";
 
@@ -32,11 +33,19 @@ export default function QrImportPage() {
       setErrorMessage(null);
 
       try {
-        const res = await fetch("/api/import/booth-photo", {
+        const res = await authFetch("/api/import/booth-photo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: cleaned }),
         });
+
+        if (res.status === 401) {
+          setState("error");
+          setErrorMessage("QR 네컷 가져오기는 로그인 후 이용할 수 있어요");
+          processingRef.current = false;
+          lastScanRef.current = null;
+          return;
+        }
 
         const data = (await res.json()) as BoothImportResult | BoothImportFailure;
 

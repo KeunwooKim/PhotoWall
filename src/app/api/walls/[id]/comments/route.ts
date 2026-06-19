@@ -30,21 +30,22 @@ export async function POST(
   }
 
   const routeClient = createRouteClient(request);
-  let authorName = body.authorName ?? "익명";
-  let userId: string | null = null;
-
-  if (routeClient) {
-    const user = await getRouteUser(routeClient.supabase, request);
-    if (user) {
-      userId = user.id;
-      const profile = await ensureProfile(routeClient.supabase, user);
-      if (profile?.displayName) authorName = profile.displayName;
-    }
+  if (!routeClient) {
+    return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
   }
 
-  const comment = await addWallComment(id, authorName, body.body, userId);
+  const user = await getRouteUser(routeClient.supabase, request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let authorName = body.authorName ?? "익명";
+  const profile = await ensureProfile(routeClient.supabase, user);
+  if (profile?.displayName) authorName = profile.displayName;
+
+  const comment = await addWallComment(routeClient.supabase, id, authorName, body.body, user.id);
   if (!comment) {
-    return NextResponse.json({ error: "Failed to add comment" }, { status: 503 });
+    return NextResponse.json({ error: "Failed to add comment" }, { status: 500 });
   }
 
   return routeClient?.applyCookies(NextResponse.json(comment)) ?? NextResponse.json(comment);
