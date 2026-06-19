@@ -12,6 +12,7 @@ import type { WallThemeId } from "@/types/wall";
 import { getWallTheme } from "@/lib/wall-themes";
 import { CanvasHistory } from "@/lib/canvas-history";
 import { debounce } from "@/lib/debounce";
+import { setupCanvasPinchZoom } from "@/lib/canvas-viewport";
 
 export type EditorMode = "select" | "draw";
 
@@ -84,11 +85,32 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     const drawWidthRef = useRef(drawWidth);
     const [isCanvasReady, setIsCanvasReady] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
-    const [viewportZoom, setViewportZoom] = useState(1);
+    const zoomHintRef = useRef<HTMLDivElement>(null);
+    const zoomResetRef = useRef<HTMLButtonElement>(null);
+    const pinchCleanupRef = useRef<(() => void) | null>(null);
     const [size, setSize] = useState({ width: 0, height: 0 });
     const theme = getWallTheme(themeId);
 
     const readOnlyRef = useRef(readOnly);
+    const enablePinchZoomRef = useRef(enablePinchZoom);
+    enablePinchZoomRef.current = enablePinchZoom;
+
+    const updateZoomUi = useCallback((zoom: number) => {
+      const visible = Math.abs(zoom - 1) > 0.01;
+      const hint = zoomHintRef.current;
+      const reset = zoomResetRef.current;
+      if (hint) {
+        hint.style.display = visible ? "block" : "none";
+        hint.textContent = `${Math.round(zoom * 100)}% · 두 번 탭하면 원래 크기`;
+      }
+      if (reset) {
+        reset.style.display = visible ? "block" : "none";
+      }
+    }, []);
+
+    const updateZoomUiRef = useRef(updateZoomUi);
+    updateZoomUiRef.current = updateZoomUi;
+
     readOnlyRef.current = readOnly;
     const resolvePhotoUrlRef = useRef(resolvePhotoUrl);
     resolvePhotoUrlRef.current = resolvePhotoUrl;
@@ -117,6 +139,14 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     onReadyRef.current = onReady;
 
     const getCanvas = useCallback(() => fabricRef.current, []);
+
+    const handleResetZoom = useCallback(() => {
+      const canvas = getCanvas();
+      if (!canvas) return;
+      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      canvas.requestRenderAll();
+      updateZoomUi(1);
+    }, [getCanvas, updateZoomUi]);
 
     const notifyHistory = useCallback(() => {
       onHistoryChangeRef.current?.({
@@ -201,29 +231,28 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         canvas.on("object:modified", () => debouncedSaveHistoryRef.current());
         canvas.on("object:removed", saveHistory);
         canvas.on("path:created", saveHistory);
+
+        pinchCleanupRef.current?.();
+        if (enablePinchZoomRef.current && containerRef.current) {
+          pinchCleanupRef.current = setupCanvasPinchZoom(
+            containerRef.current,
+            canvas,
+            fabric,
+            (zoom) => updateZoomUiRef.current(zoom),
+          );
+        }
       });
 
       return () => {
         disposed = true;
+        pinchCleanupRef.current?.();
+        pinchCleanupRef.current = null;
         fabricRef.current?.dispose();
         fabricRef.current = null;
         fabricModuleRef.current = null;
         setIsCanvasReady(false);
       };
-    }, [size.width, size.height, saveHistory, notifyHistory]);
-
-    useEffect(() => {
-      if (!enablePinchZoom || !isCanvasReady) return;
-      const container = containerRef.current;
-      if (!container) return;
-
-      let cleanup: (() => void) | undefined;
-      void import("@/lib/canvas-viewport").then(({ setupCanvasPinchZoom }) => {
-        cleanup = setupCanvasPinchZoom(container, getCanvas, setViewportZoom);
-      });
-
-      return () => cleanup?.();
-    }, [enablePinchZoom, isCanvasReady, getCanvas]);
+    }, [size.width, size.height, saveHistory, notifyHistory, applyReadOnly]);
 
     useEffect(() => {
       const canvas = fabricRef.current;
@@ -537,27 +566,24 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
             캔버스 준비 중...
           </div>
         )}
-        {enablePinchZoom && viewportZoom !== 1 && (
-          <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full bg-foreground/75 px-3 py-1 text-xs font-medium text-background backdrop-blur-sm">
-            {Math.round(viewportZoom * 100)}% · 두 번 탭하면 원래 크기
-          </div>
-        )}
-        {enablePinchZoom && viewportZoom !== 1 && (
-          <button
-            type="button"
-            aria-label="줌 초기화"
-            className="absolute bottom-3 right-3 z-20 rounded-full bg-surface px-3 py-1.5 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10"
-            onClick={() => {
-              const canvas = getCanvas();
-              if (!canvas) return;
-              void import("@/lib/canvas-viewport").then(({ resetCanvasViewport }) => {
-                resetCanvasViewport(canvas);
-                setViewportZoom(1);
-              });
-            }}
-          >
-            100%
-          </button>
+        {enablePinchZoom && (
+          <>
+            <div
+              ref={zoomHintRef}
+              style={{ display: "none" }}
+              className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full bg-foreground/75 px-3 py-1 text-xs font-medium text-background backdrop-blur-sm"
+            />
+            <button
+              ref={zoomResetRef}
+              type="button"
+              aria-label="줌 초기화"
+              style={{ display: "none" }}
+              className="absolute bottom-3 right-3 z-20 rounded-full bg-surface px-3 py-1.5 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10"
+              onClick={handleResetZoom}
+            >
+              100%
+            </button>
+          </>
         )}
         <canvas ref={canvasElRef} className="relative z-10" />
       </div>

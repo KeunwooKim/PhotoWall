@@ -1,47 +1,20 @@
-type FabricCanvas = {
-  getZoom(): number;
-  viewportTransform: number[] | null;
-  setViewportTransform(vpt: number[]): void;
-  requestRenderAll(): void;
-  discardActiveObject(): void;
-  upperCanvasEl?: HTMLElement;
-  findTarget?(e: Event): unknown;
-};
+import type { Canvas as FabricCanvas, Point as FabricPoint } from "fabric";
 
 export const CANVAS_MIN_ZOOM = 0.5;
 export const CANVAS_MAX_ZOOM = 4;
 
+type FabricRuntime = {
+  Point: new (x: number, y: number) => FabricPoint;
+};
+
 export function clampCanvasZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return 1;
   return Math.min(CANVAS_MAX_ZOOM, Math.max(CANVAS_MIN_ZOOM, zoom));
 }
 
 export function resetCanvasViewport(canvas: FabricCanvas): void {
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
   canvas.requestRenderAll();
-}
-
-/** Fabric zoomToPoint equivalent — no runtime fabric import (SSR/prefetch safe). */
-export function zoomCanvasToPoint(
-  canvas: FabricCanvas,
-  point: { x: number; y: number },
-  zoom: number,
-): number {
-  const clamped = clampCanvasZoom(zoom);
-  const vpt = canvas.viewportTransform;
-  if (!vpt) return clamped;
-
-  const before = canvas.getZoom();
-  if (before === clamped) return clamped;
-
-  const ratio = clamped / before;
-  const next = vpt.slice();
-  next[0] = clamped;
-  next[3] = clamped;
-  next[4] = point.x - (point.x - next[4]) * ratio;
-  next[5] = point.y - (point.y - next[5]) * ratio;
-  canvas.setViewportTransform(next);
-  canvas.requestRenderAll();
-  return clamped;
 }
 
 function touchDistance(touches: TouchList): number {
@@ -58,128 +31,129 @@ function touchCenter(touches: TouchList, rect: DOMRect): { x: number; y: number 
   };
 }
 
-function touchHitsObject(canvas: FabricCanvas, touch: Touch): boolean {
-  if (!canvas.findTarget || !canvas.upperCanvasEl) return false;
-
-  try {
-    const synthetic = {
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      target: canvas.upperCanvasEl,
-      type: "touchstart",
-    } as unknown as Event;
-
-    return !!canvas.findTarget(synthetic);
-  } catch {
-    return false;
-  }
-}
-
+/**
+ * Pinch-to-zoom on the wall canvas. Uses Fabric's zoomToPoint after the canvas exists.
+ * Does not touch React state during gestures (call onZoomChange via rAF only).
+ */
 export function setupCanvasPinchZoom(
   container: HTMLElement,
-  getCanvas: () => FabricCanvas | null,
+  canvas: FabricCanvas,
+  fabric: FabricRuntime,
   onZoomChange?: (zoom: number) => void,
 ): () => void {
   let pinchDistance = 0;
-  let isPanning = false;
-  let lastPan = { x: 0, y: 0 };
+  let pinchActive = false;
   let lastTapAt = 0;
+  let zoomRaf = 0;
 
-  const notifyZoom = () => {
-    const canvas = getCanvas();
-    if (canvas) onZoomChange?.(canvas.getZoom());
+  const notifyZoom = (zoom: number) => {
+    if (!onZoomChange) return;
+    cancelAnimationFrame(zoomRaf);
+    zoomRaf = requestAnimationFrame(() => onZoomChange(clampCanvasZoom(zoom)));
+  };
+
+  const applyZoom = (center: { x: number; y: number }, nextZoom: number) => {
+    const clamped = clampCanvasZoom(nextZoom);
+    canvas.zoomToPoint(new fabric.Point(center.x, center.y), clamped);
+    notifyZoom(clamped);
   };
 
   const onTouchStart = (e: TouchEvent) => {
-    const canvas = getCanvas();
-    if (!canvas) return;
+    if (e.touches.length !== 2) return;
 
-    if (e.touches.length === 2) {
+    try {
       e.preventDefault();
+      e.stopPropagation();
+      pinchActive = true;
       pinchDistance = touchDistance(e.touches);
+      if (pinchDistance <= 0) return;
       canvas.discardActiveObject();
       canvas.requestRenderAll();
-      return;
-    }
-
-    if (e.touches.length === 1 && canvas.getZoom() > 1.01) {
-      const touch = e.touches[0];
-      if (!touchHitsObject(canvas, touch)) {
-        isPanning = true;
-        lastPan = { x: touch.clientX, y: touch.clientY };
-      }
+    } catch {
+      pinchActive = false;
+      pinchDistance = 0;
     }
   };
 
   const onTouchMove = (e: TouchEvent) => {
-    const canvas = getCanvas();
-    if (!canvas) return;
+    if (e.touches.length !== 2 || pinchDistance <= 0) return;
 
-    if (e.touches.length === 2 && pinchDistance > 0) {
+    try {
       e.preventDefault();
+      e.stopPropagation();
+
       const rect = container.getBoundingClientRect();
       const distance = touchDistance(e.touches);
+      if (distance <= 0) return;
+
       const center = touchCenter(e.touches, rect);
       const scale = distance / pinchDistance;
-      zoomCanvasToPoint(canvas, center, canvas.getZoom() * scale);
+      applyZoom(center, canvas.getZoom() * scale);
       pinchDistance = distance;
-      notifyZoom();
-      return;
-    }
-
-    if (isPanning && e.touches.length === 1) {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const vpt = canvas.viewportTransform;
-      if (!vpt) return;
-      vpt[4] += touch.clientX - lastPan.x;
-      vpt[5] += touch.clientY - lastPan.y;
-      canvas.requestRenderAll();
-      lastPan = { x: touch.clientX, y: touch.clientY };
+    } catch {
+      pinchDistance = 0;
+      pinchActive = false;
     }
   };
 
   const onTouchEnd = (e: TouchEvent) => {
-    const canvas = getCanvas();
-    if (!canvas) return;
-
-    if (e.touches.length < 2) pinchDistance = 0;
-    if (e.touches.length === 0) isPanning = false;
-
-    if (e.touches.length === 0 && e.changedTouches.length === 1) {
-      const now = Date.now();
-      if (now - lastTapAt < 280) {
-        resetCanvasViewport(canvas);
-        notifyZoom();
+    try {
+      if (e.touches.length < 2) {
+        pinchDistance = 0;
       }
-      lastTapAt = now;
+
+      if (pinchActive && e.touches.length === 0) {
+        pinchActive = false;
+        lastTapAt = 0;
+        notifyZoom(canvas.getZoom());
+        return;
+      }
+
+      if (e.touches.length === 0 && e.changedTouches.length === 1 && !pinchActive) {
+        const now = Date.now();
+        if (now - lastTapAt < 280) {
+          resetCanvasViewport(canvas);
+          notifyZoom(1);
+          lastTapAt = 0;
+          return;
+        }
+        lastTapAt = now;
+      }
+    } catch {
+      pinchActive = false;
+      pinchDistance = 0;
     }
   };
 
   const onWheel = (e: WheelEvent) => {
-    const canvas = getCanvas();
-    if (!canvas || !e.ctrlKey) return;
+    if (!e.ctrlKey) return;
 
-    e.preventDefault();
-    const rect = container.getBoundingClientRect();
-    const point = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-    const factor = e.deltaY > 0 ? 0.92 : 1.08;
-    zoomCanvasToPoint(canvas, point, canvas.getZoom() * factor);
-    notifyZoom();
+    try {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const factor = e.deltaY > 0 ? 0.92 : 1.08;
+      applyZoom(
+        { x: e.clientX - rect.left, y: e.clientY - rect.top },
+        canvas.getZoom() * factor,
+      );
+    } catch {
+      // ignore wheel zoom errors
+    }
   };
 
-  container.addEventListener("touchstart", onTouchStart, { passive: false });
-  container.addEventListener("touchmove", onTouchMove, { passive: false });
-  container.addEventListener("touchend", onTouchEnd);
-  container.addEventListener("wheel", onWheel, { passive: false });
+  const opts: AddEventListenerOptions = { passive: false, capture: true };
+  container.addEventListener("touchstart", onTouchStart, opts);
+  container.addEventListener("touchmove", onTouchMove, opts);
+  container.addEventListener("touchend", onTouchEnd, opts);
+  container.addEventListener("touchcancel", onTouchEnd, opts);
+  container.addEventListener("wheel", onWheel, opts);
 
   return () => {
-    container.removeEventListener("touchstart", onTouchStart);
-    container.removeEventListener("touchmove", onTouchMove);
-    container.removeEventListener("touchend", onTouchEnd);
-    container.removeEventListener("wheel", onWheel);
+    cancelAnimationFrame(zoomRaf);
+    container.removeEventListener("touchstart", onTouchStart, opts);
+    container.removeEventListener("touchmove", onTouchMove, opts);
+    container.removeEventListener("touchend", onTouchEnd, opts);
+    container.removeEventListener("touchcancel", onTouchEnd, opts);
+    container.removeEventListener("wheel", onWheel, opts);
   };
 }
