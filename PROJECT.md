@@ -121,19 +121,20 @@
 | 소셜 로그인 (추후) | 카카오, Apple 등 | 국내 유저 확장 시 검토 |
 | 클라이언트 연동 | `@supabase/ssr` | Next.js App Router 쿠키 세션 |
 
-**Google 로그인 등록 절차 (예정)**
+**Google 로그인 등록 절차** — ✅ 프로덕션 적용 완료
 
-1. **Google Cloud Console** — OAuth 2.0 클라이언트 ID 생성 (웹 애플리케이션)
-2. **승인된 리디렉션 URI** — Supabase 콜백 URL 등록 (`https://<project>.supabase.co/auth/v1/callback`)
-3. **Supabase Dashboard** — Authentication → Providers → Google 활성화 (Client ID / Secret 입력)
-4. **앱 연동** — 로그인·로그아웃 UI, `auth.users` ↔ `walls.owner_id` 매핑, RLS를 소유자 기준으로 강화
-5. **배포 환경** — Vercel 프로덕션 URL을 Google OAuth 승인 도메인·Supabase Site URL에 추가
+1. **Google Cloud Console** — OAuth 2.0 클라이언트 ID 생성 (웹 애플리케이션) ✅
+2. **승인된 리디렉션 URI** — Supabase 콜백 URL 등록 (`https://<project>.supabase.co/auth/v1/callback`) ✅
+3. **Supabase Dashboard** — Authentication → Providers → Google 활성화 (Client ID / Secret 입력) ✅
+4. **앱 연동** — 로그인·로그아웃 UI, `auth.users` ↔ `walls.owner_id` 매핑, RLS 소유자 기준 ✅
+5. **배포 환경** — Vercel 프로덕션 URL을 Supabase Site URL·Redirect URLs에 등록 ✅
+6. **콜백 라우트** — `get-site-origin` + middleware `?code=` → `/auth/callback` 리다이렉트 ✅
 
 **로그인 후 기대 효과**
 
 - localStorage 벽 데이터 → 로그인 유저 계정에 클라우드 벽으로 마이그레이션·동기화
-- 공개 벽 수정·삭제 권한을 벽 소유자에게만 부여 (현재 MVP는 누구나 수정 가능)
-- 좋아요·댓글 작성자를 익명 visitor ID 대신 프로필(닉네임·아바타)로 표시 가능
+- 공개 벽 수정·삭제 권한을 벽 소유자(및 공동벽 editor)에게만 부여 ✅
+- 좋아요·댓글·방명록·QR import는 로그인 필수 ✅ (2026-06-19 보안 강화)
 
 ### 기술 스택
 
@@ -146,7 +147,7 @@
 | 백엔드 | Supabase (walls + 소셜 테이블) | ✅ 적용 |
 | 스토리지 | Supabase Storage (`wall-photos`) | ✅ 적용 (로그인 시) |
 | DB | PostgreSQL / Supabase | ✅ 스키마 작성 |
-| 배포 | Vercel | 🔄 배포 준비 완료 (`vercel.json`) |
+| 배포 | Vercel | ✅ 프로덕션 배포 (`photowall-one.vercel.app`) |
 
 ### 프로젝트 구조
 
@@ -197,7 +198,8 @@ schema.sql
   → storage-migration.sql
   → social-migration.sql
   → shared-walls-migration.sql
-  → privacy-invites-migration.sql   ← 최신
+  → privacy-invites-migration.sql
+  → security-hardening-migration.sql   ← 최신
 ```
 
 | 파일 | 내용 | 미실행 시 영향 |
@@ -208,6 +210,7 @@ schema.sql
 | [`social-migration.sql`](supabase/social-migration.sql) | profiles + friendships | 친구·프로필 불가 |
 | [`shared-walls-migration.sql`](supabase/shared-walls-migration.sql) | wall_members + is_shared | 공동 벽 불가 |
 | [`privacy-invites-migration.sql`](supabase/privacy-invites-migration.sql) | allow_wall_visits + wall_member_invites | 벽 비공개·초대 수락 불가 |
+| [`security-hardening-migration.sql`](supabase/security-hardening-migration.sql) | RLS 강화 — 익명 insert/update 차단, 소셜·초대 인증 | API 우회 스팸·무명 벽 수정 가능 |
 
 ### As-Is ERD (현재)
 
@@ -300,7 +303,7 @@ walls.canvas_json
 | owner_id nullable | 레거시 벽 존재 | 소유권 불명 벽 정리 필요 |
 | 소셜 ↔ auth 분리 | visitor_id / author_name | 프로필·친구 기능 시 user_id FK 필요 |
 | Storage FK 없음 | URL 문자열만 연결 | 벽 삭제 시 고아 파일 |
-| RLS 느슨함 | 소셜 INSERT 공개 | 스팸·악용 가능 |
+| RLS | ~~소셜 INSERT 공개~~ → 인증 필수 (`security-hardening`) | Storage public read·프로필 전체 공개는 잔여 |
 
 ### To-Be ERD (추가 예정)
 
@@ -361,7 +364,8 @@ erDiagram
 [기획]   ██████████ 100%
 [디자인] ███████░░░  70%  ← 앱 셸·랜딩·다크모드 1차
 [개발]   █████████░  95%  ← MVP + 2단계 + 2.5 + QR 1차
-[배포]   ████░░░░░░  40%  ← Git/Vercel 보류 중
+[배포]   ████████░░  85%  ← Vercel·GitHub·OAuth·RLS 보안 강화 완료
+[보안]   ███████░░░  75%  ← RLS·API 인증 1차 / Storage·프로필 공개 잔여
 ```
 
 ### 단계별 상태
@@ -373,8 +377,9 @@ erDiagram
 | 기술 POC | Fabric.js 캔버스 에디터 | ✅ 완료 |
 | UI/UX | 앱 셸 + 랜딩 + 에디터 + 다크모드 | ✅ 1차 완료 |
 | MVP 개발 | 1단계 — 내 방 벽꾸미기 + QR 가져오기 | 🔄 QR 실부스 검증 남음 |
-| 소셜 확장 | 2단계 — 공유·방문·소통·프라이버시 | 🔄 진행 중 (~90%) |
+| 소셜 확장 | 2단계 — 공유·방문·소통·프라이버시 | 🔄 진행 중 (~92%) |
 | 공동 벽 | 2.5단계 — 공동 인생네컷 | 🔄 1차 완료 — 실시간 동기화 미착수 |
+| 보안 | Public repo + Supabase RLS·API | ✅ 1차 완료 (`security-hardening-migration.sql`) |
 | 수익화 | 3단계 — 아이템 숍 | ⬜ 미착수 |
 
 ### 완료된 항목
@@ -414,6 +419,12 @@ erDiagram
 - [x] 공동벽 초대 수락/거절 (`wall_member_invites`)
 - [x] QR 네컷 가져오기 1차 (`/import`, 부스 API, 캔버스 자동 붙이기)
 - [x] SVG 스티커 로딩 버그 수정 + 다크모드 UI 토큰 정리
+- [x] GitHub public repo 연동 (`KeunwooKim/PhotoWall`)
+- [x] Vercel 프로덕션 배포 (`https://photowall-one.vercel.app`)
+- [x] Supabase Site URL·Redirect URLs 프로덕션 등록 + Google OAuth 프로덕션 동작
+- [x] OAuth 콜백 수정 (`get-site-origin`, middleware, auth_error 배너)
+- [x] 보안 강화 1차 — `security-hardening-migration.sql` + API JWT 연동
+- [x] 좋아요·댓글·방명록·QR import·초대 생성 — 로그인 필수 + booth import rate limit
 
 ---
 
@@ -422,17 +433,16 @@ erDiagram
 ### 현재 포커스 (2026-06-19 기준)
 
 ```
-① Supabase SQL 확인  →  ② QR 실부스 검증  →  ③ 소셜 마무리  →  ④ 배포 or 스티커 확장
+① QR 실부스 검증  →  ② 공동벽 실시간 동기화  →  ③ 보안 2차 (Storage·프로필)  →  ④ 스티커 확장
 ```
 
 | 우선순위 | 작업 | 이유 | 예상 |
 |---|---|---|---|
-| **P0** | `privacy-invites-migration.sql` Supabase 실행 확인 | 벽 비공개·초대 수락 API 의존 | 5분 |
 | **P0** | QR 가져오기 — **실제 인생네컷/포토이즘 QR**로 E2E 테스트 | Google Drive QR 등은 지원 대상 아님. `life4cut.com`, `qr.seobuk.kr` 파서 검증 필요 | 1~2시간 |
 | **P1** | 공동 벽 실시간 동기화 (Supabase Realtime 또는 polling) | 현재는 저장 시에만 반영 — 함께 꾸미기 UX 핵심 | 1~2일 |
 | **P1** | 홈 랜딩에「QR로 네컷 가져오기」CTA 추가 | 모바일 유입 경로 강화 | 30분 |
+| **P2** | 보안 2차 — Storage private + signed URL, friend_code 조회 제한 | Public repo·anon key 환경 잔여 리스크 | 0.5~1일 |
 | **P2** | 스티커 에셋 확장 (OpenMoji/Twemoji 등) | 보류 중 — 리서치만 완료 | 0.5~1일 |
-| **P2** | Vercel 배포 + OAuth Redirect 등록 | 사용자 보류 선택 — 준비는 완료 | 1시간 |
 | **P3** | 3단계 수익화 (프리미엄 아이템) | 트래픽·리텐션 확보 후 | — |
 
 ### QR 가져오기 — 남은 작업
@@ -441,6 +451,7 @@ erDiagram
 - [x] `/api/import/booth-photo` 서버 fetch + HTML 파싱
 - [x] 허용 도메인 (`life4cut.com`, `seobuk.kr`, `lkventures.co.kr` 등)
 - [x] 벽 에디터 자동 붙이기 (sessionStorage → canvas)
+- [x] 로그인 필수 + IP rate limit (10회/분)
 - [ ] **실제 부스 QR**로 성공 경로 검증 (만료·잘못된 QR 오류 UX 포함)
 - [ ] 부스별 HTML 파서 보강 (이미지 추출 실패 시)
 
@@ -449,58 +460,41 @@ erDiagram
 ### 권장 진행 순서 (레거시)
 
 ```
-[SQL ✅] → [Git/Vercel 보류] → [공동 인생네컷 ✅ 1차] → [수익화]
+[SQL ✅] → [Git/Vercel ✅] → [보안 1차 ✅] → [QR 실부스 검증] → [공동벽 Realtime] → [수익화]
 ```
 
-### Vercel 배포 (현재 단계)
-
-#### 1. GitHub에 코드 올리기
-
-```bash
-git branch -M main
-git add -A
-git commit -m "PhotoWall MVP + 소셜 + Google 로그인"
-# GitHub에서 새 repo 생성 후:
-git remote add origin https://github.com/YOUR_USER/PhotoWall.git
-git push -u origin main
-```
-
-#### 2. Vercel 프로젝트 연결
-
-1. [vercel.com](https://vercel.com) → **Add New Project** → GitHub repo 선택
-2. Framework: **Next.js** (자동 감지)
-3. Environment Variables 추가:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. **Deploy** 클릭 → 배포 URL 확인 (예: `https://photowall-xxx.vercel.app`)
-
-#### 3. Supabase Redirect URL 등록
-
-Supabase Dashboard → **Authentication** → **URL Configuration**
+### Vercel 배포 — ✅ 완료
 
 | 항목 | 값 |
 |---|---|
-| Site URL | `https://YOUR-APP.vercel.app` |
-| Redirect URLs | `http://localhost:3000/auth/callback` |
-| | `https://YOUR-APP.vercel.app/auth/callback` |
+| GitHub | `https://github.com/KeunwooKim/PhotoWall` (public) |
+| Vercel | `https://photowall-one.vercel.app` |
+| Git 연동 | push → 자동 배포 |
+| Env | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Production) |
 
-#### 4. Google OAuth (변경 없음)
+#### 배포 후 확인 체크리스트
 
-Google Cloud의 승인된 리디렉션 URI는 **Supabase callback**만 유지하면 됩니다.
+- [x] 메인 페이지 로드
+- [x] Google 로그인 → `/auth/callback` → 메인 복귀
+- [x] 벽 꾸미기 + 클라우드 자동 저장
+- [x] 링크 공유 (`/wall/[id]`)
+- [x] 친구 코드 추가·벽 방문
+- [ ] QR 네컷 가져오기 (실제 부스 QR)
+- [ ] 로그인 후 좋아요·댓글·방명록 (보안 강화 후)
 
-```
-https://YOUR-PROJECT.supabase.co/auth/v1/callback
-```
+### 보안 1차 — ✅ 완료 (2026-06-19)
 
-앱 URL은 Supabase Site URL / Redirect URLs에서 처리합니다.
+| 항목 | 내용 |
+|---|---|
+| SQL | `security-hardening-migration.sql` — walls 익명 update 차단, 소셜·초대 인증 필수 |
+| API | social mutation → 사용자 JWT 클라이언트, booth import 로그인 + rate limit |
+| Git | `.env.local`·`google_Client` gitignore, service_role 미사용 |
 
-#### 5. 배포 후 확인 체크리스트
+#### 보안 2차 (잔여)
 
-- [ ] 메인 페이지 로드
-- [ ] Google 로그인 → `/auth/callback` → 메인 복귀
-- [ ] 벽 꾸미기 + 클라우드 자동 저장
-- [ ] 링크 공유 (`/wall/[id]`)
-- [ ] 친구 코드 추가·벽 방문
+- [ ] Storage `wall-photos` → private + signed URL
+- [ ] `profiles_select_public` → 친구 관계 있는 경우만 friend_code 조회
+- [ ] GitHub Secret scanning 활성화
 
 ### 1단계 MVP — 완료
 
@@ -524,7 +518,7 @@ https://YOUR-PROJECT.supabase.co/auth/v1/callback
 - [x] `supabase/auth-migration.sql` 실행 (`owner_id` + RLS)
 - [x] localStorage 벽 → 로그인 후 클라우드 벽 마이그레이션 UX
 - [x] 로그인 시 클라우드 자동 저장
-- [ ] Vercel URL을 Google OAuth·Supabase Redirect에 등록
+- [x] Vercel URL을 Google OAuth·Supabase Redirect에 등록
 
 ### 인프라 & 배포
 
@@ -534,7 +528,9 @@ https://YOUR-PROJECT.supabase.co/auth/v1/callback
 - [x] 클라우드 이미지 스토리지 (Supabase Storage — 로그인 시 업로드)
 - [x] `supabase/storage-migration.sql` 실행
 - [x] Vercel 배포 설정 파일
-- [ ] Vercel 실제 배포
+- [x] Vercel 실제 배포 (`photowall-one.vercel.app`)
+- [x] GitHub repo + Vercel Git 자동 배포
+- [x] `security-hardening-migration.sql` 실행
 
 ### 2단계 — 소셜 확장
 
@@ -553,7 +549,7 @@ https://YOUR-PROJECT.supabase.co/auth/v1/callback
 - [x] 공동 벽 생성·친구 초대 API
 - [x] 공동 벽 패널 UI + `/shared/[id]` 에디터
 - [x] 초대 수락/거절 (`privacy-invites-migration.sql`)
-- [ ] `privacy-invites-migration.sql` Supabase 실행 확인
+- [x] `privacy-invites-migration.sql` Supabase 실행
 - [ ] 실시간 동기화 (다음 단계 — 현재는 저장 시 반영)
 
 ### 1.5단계 — QR 네컷 가져오기
@@ -587,6 +583,7 @@ https://YOUR-PROJECT.supabase.co/auth/v1/callback
 | 2026-06-17 | Supabase SQL 4종 마이그레이션 완료, Vercel 배포 단계 진입 |
 | 2026-06-17 | 2.5단계 공동 인생네컷 POC — wall_members, 공동 벽 UI·에디터 |
 | 2026-06-19 | 앱 셸·랜딩·프로필·설정·다크모드, 벽 프라이버시·초대 수락, QR 네컷 가져오기 1차 |
+| 2026-06-19 | GitHub public push, Vercel 프로덕션 배포, OAuth 콜백 수정, 보안 강화 1차 (RLS + API 인증) |
 
 ---
 
