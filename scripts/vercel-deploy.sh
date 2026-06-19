@@ -14,6 +14,11 @@ if ! $VERCEL whoami >/dev/null 2>&1; then
   $VERCEL login
 fi
 
+echo "→ Vercel 프로젝트 연결..."
+if [[ ! -f .vercel/project.json ]]; then
+  $VERCEL link --yes --project photowall
+fi
+
 if [[ ! -f .env.local ]]; then
   echo "오류: .env.local 이 없습니다. .env.example 을 참고해 Supabase 키를 설정하세요."
   exit 1
