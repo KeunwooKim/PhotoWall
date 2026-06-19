@@ -12,6 +12,7 @@ import type { WallThemeId } from "@/types/wall";
 import { getWallTheme } from "@/lib/wall-themes";
 import { CanvasHistory } from "@/lib/canvas-history";
 import { debounce } from "@/lib/debounce";
+import { resetCanvasViewport, setupCanvasPinchZoom } from "@/lib/canvas-viewport";
 
 export type EditorMode = "select" | "draw";
 
@@ -39,6 +40,7 @@ interface WallCanvasProps {
   drawColor: string;
   drawWidth: number;
   readOnly?: boolean;
+  enablePinchZoom?: boolean;
   resolvePhotoUrl?: (file: File) => Promise<string>;
   onSelectionChange: (hasSelection: boolean) => void;
   onCanvasChange?: () => void;
@@ -65,6 +67,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
       drawColor,
       drawWidth,
       readOnly = false,
+      enablePinchZoom = true,
       resolvePhotoUrl,
       onSelectionChange,
       onCanvasChange,
@@ -82,6 +85,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     const drawWidthRef = useRef(drawWidth);
     const [isCanvasReady, setIsCanvasReady] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [viewportZoom, setViewportZoom] = useState(1);
     const [size, setSize] = useState({ width: 0, height: 0 });
     const theme = getWallTheme(themeId);
 
@@ -208,6 +212,14 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         setIsCanvasReady(false);
       };
     }, [size.width, size.height, saveHistory, notifyHistory]);
+
+    useEffect(() => {
+      if (!enablePinchZoom || !isCanvasReady) return;
+      const container = containerRef.current;
+      if (!container) return;
+
+      return setupCanvasPinchZoom(container, getCanvas, setViewportZoom);
+    }, [enablePinchZoom, isCanvasReady, getCanvas]);
 
     useEffect(() => {
       const canvas = fabricRef.current;
@@ -520,6 +532,26 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white text-sm text-muted">
             캔버스 준비 중...
           </div>
+        )}
+        {enablePinchZoom && viewportZoom !== 1 && (
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full bg-foreground/75 px-3 py-1 text-xs font-medium text-background backdrop-blur-sm">
+            {Math.round(viewportZoom * 100)}% · 두 번 탭하면 원래 크기
+          </div>
+        )}
+        {enablePinchZoom && viewportZoom !== 1 && (
+          <button
+            type="button"
+            aria-label="줌 초기화"
+            className="absolute bottom-3 right-3 z-20 rounded-full bg-surface px-3 py-1.5 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10"
+            onClick={() => {
+              const canvas = getCanvas();
+              if (!canvas) return;
+              resetCanvasViewport(canvas);
+              setViewportZoom(1);
+            }}
+          >
+            100%
+          </button>
         )}
         <canvas ref={canvasElRef} className="relative z-10" />
       </div>
