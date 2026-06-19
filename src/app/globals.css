@@ -33,3 +33,11 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
+
+.workspace-grid {
+  background-color: #e5e5e5;
+  background-image:
+    linear-gradient(#d4d4d4 1px, transparent 1px),
+    linear-gradient(90deg, #d4d4d4 1px, transparent 1px);
+  background-size: 20px 20px;
+}

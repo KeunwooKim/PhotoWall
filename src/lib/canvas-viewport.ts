@@ -1,20 +1,16 @@
-import type { Canvas as FabricCanvas, Point as FabricPoint } from "fabric";
-
 export const CANVAS_MIN_ZOOM = 0.5;
 export const CANVAS_MAX_ZOOM = 4;
-
-type FabricRuntime = {
-  Point: new (x: number, y: number) => FabricPoint;
-};
 
 export function clampCanvasZoom(zoom: number): number {
   if (!Number.isFinite(zoom)) return 1;
   return Math.min(CANVAS_MAX_ZOOM, Math.max(CANVAS_MIN_ZOOM, zoom));
 }
 
-export function resetCanvasViewport(canvas: FabricCanvas): void {
-  canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-  canvas.requestRenderAll();
+export interface WorkspaceViewport {
+  cleanup: () => void;
+  reset: () => void;
+  setScale: (scale: number) => void;
+  getScale: () => number;
 }
 
 function touchDistance(touches: TouchList): number {
@@ -24,136 +20,133 @@ function touchDistance(touches: TouchList): number {
   return Math.hypot(dx, dy);
 }
 
-function touchCenter(touches: TouchList, rect: DOMRect): { x: number; y: number } {
-  return {
-    x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
-    y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top,
-  };
-}
-
-/**
- * Pinch-to-zoom on the wall canvas. Uses Fabric's zoomToPoint after the canvas exists.
- * Does not touch React state during gestures (call onZoomChange via rAF only).
- */
-export function setupCanvasPinchZoom(
-  container: HTMLElement,
-  canvas: FabricCanvas,
-  fabric: FabricRuntime,
+/** Pinch/pan zoom on the wall stage (CSS transform) — Figma-style workspace. */
+export function setupWorkspacePinchZoom(
+  workspace: HTMLElement,
+  stage: HTMLElement,
   onZoomChange?: (zoom: number) => void,
-): () => void {
+): WorkspaceViewport {
+  let scale = 1;
+  let panX = 0;
+  let panY = 0;
   let pinchDistance = 0;
   let pinchActive = false;
+  let isPanning = false;
+  let lastPan = { x: 0, y: 0 };
   let lastTapAt = 0;
   let zoomRaf = 0;
 
-  const notifyZoom = (zoom: number) => {
-    if (!onZoomChange) return;
-    cancelAnimationFrame(zoomRaf);
-    zoomRaf = requestAnimationFrame(() => onZoomChange(clampCanvasZoom(zoom)));
+  const applyTransform = () => {
+    stage.style.transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px)) scale(${scale})`;
   };
 
-  const applyZoom = (center: { x: number; y: number }, nextZoom: number) => {
-    const clamped = clampCanvasZoom(nextZoom);
-    canvas.zoomToPoint(new fabric.Point(center.x, center.y), clamped);
-    notifyZoom(clamped);
+  const notifyZoom = () => {
+    if (!onZoomChange) return;
+    cancelAnimationFrame(zoomRaf);
+    zoomRaf = requestAnimationFrame(() => onZoomChange(clampCanvasZoom(scale)));
+  };
+
+  const setScale = (next: number) => {
+    scale = clampCanvasZoom(next);
+    applyTransform();
+    notifyZoom();
+  };
+
+  const reset = () => {
+    scale = 1;
+    panX = 0;
+    panY = 0;
+    applyTransform();
+    notifyZoom();
   };
 
   const onTouchStart = (e: TouchEvent) => {
-    if (e.touches.length !== 2) return;
-
-    try {
+    if (e.touches.length === 2) {
       e.preventDefault();
       e.stopPropagation();
       pinchActive = true;
+      isPanning = false;
       pinchDistance = touchDistance(e.touches);
-      if (pinchDistance <= 0) return;
-      canvas.discardActiveObject();
-      canvas.requestRenderAll();
-    } catch {
-      pinchActive = false;
-      pinchDistance = 0;
+      return;
+    }
+
+    if (e.touches.length === 1 && scale > 1.01) {
+      isPanning = true;
+      lastPan = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     }
   };
 
   const onTouchMove = (e: TouchEvent) => {
-    if (e.touches.length !== 2 || pinchDistance <= 0) return;
-
-    try {
+    if (e.touches.length === 2 && pinchDistance > 0) {
       e.preventDefault();
       e.stopPropagation();
-
-      const rect = container.getBoundingClientRect();
       const distance = touchDistance(e.touches);
       if (distance <= 0) return;
-
-      const center = touchCenter(e.touches, rect);
-      const scale = distance / pinchDistance;
-      applyZoom(center, canvas.getZoom() * scale);
+      setScale(scale * (distance / pinchDistance));
       pinchDistance = distance;
-    } catch {
-      pinchDistance = 0;
-      pinchActive = false;
+      return;
+    }
+
+    if (isPanning && e.touches.length === 1) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      panX += touch.clientX - lastPan.x;
+      panY += touch.clientY - lastPan.y;
+      lastPan = { x: touch.clientX, y: touch.clientY };
+      applyTransform();
     }
   };
 
   const onTouchEnd = (e: TouchEvent) => {
-    try {
-      if (e.touches.length < 2) {
-        pinchDistance = 0;
-      }
+    if (e.touches.length < 2) pinchDistance = 0;
 
-      if (pinchActive && e.touches.length === 0) {
-        pinchActive = false;
+    if (pinchActive && e.touches.length === 0) {
+      pinchActive = false;
+      lastTapAt = 0;
+      notifyZoom();
+      return;
+    }
+
+    if (e.touches.length === 0) isPanning = false;
+
+    if (e.touches.length === 0 && e.changedTouches.length === 1 && !pinchActive) {
+      const now = Date.now();
+      if (now - lastTapAt < 280) {
+        reset();
         lastTapAt = 0;
-        notifyZoom(canvas.getZoom());
         return;
       }
-
-      if (e.touches.length === 0 && e.changedTouches.length === 1 && !pinchActive) {
-        const now = Date.now();
-        if (now - lastTapAt < 280) {
-          resetCanvasViewport(canvas);
-          notifyZoom(1);
-          lastTapAt = 0;
-          return;
-        }
-        lastTapAt = now;
-      }
-    } catch {
-      pinchActive = false;
-      pinchDistance = 0;
+      lastTapAt = now;
     }
   };
 
   const onWheel = (e: WheelEvent) => {
     if (!e.ctrlKey) return;
-
-    try {
-      e.preventDefault();
-      const rect = container.getBoundingClientRect();
-      const factor = e.deltaY > 0 ? 0.92 : 1.08;
-      applyZoom(
-        { x: e.clientX - rect.left, y: e.clientY - rect.top },
-        canvas.getZoom() * factor,
-      );
-    } catch {
-      // ignore wheel zoom errors
-    }
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.92 : 1.08;
+    setScale(scale * factor);
   };
 
-  const opts: AddEventListenerOptions = { passive: false, capture: true };
-  container.addEventListener("touchstart", onTouchStart, opts);
-  container.addEventListener("touchmove", onTouchMove, opts);
-  container.addEventListener("touchend", onTouchEnd, opts);
-  container.addEventListener("touchcancel", onTouchEnd, opts);
-  container.addEventListener("wheel", onWheel, opts);
+  applyTransform();
 
-  return () => {
-    cancelAnimationFrame(zoomRaf);
-    container.removeEventListener("touchstart", onTouchStart, opts);
-    container.removeEventListener("touchmove", onTouchMove, opts);
-    container.removeEventListener("touchend", onTouchEnd, opts);
-    container.removeEventListener("touchcancel", onTouchEnd, opts);
-    container.removeEventListener("wheel", onWheel, opts);
+  const opts: AddEventListenerOptions = { passive: false, capture: true };
+  workspace.addEventListener("touchstart", onTouchStart, opts);
+  workspace.addEventListener("touchmove", onTouchMove, opts);
+  workspace.addEventListener("touchend", onTouchEnd, opts);
+  workspace.addEventListener("touchcancel", onTouchEnd, opts);
+  workspace.addEventListener("wheel", onWheel, opts);
+
+  return {
+    setScale,
+    getScale: () => scale,
+    reset,
+    cleanup: () => {
+      cancelAnimationFrame(zoomRaf);
+      workspace.removeEventListener("touchstart", onTouchStart, opts);
+      workspace.removeEventListener("touchmove", onTouchMove, opts);
+      workspace.removeEventListener("touchend", onTouchEnd, opts);
+      workspace.removeEventListener("touchcancel", onTouchEnd, opts);
+      workspace.removeEventListener("wheel", onWheel, opts);
+    },
   };
 }

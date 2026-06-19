@@ -12,7 +12,15 @@ import type { WallThemeId } from "@/types/wall";
 import { getWallTheme } from "@/lib/wall-themes";
 import { CanvasHistory } from "@/lib/canvas-history";
 import { debounce } from "@/lib/debounce";
-import { setupCanvasPinchZoom } from "@/lib/canvas-viewport";
+import { setupWorkspacePinchZoom, type WorkspaceViewport } from "@/lib/canvas-viewport";
+import {
+  DEFAULT_WALL_BOUNDS,
+  computeExpandedBounds,
+  computeFitScale,
+  getObjectsBounds,
+  type WallBounds,
+} from "@/lib/wall-bounds";
+import { packCanvasJson, unpackCanvasJson } from "@/lib/wall-canvas-json";
 
 export type EditorMode = "select" | "draw";
 
@@ -33,6 +41,7 @@ export interface WallCanvasHandle {
   toJSON: () => object;
   loadFromJSON: (json: object) => Promise<void>;
   clear: () => void;
+  getWallStageElement: () => HTMLElement | null;
 }
 
 interface WallCanvasProps {
@@ -60,6 +69,20 @@ const OBJECT_DEFAULTS = {
   cornerSize: 12,
 };
 
+function clientToCanvasCoords(
+  clientX: number,
+  clientY: number,
+  stageEl: HTMLElement,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number } {
+  const rect = stageEl.getBoundingClientRect();
+  return {
+    x: ((clientX - rect.left) / rect.width) * canvasWidth,
+    y: ((clientY - rect.top) / rect.height) * canvasHeight,
+  };
+}
+
 const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
   function WallCanvas(
     {
@@ -77,6 +100,8 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
+    const workspaceRef = useRef<HTMLDivElement>(null);
+    const wallStageRef = useRef<HTMLDivElement>(null);
     const canvasElRef = useRef<HTMLCanvasElement>(null);
     const fabricRef = useRef<FabricCanvas | null>(null);
     const fabricModuleRef = useRef<FabricModule | null>(null);
@@ -88,7 +113,9 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     const zoomHintRef = useRef<HTMLDivElement>(null);
     const zoomResetRef = useRef<HTMLButtonElement>(null);
     const pinchCleanupRef = useRef<(() => void) | null>(null);
-    const [size, setSize] = useState({ width: 0, height: 0 });
+    const viewportRef = useRef<WorkspaceViewport | null>(null);
+    const [wallBounds, setWallBounds] = useState<WallBounds>(DEFAULT_WALL_BOUNDS);
+    const wallBoundsRef = useRef<WallBounds>(DEFAULT_WALL_BOUNDS);
     const theme = getWallTheme(themeId);
 
     const readOnlyRef = useRef(readOnly);
@@ -140,13 +167,36 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
 
     const getCanvas = useCallback(() => fabricRef.current, []);
 
-    const handleResetZoom = useCallback(() => {
+    const applyWallDimensions = useCallback(
+      (canvas: FabricCanvas, bounds: WallBounds) => {
+        canvas.setDimensions({ width: bounds.width, height: bounds.height });
+        canvas.requestRenderAll();
+      },
+      [],
+    );
+
+    const checkAndExpandWall = useCallback(() => {
       const canvas = getCanvas();
-      if (!canvas) return;
-      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-      canvas.requestRenderAll();
-      updateZoomUi(1);
-    }, [getCanvas, updateZoomUi]);
+      if (!canvas || readOnlyRef.current) return;
+
+      const objBounds = getObjectsBounds(canvas);
+      if (!objBounds) return;
+
+      const next = computeExpandedBounds(wallBoundsRef.current, objBounds);
+      if (!next) return;
+
+      wallBoundsRef.current = next;
+      setWallBounds(next);
+      applyWallDimensions(canvas, next);
+      onCanvasChangeRef.current?.();
+    }, [getCanvas, applyWallDimensions]);
+
+    const debouncedExpandCheckRef = useRef(debounce(() => checkAndExpandWall(), 100));
+    debouncedExpandCheckRef.current = debounce(() => checkAndExpandWall(), 100);
+
+    const handleResetZoom = useCallback(() => {
+      viewportRef.current?.reset();
+    }, []);
 
     const notifyHistory = useCallback(() => {
       onHistoryChangeRef.current?.({
@@ -158,7 +208,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     const saveHistory = useCallback(() => {
       const canvas = getCanvas();
       if (!canvas) return;
-      historyRef.current.push(canvas.toJSON());
+      historyRef.current.push(packCanvasJson(canvas.toJSON(), wallBoundsRef.current));
       notifyHistory();
       onCanvasChangeRef.current?.();
     }, [getCanvas, notifyHistory]);
@@ -176,28 +226,25 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
       [],
     );
 
-    useEffect(() => {
-      const container = containerRef.current;
-      if (!container) return;
+    const fitWallToWorkspace = useCallback(() => {
+      const workspace = workspaceRef.current;
+      const viewport = viewportRef.current;
+      if (!workspace || !viewport) return;
 
-      const updateSize = () => {
-        setSize({
-          width: container.clientWidth,
-          height: container.clientHeight,
-        });
-      };
-
-      updateSize();
-      const observer = new ResizeObserver(updateSize);
-      observer.observe(container);
-      return () => observer.disconnect();
+      const fit = computeFitScale(
+        workspace.clientWidth,
+        workspace.clientHeight,
+        wallBoundsRef.current.width,
+        wallBoundsRef.current.height,
+      );
+      if (fit < 1) viewport.setScale(fit);
     }, []);
 
     useEffect(() => {
-      if (!canvasElRef.current || size.width === 0 || size.height === 0) return;
-      if (fabricRef.current) return;
+      if (!canvasElRef.current || fabricRef.current) return;
 
       let disposed = false;
+      const bounds = wallBoundsRef.current;
 
       import("fabric").then((fabric) => {
         if (disposed || !canvasElRef.current || fabricRef.current) return;
@@ -205,8 +252,8 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         fabricModuleRef.current = fabric;
 
         const canvas = new fabric.Canvas(canvasElRef.current, {
-          width: size.width,
-          height: size.height,
+          width: bounds.width,
+          height: bounds.height,
           selection: true,
           preserveObjectStacking: true,
           allowTouchScrolling: false,
@@ -214,7 +261,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         });
 
         fabricRef.current = canvas;
-        historyRef.current.reset(canvas.toJSON());
+        historyRef.current.reset(packCanvasJson(canvas.toJSON(), bounds));
         notifyHistory();
         applyReadOnly(canvas);
         setIsCanvasReady(true);
@@ -227,19 +274,32 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         canvas.on("selection:created", handleSelection);
         canvas.on("selection:updated", handleSelection);
         canvas.on("selection:cleared", () => onSelectionChangeRef.current(false));
-        canvas.on("object:added", () => debouncedSaveHistoryRef.current());
-        canvas.on("object:modified", () => debouncedSaveHistoryRef.current());
+        canvas.on("object:added", () => {
+          debouncedSaveHistoryRef.current();
+          debouncedExpandCheckRef.current();
+        });
+        canvas.on("object:modified", () => {
+          debouncedSaveHistoryRef.current();
+          debouncedExpandCheckRef.current();
+        });
         canvas.on("object:removed", saveHistory);
-        canvas.on("path:created", saveHistory);
+        canvas.on("path:created", () => {
+          saveHistory();
+          debouncedExpandCheckRef.current();
+        });
 
         pinchCleanupRef.current?.();
-        if (enablePinchZoomRef.current && containerRef.current) {
-          pinchCleanupRef.current = setupCanvasPinchZoom(
-            containerRef.current,
-            canvas,
-            fabric,
+        viewportRef.current = null;
+
+        if (enablePinchZoomRef.current && workspaceRef.current && wallStageRef.current) {
+          const viewport = setupWorkspacePinchZoom(
+            workspaceRef.current,
+            wallStageRef.current,
             (zoom) => updateZoomUiRef.current(zoom),
           );
+          viewportRef.current = viewport;
+          pinchCleanupRef.current = viewport.cleanup;
+          fitWallToWorkspace();
         }
       });
 
@@ -247,19 +307,31 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         disposed = true;
         pinchCleanupRef.current?.();
         pinchCleanupRef.current = null;
+        viewportRef.current = null;
         fabricRef.current?.dispose();
         fabricRef.current = null;
         fabricModuleRef.current = null;
         setIsCanvasReady(false);
       };
-    }, [size.width, size.height, saveHistory, notifyHistory, applyReadOnly]);
+    }, [saveHistory, notifyHistory, applyReadOnly, fitWallToWorkspace]);
 
     useEffect(() => {
       const canvas = fabricRef.current;
-      if (!canvas || size.width === 0 || size.height === 0) return;
-      canvas.setDimensions({ width: size.width, height: size.height });
-      canvas.requestRenderAll();
-    }, [size]);
+      if (!canvas) return;
+      applyWallDimensions(canvas, wallBounds);
+    }, [wallBounds, applyWallDimensions]);
+
+    useEffect(() => {
+      const workspace = workspaceRef.current;
+      if (!workspace) return;
+
+      const observer = new ResizeObserver(() => {
+        if (!viewportRef.current || viewportRef.current.getScale() > 1.01) return;
+        fitWallToWorkspace();
+      });
+      observer.observe(workspace);
+      return () => observer.disconnect();
+    }, [fitWallToWorkspace]);
 
     useEffect(() => {
       const canvas = fabricRef.current;
@@ -322,20 +394,42 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         setIsDragOver(false);
 
         const canvas = getCanvas();
-        if (!canvas) return;
+        const stage = wallStageRef.current;
+        if (!canvas || !stage) return;
 
         const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
         if (files.length === 0) return;
 
-        const rect = containerRef.current?.getBoundingClientRect();
-        const x = rect ? e.clientX - rect.left : undefined;
-        const y = rect ? e.clientY - rect.top : undefined;
+        const { x, y } = clientToCanvasCoords(
+          e.clientX,
+          e.clientY,
+          stage,
+          canvas.width ?? wallBoundsRef.current.width,
+          canvas.height ?? wallBoundsRef.current.height,
+        );
 
         for (const file of files) {
-          await addPhotoToCanvas(file, x !== undefined && y !== undefined ? { x, y } : undefined);
+          await addPhotoToCanvas(file, { x, y });
         }
       },
       [getCanvas, addPhotoToCanvas],
+    );
+
+    const restoreFromPackedJson = useCallback(
+      async (json: object) => {
+        const canvas = getCanvas();
+        if (!canvas) return;
+
+        const { fabricJson, wallBounds: bounds } = unpackCanvasJson(json);
+        wallBoundsRef.current = bounds;
+        setWallBounds(bounds);
+
+        await canvas.loadFromJSON(fabricJson);
+        applyWallDimensions(canvas, bounds);
+        applyReadOnly(canvas);
+        canvas.requestRenderAll();
+      },
+      [getCanvas, applyWallDimensions, applyReadOnly],
     );
 
     useImperativeHandle(
@@ -477,8 +571,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
           const state = historyRef.current.undo();
           if (!state) return;
           await historyRef.current.runRestore(async () => {
-            await canvas.loadFromJSON(state);
-            canvas.requestRenderAll();
+            await restoreFromPackedJson(state);
             onSelectionChangeRef.current(!!canvas.getActiveObject());
           });
           notifyHistory();
@@ -491,8 +584,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
           const state = historyRef.current.redo();
           if (!state) return;
           await historyRef.current.runRestore(async () => {
-            await canvas.loadFromJSON(state);
-            canvas.requestRenderAll();
+            await restoreFromPackedJson(state);
             onSelectionChangeRef.current(!!canvas.getActiveObject());
           });
           notifyHistory();
@@ -501,18 +593,17 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
 
         toJSON: () => {
           const canvas = getCanvas();
-          return canvas?.toJSON() ?? {};
+          if (!canvas) return {};
+          return packCanvasJson(canvas.toJSON(), wallBoundsRef.current);
         },
 
         loadFromJSON: async (json: object) => {
           const canvas = getCanvas();
           if (!canvas) return;
           await historyRef.current.runRestore(async () => {
-            await canvas.loadFromJSON(json);
-            applyReadOnly(canvas);
-            canvas.requestRenderAll();
+            await restoreFromPackedJson(json);
           });
-          historyRef.current.reset(canvas.toJSON());
+          historyRef.current.reset(packCanvasJson(canvas.toJSON(), wallBoundsRef.current));
           notifyHistory();
         },
 
@@ -520,52 +611,77 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
           const canvas = getCanvas();
           if (!canvas) return;
           canvas.clear();
-          canvas.requestRenderAll();
-          historyRef.current.reset(canvas.toJSON());
+          wallBoundsRef.current = DEFAULT_WALL_BOUNDS;
+          setWallBounds(DEFAULT_WALL_BOUNDS);
+          applyWallDimensions(canvas, DEFAULT_WALL_BOUNDS);
+          historyRef.current.reset(packCanvasJson(canvas.toJSON(), DEFAULT_WALL_BOUNDS));
           notifyHistory();
           onCanvasChangeRef.current?.();
         },
+
+        getWallStageElement: () => wallStageRef.current,
       }),
-      [getCanvas, addPhotoToCanvas, addPhotoFromDataUrl, applyBrush, saveHistory, notifyHistory, applyReadOnly],
+      [
+        getCanvas,
+        addPhotoToCanvas,
+        addPhotoFromDataUrl,
+        applyBrush,
+        saveHistory,
+        notifyHistory,
+        applyWallDimensions,
+        restoreFromPackedJson,
+      ],
     );
 
     return (
-      <div
-        ref={containerRef}
-        className="relative h-full w-full touch-none bg-white"
-        onDragOver={(e) => {
-          if (readOnly) return;
-          e.preventDefault();
-          if ([...e.dataTransfer.types].includes("Files")) setIsDragOver(true);
-        }}
-        onDragLeave={(e) => {
-          if (readOnly) return;
-          if (!containerRef.current?.contains(e.relatedTarget as Node)) {
-            setIsDragOver(false);
-          }
-        }}
-        onDrop={(e) => {
-          if (readOnly) return;
-          handleDrop(e);
-        }}
-      >
+      <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-neutral-200">
         <div
-          className="pointer-events-none absolute inset-0"
-          style={{ background: theme.background }}
-        />
+          ref={workspaceRef}
+          className="workspace-grid absolute inset-0 touch-none overflow-hidden"
+          onDragOver={(e) => {
+            if (readOnly) return;
+            e.preventDefault();
+            if ([...e.dataTransfer.types].includes("Files")) setIsDragOver(true);
+          }}
+          onDragLeave={(e) => {
+            if (readOnly) return;
+            if (!workspaceRef.current?.contains(e.relatedTarget as Node)) {
+              setIsDragOver(false);
+            }
+          }}
+          onDrop={(e) => {
+            if (readOnly) return;
+            handleDrop(e);
+          }}
+        >
+          <div
+            ref={wallStageRef}
+            className="absolute left-1/2 top-1/2 shadow-lg ring-1 ring-black/10"
+            style={{
+              width: wallBounds.width,
+              height: wallBounds.height,
+              background: theme.background,
+            }}
+          >
+            <canvas ref={canvasElRef} className="block" />
+          </div>
+        </div>
+
         {isDragOver && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/80 backdrop-blur-sm">
-            <div className="rounded-2xl border-2 border-dashed border-foreground/30 px-8 py-6 text-center">
-              <p className="text-sm font-medium text-foreground">사진을 여기에 놓으세요</p>
+          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+            <div className="rounded-2xl border-2 border-dashed border-foreground/30 bg-white/90 px-8 py-6 text-center backdrop-blur-sm">
+              <p className="text-sm font-medium text-foreground">사진을 벽 위에 놓으세요</p>
               <p className="mt-1 text-xs text-muted">네컷사진을 끌어다 붙일 수 있어요</p>
             </div>
           </div>
         )}
+
         {!isCanvasReady && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white text-sm text-muted">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-200 text-sm text-muted">
             캔버스 준비 중...
           </div>
         )}
+
         {enablePinchZoom && (
           <>
             <div
@@ -585,7 +701,6 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
             </button>
           </>
         )}
-        <canvas ref={canvasElRef} className="relative z-10" />
       </div>
     );
   },
