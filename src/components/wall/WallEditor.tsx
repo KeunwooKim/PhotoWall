@@ -246,6 +246,36 @@ export default function WallEditor({ sharedId }: WallEditorProps = {}) {
     showToast("벽을 비웠어요");
   }, [activeSharedId, showToast]);
 
+  const handleThemeChange = useCallback((nextThemeId: WallThemeId) => {
+    setThemeId(nextThemeId);
+    themeIdRef.current = nextThemeId;
+
+    const json = canvasRef.current?.toJSON();
+    if (!json) return;
+
+    const sharedId = sharedWallIdRef.current;
+    const currentUser = userRef.current;
+
+    if (sharedId && currentUser) {
+      void saveSharedWallToCloud(sharedId, nextThemeId, json).then((saved) => {
+        if (saved) {
+          setAutoSaved(true);
+          setTimeout(() => setAutoSaved(false), 1500);
+        }
+      });
+      return;
+    }
+
+    saveWall(nextThemeId, json);
+    setAutoSaved(true);
+    setTimeout(() => setAutoSaved(false), 1500);
+
+    if (currentUser) {
+      const local = loadWall();
+      void saveWallToCloud(nextThemeId, json, local?.id);
+    }
+  }, []);
+
   const handleModeChange = useCallback((next: EditorMode) => {
     setMode(next);
     canvasRef.current?.setMode(next);
@@ -290,11 +320,12 @@ export default function WallEditor({ sharedId }: WallEditorProps = {}) {
   }, [themeId, activeSharedId, showToast]);
 
   const handleExport = useCallback(async () => {
-    if (!containerRef.current || isExporting) return;
+    const stage = canvasRef.current?.getWallStageElement();
+    if (!stage || isExporting) return;
 
     setIsExporting(true);
     try {
-      await shareWallImage(containerRef.current);
+      await shareWallImage(stage);
       showToast("이미지를 저장했어요");
     } catch {
       showToast("이미지 저장에 실패했어요");
@@ -504,7 +535,7 @@ export default function WallEditor({ sharedId }: WallEditorProps = {}) {
         hasSelection={hasSelection}
         canUndo={canUndo}
         canRedo={canRedo}
-        onThemeChange={setThemeId}
+        onThemeChange={handleThemeChange}
         onPhotoUpload={(file) => canvasRef.current?.addPhoto(file)}
         onAddTape={(color) => canvasRef.current?.addTape(color)}
         onAddSticker={(emoji) => canvasRef.current?.addSticker(emoji)}

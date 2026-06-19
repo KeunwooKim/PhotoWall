@@ -45,10 +45,11 @@ export default function WallViewer({
   }, []);
 
   const handleExport = async () => {
-    if (!containerRef.current || isExporting) return;
+    const stage = canvasRef.current?.getWallStageElement();
+    if (!stage || isExporting) return;
     setIsExporting(true);
     try {
-      await shareWallImage(containerRef.current);
+      await shareWallImage(stage);
     } finally {
       setIsExporting(false);
     }
