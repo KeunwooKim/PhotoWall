@@ -47,5 +47,5 @@ $VERCEL deploy --prod --yes
 
 echo ""
 echo "배포 완료 후 Supabase Dashboard → Authentication → URL Configuration:"
-echo "  Site URL: https://YOUR-APP.vercel.app"
-echo "  Redirect URLs: https://YOUR-APP.vercel.app/auth/callback"
+echo "  Site URL: https://photowall-one.vercel.app"
+echo "  Redirect URLs: https://photowall-one.vercel.app/auth/callback"
