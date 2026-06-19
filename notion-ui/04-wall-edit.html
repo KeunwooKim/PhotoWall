@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhotoWall — 개인 벽 편집</title>
+</head>
+<body style="margin:0;padding:24px;background:#eee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+
+<div style="max-width:390px;margin:0 auto;border-radius:28px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.12);border:1px solid rgba(0,0,0,.08);background:#fff;position:relative;height:720px;">
+
+  <!-- Canvas mock -->
+  <div style="position:absolute;inset:0;background:linear-gradient(135deg,#fff5f8 0%,#fff 50%,#f0f9ff 100%);">
+    <!-- mock photos -->
+    <div style="position:absolute;top:120px;left:40px;width:100px;height:130px;background:#ddd;border-radius:4px;transform:rotate(-6deg);box-shadow:0 4px 12px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;">📷</div>
+    <div style="position:absolute;top:140px;left:150px;width:90px;height:120px;background:#ddd;border-radius:4px;transform:rotate(4deg);box-shadow:0 4px 12px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;">📷</div>
+    <div style="position:absolute;top:280px;left:80px;width:60px;height:20px;background:#f9a8c9;opacity:.8;transform:rotate(-12deg);border-radius:2px;"></div>
+    <div style="position:absolute;top:200px;left:220px;font-size:28px;transform:rotate(8deg);">✨</div>
+  </div>
+
+  <!-- Top controls -->
+  <div style="position:absolute;top:16px;left:16px;display:flex;gap:8px;z-index:2;">
+    <div style="width:48px;height:48px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1);border:1px solid rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;font-size:18px;">☰</div>
+    <div style="width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.9);box-shadow:0 1px 4px rgba(0,0,0,.08);border:1px solid rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;font-size:14px;margin-top:4px;">🏠</div>
+  </div>
+
+  <div style="position:absolute;top:16px;right:16px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;z-index:2;">
+    <div style="padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.08);font-size:11px;font-weight:500;">김큰우 · 로그아웃</div>
+    <div style="padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.08);font-size:11px;font-weight:500;">공동</div>
+    <div style="padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.08);font-size:11px;font-weight:500;">친구</div>
+  </div>
+
+  <!-- Auto save badge -->
+  <div style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.06);font-size:11px;color:#737373;z-index:2;">자동 저장됨</div>
+
+  <!-- Toolbar peek (left edge hint) -->
+  <div style="position:absolute;top:0;left:0;width:8px;height:100%;background:rgba(26,26,26,.05);z-index:1;"></div>
+</div>
+
+<p style="text-align:center;margin-top:16px;font-size:12px;color:#737373;">PhotoWall UI 목업 · 개인 벽 편집 (/wall/edit)<br>좌측 ☰ → 꾸미기 메뉴 · 하단 네비 없음 (전체화면)</p>
+</body>
+</html>
