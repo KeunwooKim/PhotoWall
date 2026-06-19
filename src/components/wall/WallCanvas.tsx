@@ -12,7 +12,6 @@ import type { WallThemeId } from "@/types/wall";
 import { getWallTheme } from "@/lib/wall-themes";
 import { CanvasHistory } from "@/lib/canvas-history";
 import { debounce } from "@/lib/debounce";
-import { resetCanvasViewport, setupCanvasPinchZoom } from "@/lib/canvas-viewport";
 
 export type EditorMode = "select" | "draw";
 
@@ -218,7 +217,12 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
       const container = containerRef.current;
       if (!container) return;
 
-      return setupCanvasPinchZoom(container, getCanvas, setViewportZoom);
+      let cleanup: (() => void) | undefined;
+      void import("@/lib/canvas-viewport").then(({ setupCanvasPinchZoom }) => {
+        cleanup = setupCanvasPinchZoom(container, getCanvas, setViewportZoom);
+      });
+
+      return () => cleanup?.();
     }, [enablePinchZoom, isCanvasReady, getCanvas]);
 
     useEffect(() => {
@@ -546,8 +550,10 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
             onClick={() => {
               const canvas = getCanvas();
               if (!canvas) return;
-              resetCanvasViewport(canvas);
-              setViewportZoom(1);
+              void import("@/lib/canvas-viewport").then(({ resetCanvasViewport }) => {
+                resetCanvasViewport(canvas);
+                setViewportZoom(1);
+              });
             }}
           >
             100%

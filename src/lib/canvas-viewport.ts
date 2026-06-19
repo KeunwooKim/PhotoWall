@@ -1,4 +1,12 @@
-import { Point, type Canvas as FabricCanvas } from "fabric";
+type FabricCanvas = {
+  getZoom(): number;
+  viewportTransform: number[] | null;
+  setViewportTransform(vpt: number[]): void;
+  requestRenderAll(): void;
+  discardActiveObject(): void;
+  upperCanvasEl?: HTMLElement;
+  findTarget?(e: Event): unknown;
+};
 
 export const CANVAS_MIN_ZOOM = 0.5;
 export const CANVAS_MAX_ZOOM = 4;
@@ -12,13 +20,26 @@ export function resetCanvasViewport(canvas: FabricCanvas): void {
   canvas.requestRenderAll();
 }
 
+/** Fabric zoomToPoint equivalent — no runtime fabric import (SSR/prefetch safe). */
 export function zoomCanvasToPoint(
   canvas: FabricCanvas,
   point: { x: number; y: number },
   zoom: number,
 ): number {
   const clamped = clampCanvasZoom(zoom);
-  canvas.zoomToPoint(new Point(point.x, point.y), clamped);
+  const vpt = canvas.viewportTransform;
+  if (!vpt) return clamped;
+
+  const before = canvas.getZoom();
+  if (before === clamped) return clamped;
+
+  const ratio = clamped / before;
+  const next = vpt.slice();
+  next[0] = clamped;
+  next[3] = clamped;
+  next[4] = point.x - (point.x - next[4]) * ratio;
+  next[5] = point.y - (point.y - next[5]) * ratio;
+  canvas.setViewportTransform(next);
   canvas.requestRenderAll();
   return clamped;
 }
@@ -35,6 +56,23 @@ function touchCenter(touches: TouchList, rect: DOMRect): { x: number; y: number 
     x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
     y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top,
   };
+}
+
+function touchHitsObject(canvas: FabricCanvas, touch: Touch): boolean {
+  if (!canvas.findTarget || !canvas.upperCanvasEl) return false;
+
+  try {
+    const synthetic = {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      target: canvas.upperCanvasEl,
+      type: "touchstart",
+    } as unknown as Event;
+
+    return !!canvas.findTarget(synthetic);
+  } catch {
+    return false;
+  }
 }
 
 export function setupCanvasPinchZoom(
@@ -66,8 +104,7 @@ export function setupCanvasPinchZoom(
 
     if (e.touches.length === 1 && canvas.getZoom() > 1.01) {
       const touch = e.touches[0];
-      const target = canvas.findTarget({ clientX: touch.clientX, clientY: touch.clientY } as MouseEvent);
-      if (!target) {
+      if (!touchHitsObject(canvas, touch)) {
         isPanning = true;
         lastPan = { x: touch.clientX, y: touch.clientY };
       }
