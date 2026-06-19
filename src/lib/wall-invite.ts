@@ -1,5 +1,7 @@
+import { authFetch } from "@/lib/auth/api-fetch";
+
 export async function createWallInvite(wallId: string): Promise<{ code: string; url: string }> {
-  const res = await fetch("/api/invites", {
+  const res = await authFetch("/api/invites", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ wallId }),

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
@@ -7,10 +8,23 @@ import { useAuth } from "@/hooks/useAuth";
 
 export default function HomePage() {
   const { user } = useAuth();
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("auth_error")) return;
+    window.history.replaceState({}, "", "/");
+    setAuthError("Google 로그인에 실패했어요. Supabase·Google Cloud URL 설정을 확인해 주세요.");
+  }, []);
 
   return (
     <AppShell>
       <div className="space-y-8">
+        {authError && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-200">
+            {authError}
+          </div>
+        )}
         <section className="space-y-4 pt-2">
           <div className="inline-flex rounded-full bg-accent/20 px-3 py-1 text-xs font-medium text-accent-dark">
             Z세대 감성 포토월

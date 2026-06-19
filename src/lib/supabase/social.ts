@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServer } from "@/lib/supabase/walls";
 import { appendGuestbookPhoto } from "@/lib/guestbook";
 import type { WallComment, WallInvite, WallLikesSummary } from "@/types/social";
@@ -36,7 +37,7 @@ export async function getWallLikes(
       .eq("user_id", userId)
       .maybeSingle();
     likedByMe = !!myLike;
-  } else {
+  } else if (visitorId) {
     const { data: myLike } = await supabase
       .from("wall_likes")
       .select("id")
@@ -53,46 +54,30 @@ export async function getWallLikes(
 }
 
 export async function toggleWallLike(
+  supabase: SupabaseClient,
   wallId: string,
-  visitorId: string,
-  userId?: string | null,
+  userId: string,
 ): Promise<WallLikesSummary | null> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return null;
+  const { data: existing } = await supabase
+    .from("wall_likes")
+    .select("id")
+    .eq("wall_id", wallId)
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  if (userId) {
-    const { data: existing } = await supabase
-      .from("wall_likes")
-      .select("id")
-      .eq("wall_id", wallId)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (existing) {
-      await supabase.from("wall_likes").delete().eq("id", existing.id);
-    } else {
-      await supabase.from("wall_likes").insert({
-        wall_id: wallId,
-        visitor_id: visitorId,
-        user_id: userId,
-      });
-    }
+  if (existing) {
+    const { error } = await supabase.from("wall_likes").delete().eq("id", existing.id);
+    if (error) return null;
   } else {
-    const { data: existing } = await supabase
-      .from("wall_likes")
-      .select("id")
-      .eq("wall_id", wallId)
-      .eq("visitor_id", visitorId)
-      .maybeSingle();
-
-    if (existing) {
-      await supabase.from("wall_likes").delete().eq("id", existing.id);
-    } else {
-      await supabase.from("wall_likes").insert({ wall_id: wallId, visitor_id: visitorId });
-    }
+    const { error } = await supabase.from("wall_likes").insert({
+      wall_id: wallId,
+      visitor_id: userId,
+      user_id: userId,
+    });
+    if (error) return null;
   }
 
-  return getWallLikes(wallId, visitorId, userId);
+  return getWallLikes(wallId, userId, userId);
 }
 
 export async function getWallComments(wallId: string): Promise<WallComment[]> {
@@ -117,14 +102,12 @@ export async function getWallComments(wallId: string): Promise<WallComment[]> {
 }
 
 export async function addWallComment(
+  supabase: SupabaseClient,
   wallId: string,
   authorName: string,
   body: string,
-  userId?: string | null,
+  userId: string,
 ): Promise<WallComment | null> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return null;
-
   const trimmed = body.trim();
   if (!trimmed) return null;
 
@@ -134,7 +117,7 @@ export async function addWallComment(
       wall_id: wallId,
       author_name: authorName.trim() || "익명",
       body: trimmed.slice(0, 500),
-      ...(userId ? { user_id: userId } : {}),
+      user_id: userId,
     })
     .select("id, wall_id, author_name, body, created_at")
     .single();
@@ -151,16 +134,14 @@ export async function addWallComment(
 }
 
 export async function addGuestbookPhoto(
+  supabase: SupabaseClient,
   wallId: string,
   authorName: string,
   imageDataUrl: string,
   imageWidth: number,
   imageHeight: number,
-  userId?: string | null,
+  userId: string,
 ): Promise<{ canvasJson: object } | null> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return null;
-
   const { data: wall, error: fetchError } = await supabase
     .from("walls")
     .select("canvas_json")
@@ -186,19 +167,21 @@ export async function addGuestbookPhoto(
 
   if (updateError) return null;
 
-  await supabase.from("wall_guestbook").insert({
+  const { error: guestbookError } = await supabase.from("wall_guestbook").insert({
     wall_id: wallId,
     author_name: authorName.trim() || "익명",
-    ...(userId ? { user_id: userId } : {}),
+    user_id: userId,
   });
+
+  if (guestbookError) return null;
 
   return { canvasJson: updatedCanvas };
 }
 
-export async function createInvite(wallId: string): Promise<WallInvite | null> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return null;
-
+export async function createInvite(
+  supabase: SupabaseClient,
+  wallId: string,
+): Promise<WallInvite | null> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateInviteCode();
     const { data, error } = await supabase

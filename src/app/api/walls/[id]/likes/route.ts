@@ -27,20 +27,20 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const body = (await request.json()) as { visitorId?: string };
-
-  if (!body.visitorId) {
-    return NextResponse.json({ error: "visitorId required" }, { status: 400 });
-  }
 
   const routeClient = createRouteClient(request);
-  const userId = routeClient
-    ? (await getRouteUser(routeClient.supabase, request))?.id ?? null
-    : null;
-
-  const likes = await toggleWallLike(id, body.visitorId, userId);
-  if (!likes) {
+  if (!routeClient) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  const user = await getRouteUser(routeClient.supabase, request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const likes = await toggleWallLike(routeClient.supabase, id, user.id);
+  if (!likes) {
+    return NextResponse.json({ error: "Failed to toggle like" }, { status: 500 });
   }
 
   return routeClient?.applyCookies(NextResponse.json(likes)) ?? NextResponse.json(likes);

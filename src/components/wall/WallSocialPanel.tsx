@@ -70,6 +70,11 @@ export default function WallSocialPanel({
   }, [loadSocial]);
 
   const handleToggleLike = async () => {
+    if (!user) {
+      showMessage("응원하려면 로그인이 필요해요");
+      return;
+    }
+
     try {
       const res = await authFetch(`/api/walls/${wallId}/likes`, {
         method: "POST",
@@ -84,6 +89,10 @@ export default function WallSocialPanel({
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      showMessage("댓글을 남기려면 로그인이 필요해요");
+      return;
+    }
     if (!commentBody.trim() || isSubmittingComment) return;
 
     setIsSubmittingComment(true);
@@ -106,6 +115,10 @@ export default function WallSocialPanel({
   };
 
   const handleGuestbookPhoto = async (file: File) => {
+    if (!user) {
+      showMessage("방명록을 남기려면 로그인이 필요해요");
+      return;
+    }
     if (isSubmittingGuestbook) return;
 
     setIsSubmittingGuestbook(true);
