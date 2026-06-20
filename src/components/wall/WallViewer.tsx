@@ -7,6 +7,8 @@ import WallSocialPanel from "./WallSocialPanel";
 import type { WallThemeId } from "@/types/wall";
 import { shareWallImage } from "@/lib/wall-export";
 import AuthButton from "@/components/auth/AuthButton";
+import ReportWallButton from "@/components/wall/ReportWallButton";
+import { resolveCanvasPhotoUrls, resolveWallPhotoSrc } from "@/lib/storage/resolve-wall-photos";
 
 interface WallViewerProps {
   themeId: WallThemeId;
@@ -63,6 +65,10 @@ export default function WallViewer({
         drawColor="#e85d8f"
         drawWidth={4}
         readOnly={readOnly}
+        resolveStoragePhotos={
+          wallId ? (json) => resolveCanvasPhotoUrls(json, wallId) : undefined
+        }
+        resolvePhotoSrc={wallId ? (src) => resolveWallPhotoSrc(src, wallId) : undefined}
         onSelectionChange={() => {}}
         onReady={handleReady}
       />
@@ -92,6 +98,7 @@ export default function WallViewer({
               @{wallId.slice(0, 8)}
             </span>
           )}
+          {wallId && <ReportWallButton wallId={wallId} />}
           <button
             type="button"
             onClick={handleExport}

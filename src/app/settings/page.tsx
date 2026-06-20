@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
+import InquiryForm from "@/components/settings/InquiryForm";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
@@ -21,10 +23,12 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!user) {
       setProfile(null);
+      setIsAdmin(false);
       return;
     }
 
@@ -32,6 +36,11 @@ export default function SettingsPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data: Profile | null) => setProfile(data))
       .catch(() => {});
+
+    authFetch("/api/admin/me")
+      .then((res) => (res.ok ? res.json() : { isAdmin: false }))
+      .then((data: { isAdmin?: boolean }) => setIsAdmin(!!data.isAdmin))
+      .catch(() => setIsAdmin(false));
   }, [user]);
 
   const handleToggleWallVisits = async () => {
@@ -131,6 +140,36 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+
+        <section className="space-y-3">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">문의</h2>
+          {!user && !isLoading && (
+            <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
+              <p className="text-sm text-muted">로그인하면 문의를 보낼 수 있어요</p>
+            </div>
+          )}
+          {user && (
+            <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
+              <InquiryForm />
+            </div>
+          )}
+        </section>
+
+        {isAdmin && (
+          <section className="space-y-3">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted">관리</h2>
+            <Link
+              href="/admin"
+              className="flex items-center justify-between rounded-2xl border border-foreground/8 bg-surface p-4 transition hover:border-accent-dark/40"
+            >
+              <div>
+                <p className="text-sm font-semibold">관리자 페이지</p>
+                <p className="mt-1 text-xs text-muted">문의·벽·유저 관리</p>
+              </div>
+              <span className="text-sm text-accent-dark">→</span>
+            </Link>
+          </section>
+        )}
 
         <section className="space-y-3">
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted">계정</h2>
