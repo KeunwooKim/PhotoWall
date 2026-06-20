@@ -15,11 +15,13 @@ import { debounce } from "@/lib/debounce";
 import { setupWorkspacePinchZoom, type WorkspaceViewport } from "@/lib/canvas-viewport";
 import {
   DEFAULT_WALL_BOUNDS,
-  computeExpandedBounds,
   computeFitScale,
   getObjectsBounds,
+  reconcileWallBounds,
   type WallBounds,
 } from "@/lib/wall-bounds";
+import { stripBrokenImagesFromFabricJson } from "@/lib/canvas-image-sanitize";
+import { normalizeFabricJsonForStorage } from "@/lib/storage/wall-photos";
 import { packCanvasJson, unpackCanvasJson } from "@/lib/wall-canvas-json";
 
 export type EditorMode = "select" | "draw";
@@ -51,6 +53,8 @@ interface WallCanvasProps {
   readOnly?: boolean;
   enablePinchZoom?: boolean;
   resolvePhotoUrl?: (file: File) => Promise<string>;
+  resolveStoragePhotos?: (packedJson: object) => Promise<object>;
+  resolvePhotoSrc?: (src: string) => Promise<string>;
   onSelectionChange: (hasSelection: boolean) => void;
   onCanvasChange?: () => void;
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
@@ -92,6 +96,8 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
       readOnly = false,
       enablePinchZoom = true,
       resolvePhotoUrl,
+      resolveStoragePhotos,
+      resolvePhotoSrc,
       onSelectionChange,
       onCanvasChange,
       onHistoryChange,
@@ -141,6 +147,10 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     readOnlyRef.current = readOnly;
     const resolvePhotoUrlRef = useRef(resolvePhotoUrl);
     resolvePhotoUrlRef.current = resolvePhotoUrl;
+    const resolveStoragePhotosRef = useRef(resolveStoragePhotos);
+    resolveStoragePhotosRef.current = resolveStoragePhotos;
+    const resolvePhotoSrcRef = useRef(resolvePhotoSrc);
+    resolvePhotoSrcRef.current = resolvePhotoSrc;
 
     const applyReadOnly = useCallback((canvas: FabricCanvas) => {
       if (!readOnlyRef.current) return;
@@ -167,6 +177,15 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
 
     const getCanvas = useCallback(() => fabricRef.current, []);
 
+    const packCurrentCanvas = useCallback(() => {
+      const canvas = getCanvas();
+      if (!canvas) return null;
+      return packCanvasJson(
+        normalizeFabricJsonForStorage(canvas.toJSON()),
+        wallBoundsRef.current,
+      );
+    }, [getCanvas]);
+
     const applyWallDimensions = useCallback(
       (canvas: FabricCanvas, bounds: WallBounds) => {
         canvas.setDimensions({ width: bounds.width, height: bounds.height });
@@ -175,14 +194,12 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
       [],
     );
 
-    const checkAndExpandWall = useCallback(() => {
+    const reconcileWallSize = useCallback(() => {
       const canvas = getCanvas();
       if (!canvas || readOnlyRef.current) return;
 
       const objBounds = getObjectsBounds(canvas);
-      if (!objBounds) return;
-
-      const next = computeExpandedBounds(wallBoundsRef.current, objBounds);
+      const next = reconcileWallBounds(wallBoundsRef.current, objBounds);
       if (!next) return;
 
       wallBoundsRef.current = next;
@@ -191,8 +208,8 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
       onCanvasChangeRef.current?.();
     }, [getCanvas, applyWallDimensions]);
 
-    const debouncedExpandCheckRef = useRef(debounce(() => checkAndExpandWall(), 100));
-    debouncedExpandCheckRef.current = debounce(() => checkAndExpandWall(), 100);
+    const debouncedBoundsCheckRef = useRef(debounce(() => reconcileWallSize(), 100));
+    debouncedBoundsCheckRef.current = debounce(() => reconcileWallSize(), 100);
 
     const handleResetZoom = useCallback(() => {
       viewportRef.current?.reset();
@@ -206,12 +223,12 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
     }, []);
 
     const saveHistory = useCallback(() => {
-      const canvas = getCanvas();
-      if (!canvas) return;
-      historyRef.current.push(packCanvasJson(canvas.toJSON(), wallBoundsRef.current));
+      const packed = packCurrentCanvas();
+      if (!packed) return;
+      historyRef.current.push(packed);
       notifyHistory();
       onCanvasChangeRef.current?.();
-    }, [getCanvas, notifyHistory]);
+    }, [packCurrentCanvas, notifyHistory]);
 
     const debouncedSaveHistoryRef = useRef(debounce(() => saveHistory(), 300));
     debouncedSaveHistoryRef.current = debounce(() => saveHistory(), 300);
@@ -261,7 +278,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         });
 
         fabricRef.current = canvas;
-        historyRef.current.reset(packCanvasJson(canvas.toJSON(), bounds));
+        historyRef.current.reset(packCanvasJson(normalizeFabricJsonForStorage(canvas.toJSON()), bounds));
         notifyHistory();
         applyReadOnly(canvas);
         setIsCanvasReady(true);
@@ -276,16 +293,19 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         canvas.on("selection:cleared", () => onSelectionChangeRef.current(false));
         canvas.on("object:added", () => {
           debouncedSaveHistoryRef.current();
-          debouncedExpandCheckRef.current();
+          debouncedBoundsCheckRef.current();
         });
         canvas.on("object:modified", () => {
           debouncedSaveHistoryRef.current();
-          debouncedExpandCheckRef.current();
+          debouncedBoundsCheckRef.current();
         });
-        canvas.on("object:removed", saveHistory);
+        canvas.on("object:removed", () => {
+          saveHistory();
+          debouncedBoundsCheckRef.current();
+        });
         canvas.on("path:created", () => {
           saveHistory();
-          debouncedExpandCheckRef.current();
+          debouncedBoundsCheckRef.current();
         });
 
         pinchCleanupRef.current?.();
@@ -346,7 +366,17 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         const fabric = fabricModuleRef.current;
         if (!canvas || !fabric || readOnlyRef.current) return;
 
-        const img = await fabric.FabricImage.fromURL(url, getImageLoadOptions(url));
+        let loadUrl = url;
+        if (resolvePhotoSrcRef.current) {
+          loadUrl = await resolvePhotoSrcRef.current(url);
+        }
+
+        let img;
+        try {
+          img = await fabric.FabricImage.fromURL(loadUrl, getImageLoadOptions(loadUrl));
+        } catch {
+          return;
+        }
 
         const maxWidth = Math.min(220, canvas.width * 0.35);
         const scale = Math.min(1, maxWidth / (img.width || maxWidth));
@@ -420,11 +450,30 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         const canvas = getCanvas();
         if (!canvas) return;
 
-        const { fabricJson, wallBounds: bounds } = unpackCanvasJson(json);
+        let packed = json;
+        if (resolveStoragePhotosRef.current) {
+          packed = await resolveStoragePhotosRef.current(json);
+        }
+
+        const { fabricJson, wallBounds: savedBounds } = unpackCanvasJson(packed);
+        const { json: loadableJson, removedUrls } =
+          await stripBrokenImagesFromFabricJson(fabricJson);
+
+        try {
+          await canvas.loadFromJSON(loadableJson);
+        } catch {
+          await canvas.loadFromJSON({ ...loadableJson, objects: [] });
+        }
+
+        if (removedUrls.length > 0) {
+          onCanvasChangeRef.current?.();
+        }
+
+        const objBounds = getObjectsBounds(canvas);
+        const bounds = reconcileWallBounds(savedBounds, objBounds) ?? savedBounds;
         wallBoundsRef.current = bounds;
         setWallBounds(bounds);
 
-        await canvas.loadFromJSON(fabricJson);
         applyWallDimensions(canvas, bounds);
         applyReadOnly(canvas);
         canvas.requestRenderAll();
@@ -591,11 +640,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
           onCanvasChangeRef.current?.();
         },
 
-        toJSON: () => {
-          const canvas = getCanvas();
-          if (!canvas) return {};
-          return packCanvasJson(canvas.toJSON(), wallBoundsRef.current);
-        },
+        toJSON: () => packCurrentCanvas() ?? {},
 
         loadFromJSON: async (json: object) => {
           const canvas = getCanvas();
@@ -603,7 +648,10 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
           await historyRef.current.runRestore(async () => {
             await restoreFromPackedJson(json);
           });
-          historyRef.current.reset(packCanvasJson(canvas.toJSON(), wallBoundsRef.current));
+          const packed = packCurrentCanvas();
+          if (packed) {
+            historyRef.current.reset(packed);
+          }
           notifyHistory();
         },
 
@@ -614,7 +662,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
           wallBoundsRef.current = DEFAULT_WALL_BOUNDS;
           setWallBounds(DEFAULT_WALL_BOUNDS);
           applyWallDimensions(canvas, DEFAULT_WALL_BOUNDS);
-          historyRef.current.reset(packCanvasJson(canvas.toJSON(), DEFAULT_WALL_BOUNDS));
+          historyRef.current.reset(packCurrentCanvas() ?? packCanvasJson({}, DEFAULT_WALL_BOUNDS));
           notifyHistory();
           onCanvasChangeRef.current?.();
         },
@@ -630,6 +678,7 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
         notifyHistory,
         applyWallDimensions,
         restoreFromPackedJson,
+        packCurrentCanvas,
       ],
     );
 
@@ -707,7 +756,11 @@ const WallCanvas = forwardRef<WallCanvasHandle, WallCanvasProps>(
 );
 
 function getImageLoadOptions(url: string): { crossOrigin?: "anonymous" } {
-  if (url.startsWith("data:") || url.startsWith("blob:")) {
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    url.startsWith("wall-photo://")
+  ) {
     return {};
   }
   return { crossOrigin: "anonymous" };

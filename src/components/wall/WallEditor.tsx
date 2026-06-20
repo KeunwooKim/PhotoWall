@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import WallCanvas, { type WallCanvasHandle, type EditorMode } from "./WallCanvas";
 import Toolbar from "./Toolbar";
 import type { WallThemeId } from "@/types/wall";
-import { loadWall, saveWall, clearWall } from "@/lib/wall-storage";
+import { loadWall, saveWall, clearWall, getOrCreateWallId } from "@/lib/wall-storage";
 import { debounce } from "@/lib/debounce";
 import { publishWall } from "@/lib/wall-share";
 import { shareWallImage } from "@/lib/wall-export";
@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { fetchCloudWall, saveWallToCloud } from "@/lib/auth/migrate-wall";
 import { fetchSharedWallForEdit, saveSharedWallToCloud } from "@/lib/auth/shared-wall";
 import { resolvePhotoUrl } from "@/lib/storage/upload-photo";
+import { resolveCanvasPhotoUrls, resolveWallPhotoSrc } from "@/lib/storage/resolve-wall-photos";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
 import Link from "next/link";
 
@@ -114,6 +115,18 @@ export default function WallEditor({ sharedId }: WallEditorProps = {}) {
   const resolvePhoto = useCallback(
     (file: File) => resolvePhotoUrl(file, user?.id),
     [user?.id],
+  );
+
+  const photoWallId = activeSharedId ?? getOrCreateWallId();
+
+  const resolveStoragePhotos = useCallback(
+    (json: object) => resolveCanvasPhotoUrls(json, photoWallId),
+    [photoWallId],
+  );
+
+  const resolvePhotoSrc = useCallback(
+    (src: string) => resolveWallPhotoSrc(src, photoWallId),
+    [photoWallId],
   );
 
   const handleCanvasChange = useCallback(() => {
@@ -402,6 +415,8 @@ export default function WallEditor({ sharedId }: WallEditorProps = {}) {
         drawColor={drawColor}
         drawWidth={drawWidth}
         resolvePhotoUrl={resolvePhoto}
+        resolveStoragePhotos={resolveStoragePhotos}
+        resolvePhotoSrc={resolvePhotoSrc}
         onSelectionChange={setHasSelection}
         onCanvasChange={handleCanvasChange}
         onHistoryChange={({ canUndo: u, canRedo: r }) => {

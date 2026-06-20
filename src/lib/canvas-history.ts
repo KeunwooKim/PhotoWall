@@ -39,9 +39,12 @@ export class CanvasHistory {
     return this.index < this.stack.length - 1;
   }
 
-  runRestore(fn: () => void) {
+  async runRestore(fn: () => void | Promise<void>) {
     this.isRestoring = true;
-    fn();
-    this.isRestoring = false;
+    try {
+      await fn();
+    } finally {
+      this.isRestoring = false;
+    }
   }
 }

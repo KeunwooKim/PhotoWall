@@ -1,21 +1,19 @@
 import { createClient } from "@/lib/supabase/client";
-
-const BUCKET = "wall-photos";
+import { toWallPhotoRef, WALL_PHOTOS_BUCKET } from "@/lib/storage/wall-photos";
 
 export async function uploadWallPhoto(file: File, userId: string): Promise<string> {
   const supabase = createClient();
   const ext = file.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
   const path = `${userId}/${crypto.randomUUID()}.${ext}`;
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(WALL_PHOTOS_BUCKET).upload(path, file, {
     contentType: file.type,
     upsert: false,
   });
 
   if (error) throw error;
 
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return toWallPhotoRef(path);
 }
 
 export function readFileAsDataUrl(file: File): Promise<string> {
@@ -35,7 +33,7 @@ export async function resolvePhotoUrl(
     try {
       return await uploadWallPhoto(file, userId);
     } catch {
-      // Storage 미설정 시 data URL fallback
+      // Storage 미설정·private 전환 전 fallback
     }
   }
   return readFileAsDataUrl(file);

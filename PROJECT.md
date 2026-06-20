@@ -9,11 +9,12 @@
 1. [프로젝트 배경 및 문제 정의](#1-프로젝트-배경-및-문제-정의)
 2. [핵심 기능 및 로드맵](#2-핵심-기능-및-로드맵)
 3. [추가 기능](#3-추가-기능)
-4. [기술 검토](#4-기술-검토)
-5. [데이터베이스 (ERD)](#5-데이터베이스-erd)
-6. [진행 현황](#6-진행-현황)
-7. [다음 할 일](#7-다음-할-일)
-8. [변경 이력](#8-변경-이력)
+4. [관리자 페이지 (Admin)](#4-관리자-페이지-admin)
+5. [기술 검토](#5-기술-검토)
+6. [데이터베이스 (ERD)](#6-데이터베이스-erd)
+7. [진행 현황](#7-진행-현황)
+8. [다음 할 일](#8-다음-할-일)
+9. [변경 이력](#9-변경-이력)
 
 ---
 
@@ -103,7 +104,161 @@
 
 ---
 
-## 4. 기술 검토
+## 4. 관리자 페이지 (Admin)
+
+> **상태:** 🔄 1단계 MVP 구현 중  
+> **목표:** 특정 운영자 계정만 접근해 **문의·신고 처리**, **콘텐츠 관리**, **서비스 현황**을 한곳에서 수행
+
+### 접근 제어
+
+| 레이어 | 방식 |
+|---|---|
+| **UI** | 로그인 + allowlist 일치 시에만 설정(`/settings`) 하단에 「관리자」 버튼 노출 |
+| **서버** | `/admin/*`, `/api/admin/*` — 세션 검증 + allowlist **이중 확인** (URL 직접 입력 차단) |
+| **초기 allowlist** | 서버 env: `ADMIN_USER_IDS`(Supabase UUID) 또는 `ADMIN_EMAILS` (쉼표 구분) |
+| **확장 (추후)** | `profiles.is_admin` 컬럼 또는 Supabase `app_metadata.role = 'admin'` |
+
+```env
+# .env (서버 전용 — Vercel Production)
+ADMIN_USER_IDS=uuid1,uuid2
+SUPABASE_SERVICE_ROLE_KEY=...   # admin API 전용, 클라이언트 노출 금지
+```
+
+### 화면 구성 (`/admin`)
+
+```
+/admin
+├── 대시보드          ← KPI + 최근 미처리 문의
+├── 문의·신고         ← 인박스 (핵심)
+├── 벽 관리           ← 검색·숨김·삭제
+├── 유저              ← 검색·상세
+├── 공지              ← (2단계) 홈/에디터 배너
+└── 설정              ← allowlist 확인 (env 또는 DB)
+```
+
+모바일에서는 **문의 확인·상태 변경** 정도만 지원, 나머지는 PC 위주.
+
+### 기능 로드맵
+
+#### 1단계 — MVP (우선 구현)
+
+| 기능 | 설명 | 상태 |
+|---|---|---|
+| **접근 가드** | allowlist + `/admin` 레이아웃 + 설정 페이지 진입 버튼 | 🔄 |
+| **대시보드** | 가입자·벽(개인/공동/owner 없음)·좋아요·댓글·방명록·미처리 문의 | 🔄 |
+| **문의·신고 인박스** | 유저 문의 접수 + 관리자 목록·상세·상태 변경·내부 메모 | 🔄 |
+| **유저용 문의 폼** | 설정 → 「문의하기」; 카테고리·제목·본문 | 🔄 |
+| **콘텐츠 모더레이션** | 벽 검색·숨김·삭제·댓글·방명록 삭제 | 🔄 |
+| **신고 연동** | 벽 뷰어 「신고하기」→ `inquiries` (`category=abuse`) | 🔄 |
+| **유저 관리 (경량)** | 닉네임/친구코드 검색, 레거시 벽 목록 | 🔄 |
+
+**문의 카테고리**
+
+| category | 용도 |
+|---|---|
+| `general` | 일반 문의·사용법 |
+| `bug` | 버그 제보 (QR, 저장 실패 등) |
+| `feature` | 기능 제안 |
+| `abuse` | 부적절한 벽·댓글·방명록 신고 |
+| `business` | 제휴·매장 연동·IP 콜라보 (3단계 로드맵 연계) |
+
+**유저 진입점**
+
+- 설정 → 「문의하기」
+- 홈 푸터 → 「문의 · 제휴」 (2단계)
+- 공개 벽 뷰어 → 「신고하기」
+
+#### 2단계 — 운영 편의
+
+| 기능 | 설명 | 상태 |
+|---|---|---|
+| **공지·점검 배너** | 홈/에디터 상단 공지 (`announcements` 테이블 또는 env) | ⬜ |
+| **QR import 모니터링** | rate limit 초과·파서 실패 로그 집계 | ⬜ |
+| **기능 플래그** | QR import·공동벽·방명록 등 on/off (장애 시 부분 차단) | ⬜ |
+| **문의 회신** | 관리자 메모 + (선택) 이메일 또는 앱 내 알림 | ⬜ |
+| **계정 정지** | 로그인 유지, 벽 공유·댓글·방명록만 차단 | ⬜ |
+
+#### 3단계 — 성장·비즈니스 (3단계 로드맵과 연계)
+
+| 기능 | 설명 | 상태 |
+|---|---|---|
+| **제휴 문의 파이프라인** | business 문의 상태: 리드 → 미팅 → 계약 | ⬜ |
+| **분석** | MAU, 공유→가입 퍼널, 리텐션 | ⬜ |
+| **에셋 관리** | 벽지·스티커 신규 등록/비활성 (숍 대비) | ⬜ |
+| **부스 도메인 관리** | QR 허용 도메인 allowlist를 admin UI에서 편집 | ⬜ |
+
+### API·라우트 (예정)
+
+```
+src/app/admin/                    # 관리자 UI (서버 컴포넌트 + allowlist)
+src/app/api/admin/
+├── stats/route.ts                # 대시보드 집계
+├── inquiries/route.ts            # 문의 목록·생성(유저)
+├── inquiries/[id]/route.ts       # 문의 상세·상태 변경
+├── walls/route.ts                # 벽 검색
+├── walls/[id]/route.ts           # 벽 숨김·삭제
+├── users/route.ts                # 유저 검색
+└── comments|guestbook/...        # 소셜 삭제
+
+src/app/api/inquiries/route.ts    # 유저용 문의 POST (admin과 분리 가능)
+src/lib/admin/
+├── auth.ts                       # isAdmin(session), requireAdmin()
+└── service-client.ts             # service role Supabase (서버 전용)
+```
+
+### DB 추가 예정 (`admin-inquiries-migration.sql`)
+
+```sql
+-- inquiries: 문의·신고 통합
+create table inquiries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  email text,
+  category text not null,          -- general|bug|feature|abuse|business
+  subject text not null,
+  body text not null,
+  related_wall_id uuid references walls(id) on delete set null,
+  status text not null default 'open',  -- open|in_progress|resolved
+  admin_note text,
+  created_at timestamptz default now(),
+  resolved_at timestamptz
+);
+
+-- announcements (2단계)
+create table announcements (
+  id uuid primary key default gen_random_uuid(),
+  message text not null,
+  active boolean default true,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  created_at timestamptz default now()
+);
+```
+
+- **RLS:** `inquiries` insert — 로그인 유저 + rate limit; select/update — **admin API(service role)만** (일반 RLS policy 미노출)
+- **walls:** `hidden_at timestamptz` 또는 `is_hidden boolean` — 모더레이션용 soft delete (1단계)
+
+### 구현 순서 (예상)
+
+| 순서 | 작업 | 예상 |
+|---|---|---|
+| 1 | `ADMIN_USER_IDS` + `requireAdmin()` + `/admin` 빈 셸 + 설정 버튼 | 0.5일 |
+| 2 | `inquiries` SQL + 유저 문의 폼 + admin 인박스 | 1~2일 |
+| 3 | 대시보드 집계 API | 0.5일 |
+| 4 | 벽 검색·숨김·댓글/방명록 삭제 | 1일 |
+| 5 | 공지 배너·import 로그·기능 플래그 | 이후 |
+
+### PhotoWall 운영 우선순위 TOP 5
+
+1. **문의·신고 인박스** — CS·버그·제휴를 한곳에서 처리
+2. **벽/댓글 모더레이션** — 공개 URL 서비스 필수
+3. **대시보드** — 혼자 운영할 때 일일 현황 파악
+4. **레거시 벽 정리** — `owner_id null` 벽 귀속·정리 (`auth-migration` 잔여)
+5. **QR import 모니터링** — 핵심 기능 실패율 추적
+
+---
+
+## 5. 기술 검토
 
 ### 프론트엔드 (Canvas UI)
 
@@ -159,7 +314,9 @@ src/
 │   ├── shared/[id]/           # 공동 벽 편집
 │   ├── import/                  # QR 네컷 가져오기
 │   ├── profile/                 # 내정보 (친구·공동벽)
-│   ├── settings/                # 설정 (테마·프라이버시)
+│   ├── settings/                # 설정 (테마·프라이버시·문의하기 예정)
+│   ├── admin/                   # 관리자 UI (allowlist 전용, 예정)
+│   ├── api/admin/               # 관리자 API (service role, 예정)
 │   ├── api/walls/               # 벽 CRUD API
 │   ├── api/import/booth-photo/  # 포토부스 QR → 이미지 추출
 │   ├── api/shared-walls/        # 공동 벽 + 초대 API
@@ -178,9 +335,9 @@ src/
 └── providers/ThemeProvider.tsx    # 다크 모드
 ```
 
-### 현재 UI (2026-06-16)
+### 현재 UI (2026-06-19)
 
-- **전체 화면 흰 캔버스** — ResizeObserver 기반 자동 리사이즈
+- **Figma형 확장 벽** — 390×600 시작, 콘텐츠에 따라 자동 확장·축소, 격자 워크스페이스 + 핀치 줌
 - **좌상단 햄버거 버튼** — 왼쪽 슬라이드 팝업 메뉴
 - **팝업 메뉴** — 사진 업로드, 벽지(8종), 테이프, SVG·이모지 스티커, 공유·초대·이미지 저장, 도구, 저장/전체 지우기
 - **공개 벽 뷰어** — 응원하기 패널 (좋아요, 댓글, 방명록 사진)
@@ -188,7 +345,7 @@ src/
 
 ---
 
-## 5. 데이터베이스 (ERD)
+## 6. 데이터베이스 (ERD)
 
 ### SQL 마이그레이션 순서
 
@@ -199,7 +356,8 @@ schema.sql
   → social-migration.sql
   → shared-walls-migration.sql
   → privacy-invites-migration.sql
-  → security-hardening-migration.sql   ← 최신
+  → security-hardening-migration.sql
+  → admin-inquiries-migration.sql   ← 예정 (관리자·문의)
 ```
 
 | 파일 | 내용 | 미실행 시 영향 |
@@ -211,6 +369,7 @@ schema.sql
 | [`shared-walls-migration.sql`](supabase/shared-walls-migration.sql) | wall_members + is_shared | 공동 벽 불가 |
 | [`privacy-invites-migration.sql`](supabase/privacy-invites-migration.sql) | allow_wall_visits + wall_member_invites | 벽 비공개·초대 수락 불가 |
 | [`security-hardening-migration.sql`](supabase/security-hardening-migration.sql) | RLS 강화 — 익명 insert/update 차단, 소셜·초대 인증 | API 우회 스팸·무명 벽 수정 가능 |
+| [`admin-inquiries-migration.sql`](supabase/admin-inquiries-migration.sql) *(예정)* | `inquiries` + `announcements`, walls `is_hidden` | 문의·신고·모더레이션 불가 |
 
 ### As-Is ERD (현재)
 
@@ -294,6 +453,8 @@ walls.canvas_json
 | 방명록 | `wall_guestbook` + canvas_json 수정 |
 | 친구 초대 | `wall_invites` |
 | 프로필 / 친구 | `profiles` / `friendships` | ✅ 1차 구현 |
+| 문의·신고 | `inquiries` *(예정)* | ⬜ admin 미구현 |
+| 공지 배너 | `announcements` *(예정)* | ⬜ admin 미구현 |
 
 ### 구조적 이슈 (서비스 영향)
 
@@ -309,6 +470,8 @@ walls.canvas_json
 
 ```mermaid
 erDiagram
+    auth_users ||--o{ inquiries : submits
+    walls ||--o{ inquiries : "related_wall_id"
     auth_users ||--|| profiles : has
     auth_users ||--o{ friendships : connects
     auth_users ||--o{ wall_members : joins
@@ -346,17 +509,38 @@ erDiagram
         uuid wall_id FK
         text status
     }
+
+    inquiries {
+        uuid id PK
+        uuid user_id FK "nullable"
+        text category "general|bug|feature|abuse|business"
+        text subject
+        text body
+        uuid related_wall_id FK "nullable"
+        text status "open|in_progress|resolved"
+        text admin_note
+        timestamptz created_at
+        timestamptz resolved_at
+    }
+
+    announcements {
+        uuid id PK
+        text message
+        boolean active
+        timestamptz starts_at
+        timestamptz ends_at
+    }
 ```
 
 ### 마이그레이션 로드맵
 
 ```
-현재 → ① profiles + friendships (2단계) → ② wall_members (2.5 공동벽) → ③ shop + orders (3단계)
+현재 → ① profiles + friendships (2단계) → ② wall_members (2.5) → ③ admin inquiries (운영) → ④ shop + orders (3단계)
 ```
 
 ---
 
-## 6. 진행 현황
+## 7. 진행 현황
 
 ### 전체 진행률
 
@@ -379,7 +563,8 @@ erDiagram
 | MVP 개발 | 1단계 — 내 방 벽꾸미기 + QR 가져오기 | 🔄 QR 실부스 검증 남음 |
 | 소셜 확장 | 2단계 — 공유·방문·소통·프라이버시 | 🔄 진행 중 (~92%) |
 | 공동 벽 | 2.5단계 — 공동 인생네컷 | 🔄 1차 완료 — 실시간 동기화 미착수 |
-| 보안 | Public repo + Supabase RLS·API | ✅ 1차 완료 (`security-hardening-migration.sql`) |
+| 보안 | RLS·API 인증 1차 / Storage·프로필 공개 잔여 | ✅ 1차 완료 (`security-hardening-migration.sql`) |
+| 운영(Admin) | 관리자 페이지 — 문의·모더레이션·대시보드 | 🔄 1단계 MVP 구현 중 |
 | 수익화 | 3단계 — 아이템 숍 | ⬜ 미착수 |
 
 ### 완료된 항목
@@ -428,7 +613,7 @@ erDiagram
 
 ---
 
-## 7. 다음 할 일
+## 8. 다음 할 일
 
 ### 현재 포커스 (2026-06-19 기준)
 
@@ -443,6 +628,7 @@ erDiagram
 | **P1** | 홈 랜딩에「QR로 네컷 가져오기」CTA 추가 | 모바일 유입 경로 강화 | 30분 |
 | **P2** | 보안 2차 — Storage private + signed URL, friend_code 조회 제한 | Public repo·anon key 환경 잔여 리스크 | 0.5~1일 |
 | **P2** | 스티커 에셋 확장 (OpenMoji/Twemoji 등) | 보류 중 — 리서치만 완료 | 0.5~1일 |
+| **P2** | **관리자 페이지 1단계** — allowlist + 문의·신고 + 대시보드 | 운영·CS·모더레이션 기반 | 2~3일 |
 | **P3** | 3단계 수익화 (프리미엄 아이템) | 트래픽·리텐션 확보 후 | — |
 
 ### QR 가져오기 — 남은 작업
@@ -457,10 +643,33 @@ erDiagram
 
 **테스트 참고:** Google Drive·임의 URL QR은 의도적으로 차단됨 (SSRF 방지). 테스트는 실제 네컷 QR 또는「네컷 사진 올리기」업로드 사용.
 
+### 관리자 페이지 — 구현 체크리스트
+
+상세 기획: [§4 관리자 페이지 (Admin)](#4-관리자-페이지-admin)
+
+**1단계 MVP**
+
+- [x] `ADMIN_USER_IDS` / `requireAdmin()` + `/admin` 가드
+- [x] 설정 페이지 — 관리자만 「관리자」 버튼
+- [ ] `admin-inquiries-migration.sql` Supabase 실행
+- [x] 유저 문의 폼 (설정 → 문의하기)
+- [x] admin 문의·신고 인박스 (목록·상세·상태·내부 메모)
+- [x] 대시보드 KPI API
+- [x] 벽 검색·숨김(soft delete)·댓글·방명록 삭제
+- [x] 벽 뷰어 「신고하기」→ `inquiries` (`abuse`)
+- [x] 유저 검색 + 레거시 벽(`owner_id null`) 목록
+
+**2단계 (이후)**
+
+- [ ] `announcements` + 홈/에디터 공지 배너
+- [ ] QR import 실패·rate limit 로그
+- [ ] 기능 플래그 (env 또는 DB)
+- [ ] 계정 정지 (공유·소셜만 차단)
+
 ### 권장 진행 순서 (레거시)
 
 ```
-[SQL ✅] → [Git/Vercel ✅] → [보안 1차 ✅] → [QR 실부스 검증] → [공동벽 Realtime] → [수익화]
+[SQL ✅] → [Git/Vercel ✅] → [보안 1차 ✅] → [QR 실부스 검증] → [공동벽 Realtime] → [Admin 1단계] → [수익화]
 ```
 
 ### Vercel 배포 — ✅ 완료
@@ -567,7 +776,7 @@ erDiagram
 
 ---
 
-## 8. 변경 이력
+## 9. 변경 이력
 
 | 날짜 | 내용 |
 |---|---|
@@ -584,6 +793,9 @@ erDiagram
 | 2026-06-17 | 2.5단계 공동 인생네컷 POC — wall_members, 공동 벽 UI·에디터 |
 | 2026-06-19 | 앱 셸·랜딩·프로필·설정·다크모드, 벽 프라이버시·초대 수락, QR 네컷 가져오기 1차 |
 | 2026-06-19 | GitHub public push, Vercel 프로덕션 배포, OAuth 콜백 수정, 보안 강화 1차 (RLS + API 인증) |
+| 2026-06-19 | Figma형 확장 벽 캔버스 — workspace 줌, wallBounds 저장, 벽 프레임 export, 콘텐츠 기반 확장·축소 |
+| 2026-06-19 | 관리자 페이지 기획 — 접근 제어, 문의·신고, 모더레이션, 대시보드 로드맵 (`PROJECT.md` §4) |
+| 2026-06-19 | 관리자 1단계 MVP — `/admin`, 문의·신고, 벽/유저 관리, 설정 문의 폼, 벽 신고 |
 
 ---
 

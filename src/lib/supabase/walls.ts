@@ -21,6 +21,7 @@ export async function fetchWallFromDb(
     .from("walls")
     .select("id, theme_id, canvas_json, updated_at")
     .eq("id", id)
+    .eq("is_hidden", false)
     .single();
 
   if (error || !data) return null;

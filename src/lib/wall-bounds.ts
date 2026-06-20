@@ -40,27 +40,39 @@ export function computeFitScale(
   return Math.min(1, scaleX, scaleY);
 }
 
-/** Expand wall right/bottom when content nears the edge. */
-export function computeExpandedBounds(
+function snapWallDimension(defaultSize: number, minRequired: number, maxSize: number): number {
+  if (minRequired <= defaultSize) return defaultSize;
+  const extra = minRequired - defaultSize;
+  const steps = Math.ceil(extra / WALL_EXPAND_STEP);
+  return Math.min(maxSize, defaultSize + steps * WALL_EXPAND_STEP);
+}
+
+/** Ideal wall size from content — empty canvas returns default bounds. */
+export function computeWallBoundsFromContent(objectBounds: ObjectBounds | null): WallBounds {
+  if (!objectBounds) return { ...DEFAULT_WALL_BOUNDS };
+
+  return clampWallBounds({
+    width: snapWallDimension(
+      DEFAULT_WALL_BOUNDS.width,
+      objectBounds.maxX + WALL_EXPAND_MARGIN,
+      WALL_MAX_WIDTH,
+    ),
+    height: snapWallDimension(
+      DEFAULT_WALL_BOUNDS.height,
+      objectBounds.maxY + WALL_EXPAND_MARGIN,
+      WALL_MAX_HEIGHT,
+    ),
+  });
+}
+
+/** Expand or shrink wall to fit content (no-op when already correct). */
+export function reconcileWallBounds(
   current: WallBounds,
-  objectBounds: ObjectBounds,
+  objectBounds: ObjectBounds | null,
 ): WallBounds | null {
-  let width = current.width;
-  let height = current.height;
-  let changed = false;
-
-  while (objectBounds.maxX + WALL_EXPAND_MARGIN > width && width < WALL_MAX_WIDTH) {
-    width = Math.min(WALL_MAX_WIDTH, width + WALL_EXPAND_STEP);
-    changed = true;
-  }
-
-  while (objectBounds.maxY + WALL_EXPAND_MARGIN > height && height < WALL_MAX_HEIGHT) {
-    height = Math.min(WALL_MAX_HEIGHT, height + WALL_EXPAND_STEP);
-    changed = true;
-  }
-
-  if (!changed) return null;
-  return clampWallBounds({ width, height });
+  const next = computeWallBoundsFromContent(objectBounds);
+  if (next.width === current.width && next.height === current.height) return null;
+  return next;
 }
 
 type FabricObjectLike = {
