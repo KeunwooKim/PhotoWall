@@ -1,12 +1,26 @@
+export type ThrottledFunction<T extends (...args: never[]) => void> = ((
+  ...args: Parameters<T>
+) => void) & {
+  flush: () => void;
+};
+
 export function throttle<T extends (...args: never[]) => void>(
   fn: T,
   delayMs: number,
-): (...args: Parameters<T>) => void {
+): ThrottledFunction<T> {
   let lastCall = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pendingArgs: Parameters<T> | null = null;
 
-  return (...args: Parameters<T>) => {
+  const runPending = () => {
+    if (!pendingArgs) return;
+    const args = pendingArgs;
+    pendingArgs = null;
+    lastCall = Date.now();
+    fn(...args);
+  };
+
+  const throttled = ((...args: Parameters<T>) => {
     pendingArgs = args;
     const now = Date.now();
     const remaining = delayMs - (now - lastCall);
@@ -16,9 +30,7 @@ export function throttle<T extends (...args: never[]) => void>(
         clearTimeout(timer);
         timer = null;
       }
-      lastCall = now;
-      fn(...args);
-      pendingArgs = null;
+      runPending();
       return;
     }
 
@@ -26,9 +38,17 @@ export function throttle<T extends (...args: never[]) => void>(
 
     timer = setTimeout(() => {
       timer = null;
-      lastCall = Date.now();
-      if (pendingArgs) fn(...pendingArgs);
-      pendingArgs = null;
+      runPending();
     }, remaining);
+  }) as ThrottledFunction<T>;
+
+  throttled.flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    runPending();
   };
+
+  return throttled;
 }

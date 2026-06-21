@@ -5,7 +5,7 @@ import { dedupePresencePeers } from "@/lib/wall-scene/presence-utils";
 
 interface WallPresenceOverlayProps {
   peers: WallPresenceState[];
-  currentUserId: string;
+  currentSessionId: string;
   wallWidth: number;
   wallHeight: number;
   containerWidth: number;
@@ -15,7 +15,7 @@ interface WallPresenceOverlayProps {
 
 export default function WallPresenceOverlay({
   peers,
-  currentUserId,
+  currentSessionId,
   wallWidth,
   wallHeight,
   containerWidth,
@@ -26,7 +26,7 @@ export default function WallPresenceOverlay({
   const offsetY = containerHeight / 2 - (wallHeight * wallScale) / 2;
 
   const visiblePeers = dedupePresencePeers(peers).filter(
-    (peer) => peer.userId !== currentUserId && !peer.isManipulating,
+    (peer) => peer.sessionId !== currentSessionId && !peer.isManipulating,
   );
 
   return (
@@ -37,7 +37,7 @@ export default function WallPresenceOverlay({
 
         return (
           <div
-            key={peer.userId}
+            key={peer.sessionId ?? peer.userId}
             className="absolute flex items-center gap-1 transition-transform duration-75"
             style={{
               left,

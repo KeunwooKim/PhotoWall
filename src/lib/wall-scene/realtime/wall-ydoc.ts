@@ -1,207 +1,148 @@
-import * as Y from "yjs";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
-import { fingerprintSceneObjects } from "@/lib/wall-scene/scene-fingerprint";
-import { dedupePresencePeers } from "@/lib/wall-scene/presence-utils";
+import { dedupePresencePeers, mergePeerPresence } from "@/lib/wall-scene/presence-utils";
+import { throttle } from "@/lib/throttle";
+import { createRtLogThrottle, rtLog, rtWarn } from "@/lib/wall-scene/realtime/wall-realtime-log";
 
 const CHANNEL_PREFIX = "shared-wall";
-const BROADCAST_EVENT = "yjs-update";
-const PRESENCE_EVENT = "presence-update";
-const OBJECT_PATCH_EVENT = "object-patch";
+const SYNC_EVENT = "wall-sync";
+
+const logPatchSend = createRtLogThrottle(800);
+const logPatchRecv = createRtLogThrottle(800);
+
+function channelTopic(wallId: string): string {
+  return `${CHANNEL_PREFIX}:${wallId}`;
+}
+
+function isSyncPayload(value: Record<string, unknown>): value is SyncPayload {
+  return (
+    value.kind === "hello" ||
+    value.kind === "full" ||
+    (value.kind === "patch" && typeof value.id === "string" && !!value.patch)
+  );
+}
+
+function unwrapBroadcastPayload<T extends SyncPayload>(message: unknown): T | null {
+  if (!message || typeof message !== "object") return null;
+
+  const queue: unknown[] = [message];
+  const seen = new Set<unknown>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
+    seen.add(current);
+
+    const obj = current as Record<string, unknown>;
+    if (isSyncPayload(obj)) return obj as T;
+
+    if (obj.payload !== undefined) queue.push(obj.payload);
+    if (obj.data !== undefined) queue.push(obj.data);
+  }
+
+  return null;
+}
 
 export type WallObjectPatch = Partial<
   Pick<WallSceneObject, "x" | "y" | "rotation" | "scaleX" | "scaleY" | "zIndex">
 >;
 
+type SyncPayload =
+  | { kind: "hello"; sessionId: string; userId: string }
+  | { kind: "full"; sessionId: string; userId: string; objects: WallSceneObject[] }
+  | {
+      kind: "patch";
+      sessionId: string;
+      userId: string;
+      id: string;
+      patch: WallObjectPatch;
+    };
+
 export interface WallRealtimeOptions {
   wallId: string;
   userId: string;
+  sessionId: string;
   displayName: string;
   color: string;
   supabase: SupabaseClient;
-  onRemoteObjectsChange: (objects: WallSceneObject[]) => void;
-  onObjectPatch: (id: string, patch: WallObjectPatch) => void;
+  onRemoteFull: (objects: WallSceneObject[]) => void;
+  onRemotePatch: (id: string, patch: WallObjectPatch) => void;
   onPresenceChange: (peers: WallPresenceState[]) => void;
+  onSyncEvent?: (kind: SyncPayload["kind"]) => void;
+  getLocalObjects: () => WallSceneObject[];
 }
 
-/**
- * Yjs CRDT for object list + Supabase Realtime for transport & presence.
- */
 export class WallRealtimeSession {
-  private doc = new Y.Doc();
-  private objectsMap: Y.Map<string>;
   private channel: RealtimeChannel | null = null;
   private disposed = false;
-  private subscribed = false;
-  private lastAppliedFingerprint = "";
-  private pendingUpdates: Uint8Array[] = [];
-  private suppressObjectObserver = false;
-  private remoteObjectsFlush = false;
-  /** Latest presence per user — fed by broadcast (fast) + channel sync (join/leave). */
+  private reconnecting = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private livePeers = new Map<string, WallPresenceState>();
+  private flushPresence: ReturnType<typeof throttle<(state: WallPresenceState) => void>>;
 
   constructor(private options: WallRealtimeOptions) {
-    this.objectsMap = this.doc.getMap("objects");
-
-    this.doc.on("update", (update, origin) => {
-      if (origin === "remote" || this.disposed) return;
-      this.enqueueBroadcast(update);
-    });
-
-    this.objectsMap.observe(() => {
-      if (this.disposed || this.suppressObjectObserver) return;
-      this.scheduleRemoteObjectsEmit();
-    });
+    this.flushPresence = throttle((state: WallPresenceState) => {
+      if (!this.channel || this.disposed || this.channel.state !== "joined") return;
+      void this.channel.track(state);
+    }, 50);
   }
 
   async connect(): Promise<void> {
-    const { supabase, wallId, userId, displayName, color } = this.options;
+    const { supabase, wallId, userId, sessionId, displayName } = this.options;
+    const name = channelTopic(wallId);
 
-    this.channel = supabase.channel(`${CHANNEL_PREFIX}:${wallId}`, {
-      config: {
-        broadcast: { self: false },
-        presence: { key: userId },
-      },
+    rtLog("connecting…", {
+      channel: name,
+      userId: userId.slice(0, 8),
+      sessionId: sessionId.slice(0, 8),
+      displayName,
+      socketConnected: supabase.realtime.isConnected(),
     });
 
-    this.channel
-      .on("broadcast", { event: BROADCAST_EVENT }, ({ payload }) => {
-        const raw = (payload as { update?: number[] })?.update;
-        if (!raw) return;
-        Y.applyUpdate(this.doc, Uint8Array.from(raw), "remote");
-        this.lastAppliedFingerprint = fingerprintSceneObjects(this.readObjects());
-        this.scheduleRemoteObjectsEmit();
-      })
-      .on("broadcast", { event: OBJECT_PATCH_EVENT }, ({ payload }) => {
-        const body = payload as { id?: string; patch?: WallObjectPatch };
-        if (!body?.id || !body.patch) return;
-        this.patchYjsObject(body.id, body.patch);
-        this.options.onObjectPatch(body.id, body.patch);
-      })
-      .on("broadcast", { event: PRESENCE_EVENT }, ({ payload }) => {
-        const peer = payload as WallPresenceState;
-        if (!peer?.userId || peer.userId === this.options.userId) return;
-        this.livePeers.set(peer.userId, peer);
-        this.emitPeers();
-      })
-      .on("presence", { event: "sync" }, () => this.syncPeersFromChannel())
-      .on("presence", { event: "join" }, () => this.syncPeersFromChannel())
-      .on("presence", { event: "leave" }, ({ leftPresences }) => {
-        const departed = Object.values(leftPresences ?? {}).flat() as unknown as WallPresenceState[];
-        for (const peer of departed) {
-          if (peer?.userId) this.livePeers.delete(peer.userId);
-        }
-        this.emitPeers();
-      });
-
-    await new Promise<void>((resolve, reject) => {
-      if (!this.channel) {
-        reject(new Error("Channel not created"));
-        return;
-      }
-
-      this.channel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          this.subscribed = true;
-          this.flushPendingBroadcasts();
-          void this.channel?.track({
-            userId,
-            displayName,
-            color,
-            cursorX: 0,
-            cursorY: 0,
-            updatedAt: Date.now(),
-          });
-          resolve();
-          return;
-        }
-
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          reject(new Error(`Realtime channel ${status}`));
-        }
-      });
-    });
-  }
-
-  readObjects(): WallSceneObject[] {
-    const objects: WallSceneObject[] = [];
-    this.objectsMap.forEach((value) => {
-      try {
-        objects.push(JSON.parse(value) as WallSceneObject);
-      } catch {
-        /* skip malformed */
-      }
-    });
-    return objects.sort((a, b) => a.zIndex - b.zIndex);
-  }
-
-  getObjectCount(): number {
-    return this.objectsMap.size;
-  }
-
-  applyLocalObjects(objects: WallSceneObject[]): void {
-    const fingerprint = fingerprintSceneObjects(objects);
-    if (fingerprint === this.lastAppliedFingerprint) return;
-    this.lastAppliedFingerprint = fingerprint;
-
-    this.suppressObjectObserver = true;
-    try {
-      this.doc.transact(() => {
-        const nextIds = new Set(objects.map((o) => o.id));
-        for (const key of this.objectsMap.keys()) {
-          if (!nextIds.has(key)) this.objectsMap.delete(key);
-        }
-        for (const obj of objects) {
-          this.objectsMap.set(obj.id, JSON.stringify(obj));
-        }
-      });
-    } finally {
-      this.suppressObjectObserver = false;
+    const removed = await this.removeStaleChannel(supabase, name);
+    if (removed > 0) {
+      rtLog("removed stale channel(s)", { count: removed, channel: name });
     }
-  }
 
-  /** Immediate drag/transform sync (low latency). */
-  broadcastObjectPatch(id: string, patch: WallObjectPatch): void {
-    if (!this.channel || this.disposed || !this.subscribed) return;
+    await this.openChannel();
 
-    this.patchYjsObject(id, patch);
-
-    void this.channel.send({
-      type: "broadcast",
-      event: OBJECT_PATCH_EVENT,
-      payload: { id, patch },
+    rtLog("connected ✓", {
+      channel: name,
+      channelState: this.channel?.state,
+      sessionId: sessionId.slice(0, 8),
     });
   }
 
-  private patchYjsObject(id: string, patch: WallObjectPatch): void {
-    const raw = this.objectsMap.get(id);
-    if (!raw) return;
-
-    try {
-      const merged = { ...(JSON.parse(raw) as WallSceneObject), ...patch };
-      this.suppressObjectObserver = true;
-      this.doc.transact(() => {
-        this.objectsMap.set(id, JSON.stringify(merged));
-      });
-      this.lastAppliedFingerprint = fingerprintSceneObjects(this.readObjects());
-    } catch {
-      /* skip malformed */
-    } finally {
-      this.suppressObjectObserver = false;
-    }
+  announceJoin(): void {
+    this.send({ kind: "hello", sessionId: this.options.sessionId, userId: this.options.userId });
   }
 
-  /** Broadcast presence immediately (selection + cursor). */
+  broadcastPatch(id: string, patch: WallObjectPatch): void {
+    this.send({
+      kind: "patch",
+      sessionId: this.options.sessionId,
+      userId: this.options.userId,
+      id,
+      patch,
+    });
+  }
+
+  broadcastFull(objects: WallSceneObject[]): void {
+    this.sendFull(objects);
+  }
+
   updatePresence(
     cursorX: number,
     cursorY: number,
     selectedObjectId?: string,
     isManipulating?: boolean,
+    immediate = false,
   ): void {
     if (!this.channel || this.disposed) return;
 
     const state: WallPresenceState = {
       userId: this.options.userId,
+      sessionId: this.options.sessionId,
       displayName: this.options.displayName,
       color: this.options.color,
       cursorX,
@@ -211,24 +152,280 @@ export class WallRealtimeSession {
       updatedAt: Date.now(),
     };
 
-    void this.channel.send({
-      type: "broadcast",
-      event: PRESENCE_EVENT,
-      payload: state,
-    });
+    if (immediate) {
+      this.flushPresence.flush();
+      if (this.channel.state !== "joined") {
+        this.scheduleReconnect();
+        return;
+      }
+      void this.channel.track(state);
+      return;
+    }
 
-    void this.channel.track(state);
+    this.flushPresence(state);
   }
 
-  private scheduleRemoteObjectsEmit(): void {
-    if (this.remoteObjectsFlush || this.disposed) return;
-    this.remoteObjectsFlush = true;
-
-    requestAnimationFrame(() => {
-      this.remoteObjectsFlush = false;
-      if (this.disposed) return;
-      this.options.onRemoteObjectsChange(this.readObjects());
+  async dispose(): Promise<void> {
+    rtLog("disposing session", {
+      sessionId: this.options.sessionId.slice(0, 8),
+      channelState: this.channel?.state ?? "none",
     });
+
+    this.disposed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.livePeers.clear();
+    this.flushPresence.flush();
+
+    const channel = this.channel;
+    this.channel = null;
+
+    if (channel) {
+      await this.options.supabase.removeChannel(channel);
+    }
+  }
+
+  private async openChannel(): Promise<RealtimeChannel> {
+    const { supabase, wallId, userId, sessionId, displayName, color } = this.options;
+    const name = channelTopic(wallId);
+
+    const channel = supabase.channel(name, {
+      config: {
+        private: false,
+        broadcast: { self: false, ack: false },
+        presence: { key: `${userId}:${sessionId}` },
+      },
+    });
+
+    this.channel = channel;
+    this.bindHandlers(channel);
+
+    await this.waitForSubscribe(channel, async () => {
+      await channel.track({
+        userId,
+        sessionId,
+        displayName,
+        color,
+        cursorX: 0,
+        cursorY: 0,
+        updatedAt: Date.now(),
+      });
+    });
+
+    return channel;
+  }
+
+  private bindHandlers(channel: RealtimeChannel): void {
+    const { sessionId } = this.options;
+
+    const handleSyncMessage = (message: unknown) => {
+      if (this.disposed) return;
+
+      const msg = unwrapBroadcastPayload<SyncPayload>(message);
+      if (!msg) {
+        rtWarn("ignored broadcast (unparsed payload)");
+        return;
+      }
+      if (msg.sessionId === sessionId) return;
+
+      if (msg.kind === "patch") {
+        logPatchRecv("← recv patch", {
+          fromSession: msg.sessionId.slice(0, 8),
+          objectId: msg.id,
+          x: msg.patch.x,
+          y: msg.patch.y,
+        });
+      } else {
+        rtLog(`← recv ${msg.kind}`, {
+          fromSession: msg.sessionId.slice(0, 8),
+          ...(msg.kind === "full" ? { objectCount: msg.objects.length } : {}),
+        });
+      }
+
+      this.options.onSyncEvent?.(msg.kind);
+
+      if (msg.kind === "hello") {
+        this.sendFull(this.options.getLocalObjects());
+        return;
+      }
+
+      if (msg.kind === "full") {
+        this.options.onRemoteFull(msg.objects);
+        return;
+      }
+
+      if (msg.kind === "patch") {
+        this.options.onRemotePatch(msg.id, msg.patch);
+      }
+    };
+
+    channel
+      .on("broadcast", { event: SYNC_EVENT }, handleSyncMessage)
+      .on("presence", { event: "sync" }, () => this.syncPeersFromChannel())
+      .on("presence", { event: "join" }, () => this.syncPeersFromChannel())
+      .on("presence", { event: "leave" }, ({ leftPresences }) => {
+        const departed = Object.values(leftPresences ?? {}).flat() as unknown as WallPresenceState[];
+        for (const peer of departed) {
+          if (peer?.userId) this.livePeers.delete(peer.userId);
+        }
+        this.emitPeers();
+      });
+  }
+
+  private scheduleReconnect(): void {
+    if (this.disposed || this.reconnecting || this.reconnectTimer) return;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.reconnect();
+    }, 400);
+  }
+
+  private async reconnect(): Promise<void> {
+    if (this.disposed || this.reconnecting) return;
+
+    this.reconnecting = true;
+    rtLog("reconnecting (channel was closed)…");
+
+    try {
+      const old = this.channel;
+      this.channel = null;
+      if (old) {
+        await this.options.supabase.removeChannel(old);
+      }
+
+      if (!this.options.supabase.realtime.isConnected()) {
+        this.options.supabase.realtime.connect();
+      }
+
+      const channel = await this.openChannel();
+      rtLog("reconnected ✓", { channelState: channel.state });
+    } catch (error) {
+      rtWarn("reconnect failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.reconnecting = false;
+    }
+  }
+
+  private async removeStaleChannel(supabase: SupabaseClient, name: string): Promise<number> {
+    const topic = `realtime:${name}`;
+    const stale = supabase.getChannels().filter((ch) => ch.topic === topic);
+    await Promise.all(stale.map((ch) => supabase.removeChannel(ch)));
+    return stale.length;
+  }
+
+  private async waitForSubscribe(
+    channel: RealtimeChannel,
+    onSubscribed: () => void | Promise<void>,
+  ): Promise<void> {
+    if (channel.state === "joined") {
+      await onSubscribed();
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      channel.subscribe(async (status, err) => {
+        if (status === "SUBSCRIBED") {
+          if (settled) return;
+          try {
+            await onSubscribed();
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+            return;
+          }
+          settled = true;
+          resolve();
+          return;
+        }
+
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          if (settled) return;
+          const detail = err?.message ? `: ${err.message}` : "";
+          rtWarn(`subscribe ${status}${detail}`);
+          reject(new Error(`Realtime channel ${status}${detail}`));
+          return;
+        }
+
+        if (status === "CLOSED") {
+          rtWarn("channel closed — scheduling reconnect");
+          this.scheduleReconnect();
+        }
+      });
+    });
+  }
+
+  private sendFull(objects: WallSceneObject[]): void {
+    this.send({
+      kind: "full",
+      sessionId: this.options.sessionId,
+      userId: this.options.userId,
+      objects,
+    });
+  }
+
+  private send(payload: SyncPayload): void {
+    if (!this.channel || this.disposed) {
+      rtWarn("send skipped (no channel or disposed)", {
+        kind: payload.kind,
+        disposed: this.disposed,
+        hasChannel: !!this.channel,
+      });
+      return;
+    }
+
+    if (payload.kind === "patch") {
+      logPatchSend("→ send patch", {
+        objectId: payload.id,
+        x: payload.patch.x,
+        y: payload.patch.y,
+        channelState: this.channel.state,
+      });
+    } else {
+      rtLog(`→ send ${payload.kind}`, {
+        channelState: this.channel.state,
+        ...(payload.kind === "full" ? { objectCount: payload.objects.length } : {}),
+      });
+    }
+
+    void this.deliverBroadcast(payload);
+  }
+
+  private async deliverBroadcast(payload: SyncPayload): Promise<void> {
+    const channel = this.channel;
+    if (!channel || this.disposed) return;
+
+    const message = {
+      type: "broadcast" as const,
+      event: SYNC_EVENT,
+      payload,
+    };
+
+    try {
+      if (channel.state === "joined") {
+        const result = await channel.send(message);
+        if (result === "ok") return;
+      }
+
+      rtLog(`→ httpSend ${payload.kind} (channel=${channel.state})`);
+      await channel.httpSend(SYNC_EVENT, payload);
+
+      if (channel.state !== "joined") {
+        this.scheduleReconnect();
+      }
+    } catch (error) {
+      rtWarn("deliver failed", {
+        kind: payload.kind,
+        channelState: channel.state,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.scheduleReconnect();
+    }
   }
 
   private syncPeersFromChannel(): void {
@@ -238,23 +435,10 @@ export class WallRealtimeSession {
 
     for (const entries of Object.values(channelState)) {
       for (const peer of entries as WallPresenceState[]) {
-        if (!peer?.userId || peer.userId === this.options.userId) continue;
+        if (!peer?.userId || peer.sessionId === this.options.sessionId) continue;
 
         const existing = this.livePeers.get(peer.userId);
-        const merged: WallPresenceState = {
-          ...(existing ?? peer),
-          ...peer,
-          selectedObjectId: peer.selectedObjectId ?? existing?.selectedObjectId,
-          isManipulating:
-            peer.updatedAt >= (existing?.updatedAt ?? 0)
-              ? peer.isManipulating
-              : existing?.isManipulating,
-          updatedAt: Math.max(peer.updatedAt ?? 0, existing?.updatedAt ?? 0),
-        };
-
-        if (!existing || merged.updatedAt >= existing.updatedAt) {
-          this.livePeers.set(peer.userId, merged);
-        }
+        this.livePeers.set(peer.userId, mergePeerPresence(existing, peer));
       }
     }
 
@@ -263,41 +447,8 @@ export class WallRealtimeSession {
 
   private emitPeers(): void {
     const peers = dedupePresencePeers([...this.livePeers.values()]).filter(
-      (p) => p.userId !== this.options.userId,
+      (p) => p.sessionId !== this.options.sessionId,
     );
     this.options.onPresenceChange(peers);
-  }
-
-  private enqueueBroadcast(update: Uint8Array): void {
-    if (!this.subscribed || !this.channel) {
-      this.pendingUpdates.push(update);
-      return;
-    }
-    this.sendBroadcast(update);
-  }
-
-  private flushPendingBroadcasts(): void {
-    if (!this.channel || !this.subscribed) return;
-    for (const update of this.pendingUpdates) {
-      this.sendBroadcast(update);
-    }
-    this.pendingUpdates = [];
-  }
-
-  private sendBroadcast(update: Uint8Array): void {
-    if (!this.channel || !this.subscribed) return;
-    void this.channel.send({
-      type: "broadcast",
-      event: BROADCAST_EVENT,
-      payload: { update: Array.from(update) },
-    });
-  }
-
-  dispose(): void {
-    this.disposed = true;
-    this.subscribed = false;
-    this.livePeers.clear();
-    void this.channel?.unsubscribe();
-    this.doc.destroy();
   }
 }

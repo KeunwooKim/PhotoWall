@@ -1,5 +1,28 @@
 import type { WallPresenceState } from "@/types/wall-scene-v2";
 
+/** Prefer the newest presence snapshot — do not resurrect cleared selection fields. */
+export function mergePeerPresence(
+  existing: WallPresenceState | undefined,
+  incoming: WallPresenceState,
+): WallPresenceState {
+  if (!existing) return incoming;
+
+  const existingAt = existing.updatedAt ?? 0;
+  const incomingAt = incoming.updatedAt ?? 0;
+
+  if (incomingAt >= existingAt) {
+    return {
+      ...existing,
+      ...incoming,
+      selectedObjectId: incoming.selectedObjectId,
+      isManipulating: incoming.isManipulating,
+      updatedAt: incomingAt,
+    };
+  }
+
+  return existing;
+}
+
 /** One presence entry per user — latest cursor wins (multi-tab / reconnect safe). */
 export function dedupePresencePeers(peers: WallPresenceState[]): WallPresenceState[] {
   const byUserId = new Map<string, WallPresenceState>();

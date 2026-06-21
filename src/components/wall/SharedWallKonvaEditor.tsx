@@ -52,7 +52,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     user?.email?.split("@")[0] ??
     "친구";
 
-  const { peers, isConnected, updatePresence, broadcastObjectPatch } = useWallRealtime({
+  const { peers, isConnected, sessionId, updatePresence, broadcastObjectPatch } =
+    useWallRealtime({
     wallId: sharedId,
     userId: user?.id ?? "",
     displayName,
@@ -265,6 +266,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         resolvePhotoSrc={resolvePhotoSrc}
         peers={peers}
         currentUserId={user.id}
+        currentSessionId={sessionId}
         onDocumentChange={handleDocumentChange}
         onPointerMove={handlePointerMove}
         onPresenceSelection={broadcastPresence}
