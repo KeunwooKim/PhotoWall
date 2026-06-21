@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rtLog } from "@/lib/wall-scene/realtime/wall-realtime-log";
 
 export async function syncRealtimeAuth(supabase: SupabaseClient): Promise<void> {
   const {
@@ -18,11 +17,9 @@ export async function ensureRealtimeSocket(
   await syncRealtimeAuth(supabase);
 
   if (supabase.realtime.isConnected()) {
-    rtLog("websocket already connected");
     return;
   }
 
-  rtLog("websocket connecting…");
   supabase.realtime.connect();
 
   await new Promise<void>((resolve, reject) => {

@@ -2,13 +2,9 @@ import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
 import { dedupePresencePeers, mergePeerPresence } from "@/lib/wall-scene/presence-utils";
 import { throttle } from "@/lib/throttle";
-import { createRtLogThrottle, rtLog, rtWarn } from "@/lib/wall-scene/realtime/wall-realtime-log";
 
 const CHANNEL_PREFIX = "shared-wall";
 const SYNC_EVENT = "wall-sync";
-
-const logPatchSend = createRtLogThrottle(800);
-const logPatchRecv = createRtLogThrottle(800);
 
 function channelTopic(wallId: string): string {
   return `${CHANNEL_PREFIX}:${wallId}`;
@@ -88,29 +84,11 @@ export class WallRealtimeSession {
   }
 
   async connect(): Promise<void> {
-    const { supabase, wallId, userId, sessionId, displayName } = this.options;
+    const { supabase, wallId } = this.options;
     const name = channelTopic(wallId);
 
-    rtLog("connecting…", {
-      channel: name,
-      userId: userId.slice(0, 8),
-      sessionId: sessionId.slice(0, 8),
-      displayName,
-      socketConnected: supabase.realtime.isConnected(),
-    });
-
-    const removed = await this.removeStaleChannel(supabase, name);
-    if (removed > 0) {
-      rtLog("removed stale channel(s)", { count: removed, channel: name });
-    }
-
+    await this.removeStaleChannel(supabase, name);
     await this.openChannel();
-
-    rtLog("connected ✓", {
-      channel: name,
-      channelState: this.channel?.state,
-      sessionId: sessionId.slice(0, 8),
-    });
   }
 
   announceJoin(): void {
@@ -166,11 +144,6 @@ export class WallRealtimeSession {
   }
 
   async dispose(): Promise<void> {
-    rtLog("disposing session", {
-      sessionId: this.options.sessionId.slice(0, 8),
-      channelState: this.channel?.state ?? "none",
-    });
-
     this.disposed = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -224,25 +197,7 @@ export class WallRealtimeSession {
       if (this.disposed) return;
 
       const msg = unwrapBroadcastPayload<SyncPayload>(message);
-      if (!msg) {
-        rtWarn("ignored broadcast (unparsed payload)");
-        return;
-      }
-      if (msg.sessionId === sessionId) return;
-
-      if (msg.kind === "patch") {
-        logPatchRecv("← recv patch", {
-          fromSession: msg.sessionId.slice(0, 8),
-          objectId: msg.id,
-          x: msg.patch.x,
-          y: msg.patch.y,
-        });
-      } else {
-        rtLog(`← recv ${msg.kind}`, {
-          fromSession: msg.sessionId.slice(0, 8),
-          ...(msg.kind === "full" ? { objectCount: msg.objects.length } : {}),
-        });
-      }
+      if (!msg || msg.sessionId === sessionId) return;
 
       this.options.onSyncEvent?.(msg.kind);
 
@@ -287,7 +242,6 @@ export class WallRealtimeSession {
     if (this.disposed || this.reconnecting) return;
 
     this.reconnecting = true;
-    rtLog("reconnecting (channel was closed)…");
 
     try {
       const old = this.channel;
@@ -300,12 +254,9 @@ export class WallRealtimeSession {
         this.options.supabase.realtime.connect();
       }
 
-      const channel = await this.openChannel();
-      rtLog("reconnected ✓", { channelState: channel.state });
-    } catch (error) {
-      rtWarn("reconnect failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      await this.openChannel();
+    } catch {
+      // Reconnect will be retried on the next CLOSED event or send.
     } finally {
       this.reconnecting = false;
     }
@@ -347,13 +298,11 @@ export class WallRealtimeSession {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           if (settled) return;
           const detail = err?.message ? `: ${err.message}` : "";
-          rtWarn(`subscribe ${status}${detail}`);
           reject(new Error(`Realtime channel ${status}${detail}`));
           return;
         }
 
         if (status === "CLOSED") {
-          rtWarn("channel closed — scheduling reconnect");
           this.scheduleReconnect();
         }
       });
@@ -370,28 +319,7 @@ export class WallRealtimeSession {
   }
 
   private send(payload: SyncPayload): void {
-    if (!this.channel || this.disposed) {
-      rtWarn("send skipped (no channel or disposed)", {
-        kind: payload.kind,
-        disposed: this.disposed,
-        hasChannel: !!this.channel,
-      });
-      return;
-    }
-
-    if (payload.kind === "patch") {
-      logPatchSend("→ send patch", {
-        objectId: payload.id,
-        x: payload.patch.x,
-        y: payload.patch.y,
-        channelState: this.channel.state,
-      });
-    } else {
-      rtLog(`→ send ${payload.kind}`, {
-        channelState: this.channel.state,
-        ...(payload.kind === "full" ? { objectCount: payload.objects.length } : {}),
-      });
-    }
+    if (!this.channel || this.disposed) return;
 
     void this.deliverBroadcast(payload);
   }
@@ -412,18 +340,12 @@ export class WallRealtimeSession {
         if (result === "ok") return;
       }
 
-      rtLog(`→ httpSend ${payload.kind} (channel=${channel.state})`);
       await channel.httpSend(SYNC_EVENT, payload);
 
       if (channel.state !== "joined") {
         this.scheduleReconnect();
       }
-    } catch (error) {
-      rtWarn("deliver failed", {
-        kind: payload.kind,
-        channelState: channel.state,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    } catch {
       this.scheduleReconnect();
     }
   }
