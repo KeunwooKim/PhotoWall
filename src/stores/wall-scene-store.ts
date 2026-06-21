@@ -30,6 +30,8 @@ export interface WallSceneStore {
   reorderObject: (id: string, zIndex: number) => void;
   setWallBounds: (bounds: WallBounds) => void;
   bumpRevision: () => void;
+  /** Merge authoritative remote snapshot without replacing unrelated local state. */
+  syncRemoteObjects: (objects: WallSceneObject[]) => void;
 }
 
 function sortByZIndex(objects: WallSceneObject[]): WallSceneObject[] {
@@ -109,5 +111,15 @@ export const useWallSceneStore = create<WallSceneStore>()(
           meta: { ...state.document.meta, revision: state.document.meta.revision + 1 },
         },
       })),
+
+    syncRemoteObjects: (incoming) =>
+      set((state) => {
+        const localById = new Map(state.document.objects.map((object) => [object.id, object]));
+        const merged = incoming.map((remote) => {
+          const local = localById.get(remote.id);
+          return (local ? { ...local, ...remote } : remote) as WallSceneObject;
+        });
+        return { document: { ...state.document, objects: sortByZIndex(merged) } };
+      }),
   })),
 );

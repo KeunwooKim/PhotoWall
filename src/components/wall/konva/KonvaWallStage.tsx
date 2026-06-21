@@ -10,6 +10,8 @@ import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-impo
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
+import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import { throttle } from "@/lib/throttle";
 import type { WallPresenceState, WallScenePhoto } from "@/types/wall-scene-v2";
@@ -26,6 +28,7 @@ export interface KonvaWallStageProps {
   resolvePhotoSrc?: (src: string) => Promise<string>;
   peers?: WallPresenceState[];
   currentUserId?: string;
+  currentSessionId?: string;
   onDocumentChange?: (json: object) => void;
   onPointerMove?: (x: number, y: number) => void;
   onPresenceSelection?: (objectId: string | null) => void;
@@ -42,6 +45,7 @@ export default function KonvaWallStage({
   resolvePhotoSrc,
   peers = [],
   currentUserId,
+  currentSessionId,
   onDocumentChange,
   onPointerMove,
   onPresenceSelection,
@@ -53,6 +57,7 @@ export default function KonvaWallStage({
   const containerRef = useRef<HTMLDivElement>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRegistry = useRef(new Map<string, Konva.Group>());
+  const locallyDraggingIds = useRef(new Set<string>());
 
   const document = useWallSceneStore((s) => s.document);
   const selectedId = useWallSceneStore((s) => s.selectedId);
@@ -65,7 +70,12 @@ export default function KonvaWallStage({
   const [containerSize, setContainerSize] = useState({ width: 390, height: 600 });
 
   const setManipulating = useCallback(
-    (active: boolean) => {
+    (active: boolean, objectId?: string) => {
+      if (objectId) {
+        if (active) locallyDraggingIds.current.add(objectId);
+        else locallyDraggingIds.current.delete(objectId);
+        setWallNodeDragging(objectId, active);
+      }
       onPresenceManipulating?.(active);
     },
     [onPresenceManipulating],
@@ -132,7 +142,7 @@ export default function KonvaWallStage({
     const node = selectedId ? nodeRegistry.current.get(selectedId) : null;
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  }, [selectedId, document.objects]);
+  }, [selectedId]);
 
   const wallBounds = document.meta.wallBounds;
 
@@ -170,13 +180,10 @@ export default function KonvaWallStage({
         scaleY: node.scaleY(),
         rotation: node.rotation(),
       };
-      if (onObjectPatch) {
-        onObjectPatch(id, patch);
-      } else {
-        patchObject(id, patch);
-      }
+      patchObject(id, patch);
+      broadcastWallPatch(id, patch);
     },
-    [patchObject, onObjectPatch],
+    [patchObject],
   );
 
   const syncTransform = useMemo(
@@ -191,13 +198,10 @@ export default function KonvaWallStage({
           scaleY: node.scaleY(),
           rotation: node.rotation(),
         };
-        if (onObjectPatch) {
-          onObjectPatch(id, patch);
-        } else {
-          patchObject(id, patch);
-        }
-      }, 32),
-    [patchObject, onObjectPatch],
+        patchObject(id, patch);
+        broadcastWallPatch(id, patch);
+      }, 50),
+    [patchObject],
   );
 
   const reportPointer = useCallback(
@@ -268,15 +272,21 @@ export default function KonvaWallStage({
                   return newBox;
                 }}
                 onTransformStart={() => {
-                  setManipulating(true);
-                  if (selectedId) notifyPresenceSelection(selectedId);
+                  if (selectedId) {
+                    locallyDraggingIds.current.add(selectedId);
+                    setManipulating(true, selectedId);
+                    notifyPresenceSelection(selectedId);
+                  }
                 }}
                 onTransform={() => {
                   if (selectedId) syncTransform(selectedId);
                 }}
                 onTransformEnd={() => {
-                  setManipulating(false);
-                  if (selectedId) handleTransformEnd(selectedId);
+                  if (selectedId) {
+                    handleTransformEnd(selectedId);
+                    locallyDraggingIds.current.delete(selectedId);
+                    setManipulating(false, selectedId);
+                  }
                 }}
               />
             )}
@@ -307,10 +317,10 @@ export default function KonvaWallStage({
         </Stage>
       </div>
 
-      {wallId && currentUserId && peers.length > 0 && (
+      {wallId && currentSessionId && peers.length > 0 && (
         <WallPresenceOverlay
           peers={peers}
-          currentUserId={currentUserId}
+          currentSessionId={currentSessionId}
           wallWidth={wallBounds.width}
           wallHeight={wallBounds.height}
           containerWidth={containerSize.width}

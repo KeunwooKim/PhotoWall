@@ -9,17 +9,20 @@ let client: SupabaseClient | null = null;
 export { isSupabaseConfigured };
 
 export function createClient() {
-  const { url, key } = getSupabaseEnv();
-  if (!url || !key) {
+  if (!isSupabaseConfigured()) {
     throw new Error("Supabase is not configured");
   }
-  return createBrowserClient(url, key);
+  if (!client) {
+    const { url, key } = getSupabaseEnv();
+    if (!url || !key) {
+      throw new Error("Supabase is not configured");
+    }
+    client = createBrowserClient(url, key);
+  }
+  return client;
 }
 
 export function getSupabase() {
   if (!isSupabaseConfigured()) return null;
-  if (!client) {
-    client = createClient();
-  }
-  return client;
+  return createClient();
 }

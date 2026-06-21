@@ -92,4 +92,6 @@ export interface WallPresenceState {
   /** True while dragging/resizing — peers hide cursor, show object border only */
   isManipulating?: boolean;
   updatedAt: number;
+  /** Unique per browser tab — avoids Supabase presence key collisions */
+  sessionId?: string;
 }
