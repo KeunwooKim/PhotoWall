@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { throttle } from "@/lib/throttle";
 import { ensureRealtimeSocket } from "@/lib/wall-scene/realtime/ensure-realtime-socket";
 import { setActiveWallRealtimeSession } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
-import { rtError, rtLog, rtWarn } from "@/lib/wall-scene/realtime/wall-realtime-log";
 import {
   WallRealtimeSession,
   type WallObjectPatch,
@@ -76,18 +75,7 @@ export function useWallRealtime({
   );
 
   useEffect(() => {
-    if (!enabled || !wallId || !userId) {
-      if (process.env.NODE_ENV === "development" && wallId) {
-        rtLog("realtime idle", { enabled, hasUserId: !!userId, wallId: wallId.slice(0, 8) });
-      }
-      return;
-    }
-
-    rtLog("realtime starting", {
-      wallId: wallId.slice(0, 8),
-      userId: userId.slice(0, 8),
-      sessionId: sessionIdRef.current.slice(0, 8),
-    });
+    if (!enabled || !wallId || !userId) return;
 
     let cancelled = false;
     let unsubStore: (() => void) | undefined;
@@ -98,11 +86,8 @@ export function useWallRealtime({
 
       try {
         await ensureRealtimeSocket(supabase);
-        rtLog("websocket ready", { connected: supabase.realtime.isConnected() });
-      } catch (error) {
-        rtWarn("websocket wait failed, continuing anyway", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+      } catch {
+        // Continue; channel may still connect or fall back to httpSend.
       }
 
       const color = presenceColorForUser(userId);
@@ -119,7 +104,6 @@ export function useWallRealtime({
           if (!cancelled) setRemoteSyncCount((count) => count + 1);
         },
         onRemoteFull: (objects) => {
-          rtLog("applying remote full snapshot", { objectCount: objects.length });
           const localObjects = useWallSceneStore.getState().document.objects;
           if (objects.length === 0 && localObjects.length > 0) return;
           if (isAnyWallNodeDragging()) return;
@@ -155,14 +139,12 @@ export function useWallRealtime({
         setIsConnected(true);
         setConnectError(null);
         session.announceJoin();
-        rtLog("ready — drag a photo and watch for → send patch / ← recv patch");
       } catch (error) {
         if (cancelled) return;
         await session.dispose();
         const message = error instanceof Error ? error.message : "Realtime connect failed";
         setConnectError(message);
         setIsConnected(false);
-        rtError("connect failed ✗", message);
       }
 
       unsubStore = useWallSceneStore.subscribe(
@@ -176,7 +158,6 @@ export function useWallRealtime({
 
     return () => {
       cancelled = true;
-      rtLog("realtime cleanup");
       unsubStore?.();
       setActiveWallRealtimeSession(null);
       const active = sessionRef.current;
