@@ -14,9 +14,13 @@
     "fabric": "^6.6.2",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
+    "konva": "^10.3.0",
     "next": "^15.3.3",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-konva": "^19.2.5",
+    "yjs": "^13.6.31",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
