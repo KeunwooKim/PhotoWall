@@ -1,5 +1,10 @@
 import { authFetch } from "@/lib/auth/api-fetch";
 import {
+  cachePhotoDisplayUrl,
+  collectWallPhotoRefsFromScene,
+  getCachedPhotoDisplayUrl,
+} from "@/lib/storage/photo-display-cache";
+import {
   applySignedUrlsToFabricJson,
   collectWallPhotoPaths,
   isWallPhotoRef,
@@ -7,6 +12,7 @@ import {
   wallPhotoRefToPath,
 } from "@/lib/storage/wall-photos";
 import { packCanvasJson, unpackCanvasJson } from "@/lib/wall-canvas-json";
+import type { WallSceneDocument } from "@/types/wall-scene-v2";
 
 async function fetchSignedUrls(
   wallId: string,
@@ -27,11 +33,41 @@ async function fetchSignedUrls(
 export async function resolveWallPhotoSrc(src: string, wallId: string): Promise<string> {
   if (!isWallPhotoRef(src)) return src;
 
+  const cached = getCachedPhotoDisplayUrl(src);
+  if (cached) return cached;
+
   const path = wallPhotoRefToPath(src);
   if (!path) return src;
 
   const signedUrls = await fetchSignedUrls(wallId, [path]);
-  return signedUrls[path] ?? src;
+  const signed = signedUrls[path];
+  if (signed) {
+    cachePhotoDisplayUrl(src, signed);
+    return signed;
+  }
+
+  return src;
+}
+
+export async function prefetchWallScenePhotoUrls(
+  doc: WallSceneDocument,
+  wallId: string,
+): Promise<void> {
+  const refs = collectWallPhotoRefsFromScene(doc.objects);
+  const paths = refs
+    .map((ref) => wallPhotoRefToPath(ref))
+    .filter((path): path is string => !!path);
+
+  if (paths.length === 0) return;
+
+  const signedUrls = await fetchSignedUrls(wallId, paths);
+
+  for (const ref of refs) {
+    const path = wallPhotoRefToPath(ref);
+    if (path && signedUrls[path]) {
+      cachePhotoDisplayUrl(ref, signedUrls[path]);
+    }
+  }
 }
 
 export async function resolveCanvasPhotoUrls(

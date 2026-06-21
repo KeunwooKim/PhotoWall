@@ -1,0 +1,379 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import KonvaWallStageClient from "@/components/wall/konva";
+import Toolbar from "@/components/wall/Toolbar";
+import type { WallThemeId } from "@/types/wall";
+import AuthButton from "@/components/auth/AuthButton";
+import { useAuth } from "@/hooks/useAuth";
+import { useWallRealtime } from "@/hooks/useWallRealtime";
+import { fetchSharedWallForEdit, saveSharedWallToCloud } from "@/lib/auth/shared-wall";
+import {
+  prefetchWallScenePhotoUrls,
+  resolveWallPhotoSrc,
+} from "@/lib/storage/resolve-wall-photos";
+import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
+import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
+import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
+import { debounce } from "@/lib/debounce";
+import { createWallInvite } from "@/lib/wall-invite";
+import { useWallSceneStore } from "@/stores/wall-scene-store";
+
+const DRAW_COLORS = ["#e85d8f", "#1a1a1a", "#4a90d9", "#7bc67e", "#f5a623", "#9b59b6"];
+
+interface SharedWallKonvaEditorProps {
+  sharedId: string;
+}
+
+export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEditorProps) {
+  const { user } = useAuth();
+  const [themeId, setThemeId] = useState<WallThemeId>("white");
+  const [sharedWallTitle, setSharedWallTitle] = useState<string | null>(null);
+  const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [autoSaved, setAutoSaved] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [isInviting, setIsInviting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+
+  const themeIdRef = useRef(themeId);
+  themeIdRef.current = themeId;
+  const lastSavedFingerprintRef = useRef<string | null>(null);
+  const persistEnabledRef = useRef(false);
+  const lastPointerRef = useRef({ x: 0, y: 0 });
+  const isManipulatingRef = useRef(false);
+
+  const selectedId = useWallSceneStore((s) => s.selectedId);
+  const wallBounds = useWallSceneStore((s) => s.document.meta.wallBounds);
+
+  const displayName =
+    user?.user_metadata?.full_name?.split(" ")[0] ??
+    user?.email?.split("@")[0] ??
+    "친구";
+
+  const { peers, isConnected, updatePresence, broadcastObjectPatch } = useWallRealtime({
+    wallId: sharedId,
+    userId: user?.id ?? "",
+    displayName,
+    enabled: !!user && isReady && loadedCanvasJson !== null,
+  });
+
+  const showToast = useCallback((message: string) => {
+    setSaveMessage(message);
+    setTimeout(() => setSaveMessage(null), 2000);
+  }, []);
+
+  const autoSave = useMemo(
+    () =>
+      debounce((json: object, fingerprint: string) => {
+        if (!user || !persistEnabledRef.current) return;
+        void saveSharedWallToCloud(sharedId, themeIdRef.current, json).then(() => {
+          lastSavedFingerprintRef.current = fingerprint;
+          setAutoSaved(true);
+          setTimeout(() => setAutoSaved(false), 1500);
+        });
+      }, 800),
+    [sharedId, user],
+  );
+
+  const broadcastPresence = useCallback(
+    (objectId?: string | null, immediate = true) => {
+      const { x, y } = lastPointerRef.current;
+      updatePresence(
+        x,
+        y,
+        objectId ?? undefined,
+        isManipulatingRef.current,
+        immediate,
+      );
+    },
+    [updatePresence],
+  );
+
+  const handleManipulationChange = useCallback(
+    (active: boolean) => {
+      isManipulatingRef.current = active;
+      const { x, y } = lastPointerRef.current;
+      const selectedId = useWallSceneStore.getState().selectedId;
+      updatePresence(x, y, selectedId ?? undefined, active, true);
+    },
+    [updatePresence],
+  );
+
+  const handleReady = useCallback(() => {
+    lastSavedFingerprintRef.current = fingerprintPersistableScene(
+      useWallSceneStore.getState().document,
+    );
+    persistEnabledRef.current = true;
+    setIsReady(true);
+  }, []);
+
+  const handlePointerMove = useCallback(
+    (x: number, y: number) => {
+      lastPointerRef.current = { x, y };
+      const selectedId = useWallSceneStore.getState().selectedId;
+      updatePresence(x, y, selectedId ?? undefined, isManipulatingRef.current);
+    },
+    [updatePresence],
+  );
+
+  useEffect(() => {
+    if (!isReady) return;
+    broadcastPresence(selectedId);
+  }, [selectedId, isReady, broadcastPresence]);
+
+  const resolvePhotoSrc = useCallback(
+    (src: string) => resolveWallPhotoSrc(src, sharedId),
+    [sharedId],
+  );
+
+  useEffect(() => {
+    return () => {
+      useWallSceneStore.getState().reset();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    setLoadedCanvasJson(null);
+    setIsReady(false);
+    persistEnabledRef.current = false;
+    lastSavedFingerprintRef.current = null;
+
+    void (async () => {
+      const wall = await fetchSharedWallForEdit(sharedId);
+      if (!wall) {
+        showToast("공동 벽을 불러올 수 없어요");
+        return;
+      }
+
+      setSharedWallTitle(wall.title);
+      setThemeId(wall.themeId);
+
+      const { parseWallScene } = await import("@/lib/wall-scene/fabric-import");
+      const doc = parseWallScene(wall.canvasJson);
+      await prefetchWallScenePhotoUrls(doc, sharedId);
+
+      setLoadedCanvasJson(wall.canvasJson);
+    })();
+  }, [sharedId, user, showToast]);
+
+  const handleDocumentChange = useCallback(
+    (json: object) => {
+      const fingerprint = fingerprintPersistableScene(useWallSceneStore.getState().document);
+      if (!persistEnabledRef.current || fingerprint === lastSavedFingerprintRef.current) return;
+      autoSave(json, fingerprint);
+    },
+    [autoSave],
+  );
+
+  const handlePhotoUpload = useCallback(
+    async (file: File) => {
+      if (!user) return;
+      try {
+        await addPhotoToWallScene(file, {
+          userId: user.id,
+          wallId: sharedId,
+          wallWidth: wallBounds.width,
+          wallHeight: wallBounds.height,
+        });
+      } catch {
+        showToast("사진을 붙이지 못했어요");
+      }
+    },
+    [user, sharedId, wallBounds.width, wallBounds.height, showToast],
+  );
+
+  const handleDelete = useCallback(() => {
+    if (!selectedId) return;
+    useWallSceneStore.getState().removeObject(selectedId);
+    useWallSceneStore.getState().bumpRevision();
+  }, [selectedId]);
+
+  const handleThemeChange = useCallback(
+    (next: WallThemeId) => {
+      setThemeId(next);
+      themeIdRef.current = next;
+      const doc = useWallSceneStore.getState().document;
+      void saveSharedWallToCloud(sharedId, next, serializeWallScene(doc));
+    },
+    [sharedId],
+  );
+
+  const handleShare = useCallback(async () => {
+    setIsSharing(true);
+    try {
+      const url = `${window.location.origin}/wall/${sharedId}`;
+      await navigator.clipboard.writeText(url);
+      showToast("공동 벽 링크가 복사됐어요");
+    } finally {
+      setIsSharing(false);
+    }
+  }, [sharedId, showToast]);
+
+  const handleInvite = useCallback(async () => {
+    setIsInviting(true);
+    try {
+      const { url } = await createWallInvite(sharedId);
+      await navigator.clipboard.writeText(url);
+      showToast("공동 벽 초대 링크가 복사됐어요");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "초대 링크 생성에 실패했어요");
+    } finally {
+      setIsInviting(false);
+    }
+  }, [sharedId, showToast]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedId) {
+          e.preventDefault();
+          handleDelete();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedId, handleDelete]);
+
+  if (!user) {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6">
+        <p className="text-center text-sm text-muted">공동 벽을 꾸미려면 로그인이 필요해요</p>
+        <AuthButton />
+      </div>
+    );
+  }
+
+  if (!loadedCanvasJson) {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6">
+        <p className="text-sm text-muted">공동 벽 불러오는 중...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-[100dvh] w-screen overflow-hidden bg-white">
+      <KonvaWallStageClient
+        themeId={themeId}
+        initialJson={loadedCanvasJson}
+        wallId={sharedId}
+        resolvePhotoSrc={resolvePhotoSrc}
+        peers={peers}
+        currentUserId={user.id}
+        onDocumentChange={handleDocumentChange}
+        onPointerMove={handlePointerMove}
+        onPresenceSelection={broadcastPresence}
+        onPresenceManipulating={handleManipulationChange}
+        onObjectPatch={broadcastObjectPatch}
+        onReady={handleReady}
+      />
+
+      <header className="fixed inset-x-0 top-0 z-[100] flex items-center justify-between gap-3 border-b border-rose-200 bg-rose-100 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-md">
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/wall/edit";
+          }}
+          className="flex shrink-0 items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm ring-1 ring-rose-200"
+        >
+          ← 내 벽으로
+        </button>
+        <p className="min-w-0 truncate text-sm font-semibold text-rose-800">
+          {sharedWallTitle ?? "공동 벽"}
+          {isConnected && (
+            <span className="ml-2 text-[10px] font-normal text-rose-600">실시간</span>
+          )}
+        </p>
+        <AuthButton />
+      </header>
+
+      <button
+        type="button"
+        onClick={() => setIsMenuOpen(true)}
+        className="absolute left-4 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-30 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-black/8"
+        aria-label="메뉴 열기"
+      >
+        ☰
+      </button>
+
+      {autoSaved && !saveMessage && (
+        <div
+          className="pointer-events-none absolute right-4 z-30 rounded-full bg-white/90 px-3 py-1.5 text-xs text-muted shadow-sm"
+          style={{ top: "calc(max(0.75rem, env(safe-area-inset-top)) + 3.5rem)" }}
+        >
+          공동 벽 자동 저장됨
+        </div>
+      )}
+
+      {saveMessage && (
+        <div
+          className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background shadow-lg"
+          style={{ bottom: "max(5rem, env(safe-area-inset-bottom))" }}
+        >
+          {saveMessage}
+        </div>
+      )}
+
+      {!isReady && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/70 text-sm text-muted">
+          캔버스 준비 중...
+        </div>
+      )}
+
+      <div
+        className="fixed inset-x-0 bottom-0 z-[100] border-t border-rose-200 bg-rose-100/95 px-4 py-3"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/wall/edit";
+          }}
+          className="w-full rounded-xl bg-white py-3.5 text-sm font-semibold text-neutral-900 shadow-sm ring-1 ring-rose-200"
+        >
+          ← 내 벽으로 돌아가기
+        </button>
+      </div>
+
+      <Toolbar
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        themeId={themeId}
+        mode="select"
+        drawColor={DRAW_COLORS[0]}
+        drawWidth={4}
+        drawColors={DRAW_COLORS}
+        drawWidths={[2, 4, 8]}
+        hasSelection={!!selectedId}
+        canUndo={false}
+        canRedo={false}
+        onThemeChange={handleThemeChange}
+        onPhotoUpload={handlePhotoUpload}
+        onAddTape={() => showToast("테이프는 다음 업데이트에 추가돼요")}
+        onAddSticker={() => showToast("스티커는 다음 업데이트에 추가돼요")}
+        onAddSvgSticker={() => showToast("스티커는 다음 업데이트에 추가돼요")}
+        onShare={handleShare}
+        onExport={() => showToast("이미지 저장은 다음 업데이트에 추가돼요")}
+        onInvite={handleInvite}
+        isSharing={isSharing}
+        isExporting={false}
+        isInviting={isInviting}
+        onModeChange={() => {}}
+        onDrawColorChange={() => {}}
+        onDrawWidthChange={() => {}}
+        onUndo={() => {}}
+        onRedo={() => {}}
+        onBringForward={() => {}}
+        onSendBackward={() => {}}
+        onDelete={handleDelete}
+        onSave={() => showToast("자동 저장 중이에요")}
+        onClear={() => showToast("비우기는 다음 업데이트에 추가돼요")}
+      />
+    </div>
+  );
+}

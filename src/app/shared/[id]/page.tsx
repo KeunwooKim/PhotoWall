@@ -1,4 +1,4 @@
-import WallEditor from "@/components/wall/WallEditor";
+import SharedWallKonvaEditor from "@/components/wall/SharedWallKonvaEditor";
 
 interface SharedWallPageProps {
   params: Promise<{ id: string }>;
@@ -9,7 +9,7 @@ export default async function SharedWallPage({ params }: SharedWallPageProps) {
 
   return (
     <main className="h-[100dvh] w-screen overflow-hidden bg-white">
-      <WallEditor sharedId={id} />
+      <SharedWallKonvaEditor sharedId={id} />
     </main>
   );
 }
