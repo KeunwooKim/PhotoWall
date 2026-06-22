@@ -1,51 +1,42 @@
-interface FabricCanvasJson {
-  version?: string;
-  objects?: Record<string, unknown>[];
-  background?: string;
-  width?: number;
-  height?: number;
-}
+import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
+import type { WallScenePhoto } from "@/types/wall-scene-v2";
 
-const OBJECT_DEFAULTS = {
-  cornerStyle: "circle",
-  cornerColor: "#c4c4c4",
-  borderColor: "#c4c4c4",
-  transparentCorners: false,
-  touchCornerSize: 24,
-  cornerSize: 12,
-  selectable: true,
-  evented: true,
-};
-
+/** Append a guestbook photo to v2 scene (or migrate legacy Fabric JSON first). */
 export function appendGuestbookPhoto(
   canvasJson: object,
   imageDataUrl: string,
   imageWidth: number,
   imageHeight: number,
-): FabricCanvasJson {
-  const json = canvasJson as FabricCanvasJson;
-  const canvasWidth = json.width ?? 800;
-  const canvasHeight = json.height ?? 600;
-  const maxWidth = Math.min(220, canvasWidth * 0.35);
+): object {
+  const doc = parseWallScene(canvasJson);
+  const { wallBounds } = doc.meta;
+
+  const maxWidth = Math.min(220, wallBounds.width * 0.35);
   const scale = Math.min(1, maxWidth / Math.max(imageWidth, imageHeight, 1));
+  const width = imageWidth * scale;
+  const height = imageHeight * scale;
 
-  const photoObject = {
-    type: "Image",
-    version: "6.6.2",
-    originX: "left",
-    originY: "top",
-    left: canvasWidth * 0.2 + Math.random() * (canvasWidth * 0.2),
-    top: canvasHeight * 0.15 + Math.random() * (canvasHeight * 0.2),
-    scaleX: scale,
-    scaleY: scale,
-    angle: -8 + Math.random() * 16,
+  const x = wallBounds.width * 0.2 + Math.random() * (wallBounds.width * 0.2);
+  const y = wallBounds.height * 0.15 + Math.random() * (wallBounds.height * 0.2);
+  const maxZ = doc.objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
+
+  const photo: WallScenePhoto = {
+    id: crypto.randomUUID(),
+    type: "photo",
+    x: x - width / 2,
+    y: y - height / 2,
+    rotation: -8 + Math.random() * 16,
+    scaleX: 1,
+    scaleY: 1,
+    zIndex: maxZ + 1,
     src: imageDataUrl,
-    crossOrigin: "anonymous",
-    ...OBJECT_DEFAULTS,
+    width,
+    height,
   };
 
-  return {
-    ...json,
-    objects: [...(json.objects ?? []), photoObject],
-  };
+  return serializeWallScene({
+    ...doc,
+    meta: { ...doc.meta, revision: doc.meta.revision + 1 },
+    objects: [...doc.objects, photo],
+  });
 }

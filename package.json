@@ -11,7 +11,6 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
-    "fabric": "^6.6.2",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
     "konva": "^10.3.0",
@@ -19,7 +18,6 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-konva": "^19.2.5",
-    "yjs": "^13.6.31",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

@@ -27,8 +27,14 @@ import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-impo
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { debounce } from "@/lib/debounce";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
+import type { EditorMode } from "@/components/wall/editor-types";
+import { bringObjectForward, sendObjectBackward } from "@/lib/wall-scene/layer-order";
+import {
+  HIGHLIGHTER_COLORS,
+  HIGHLIGHTER_LENGTH_PRESETS,
+} from "@/lib/wall-scene/highlighter";
 
-const DRAW_COLORS = ["#e85d8f", "#1a1a1a", "#4a90d9", "#7bc67e", "#f5a623", "#9b59b6"];
+const DRAW_COLORS = [...HIGHLIGHTER_COLORS];
 
 export default function PersonalWallKonvaEditor() {
   const { user } = useAuth();
@@ -46,6 +52,11 @@ export default function PersonalWallKonvaEditor() {
   const [isInviting, setIsInviting] = useState(false);
   const [isFriendsOpen, setIsFriendsOpen] = useState(false);
   const [isSharedOpen, setIsSharedOpen] = useState(false);
+  const [mode, setMode] = useState<EditorMode>("select");
+  const [drawColor, setDrawColor] = useState<string>(DRAW_COLORS[0]);
+  const [highlighterMaxLength, setHighlighterMaxLength] = useState<number>(
+    HIGHLIGHTER_LENGTH_PRESETS[1],
+  );
 
   const themeIdRef = useRef(themeId);
   const userRef = useRef(user);
@@ -230,6 +241,27 @@ export default function PersonalWallKonvaEditor() {
     useWallSceneStore.getState().bumpRevision();
   }, [selectedId]);
 
+  const handleModeChange = useCallback((next: EditorMode) => {
+    setMode(next);
+    if (next === "draw") {
+      useWallSceneStore.getState().setSelectedId(null);
+    }
+  }, []);
+
+  const handleBringForward = useCallback(() => {
+    if (!selectedId) return;
+    if (!bringObjectForward(selectedId)) {
+      showToast("더 앞으로 보낼 수 없어요");
+    }
+  }, [selectedId, showToast]);
+
+  const handleSendBackward = useCallback(() => {
+    if (!selectedId) return;
+    if (!sendObjectBackward(selectedId)) {
+      showToast("더 뒤로 보낼 수 없어요");
+    }
+  }, [selectedId, showToast]);
+
   const handleThemeChange = useCallback(
     (next: WallThemeId) => {
       setThemeId(next);
@@ -363,6 +395,9 @@ export default function PersonalWallKonvaEditor() {
         onDocumentChange={handleDocumentChange}
         onReady={handleReady}
         wallStageRef={wallStageRef}
+        editorMode={mode}
+        drawColor={drawColor}
+        highlighterMaxLength={highlighterMaxLength}
       />
 
       <button
@@ -433,11 +468,11 @@ export default function PersonalWallKonvaEditor() {
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         themeId={themeId}
-        mode="select"
-        drawColor={DRAW_COLORS[0]}
-        drawWidth={4}
+        mode={mode}
+        drawColor={drawColor}
         drawColors={DRAW_COLORS}
-        drawWidths={[2, 4, 8]}
+        highlighterMaxLength={highlighterMaxLength}
+        highlighterLengthPresets={HIGHLIGHTER_LENGTH_PRESETS}
         hasSelection={!!selectedId}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -451,13 +486,13 @@ export default function PersonalWallKonvaEditor() {
         isSharing={isSharing}
         isExporting={isExporting}
         isInviting={isInviting}
-        onModeChange={() => showToast("펜은 다음 업데이트에 추가돼요")}
-        onDrawColorChange={() => {}}
-        onDrawWidthChange={() => {}}
+        onModeChange={handleModeChange}
+        onDrawColorChange={setDrawColor}
+        onHighlighterMaxLengthChange={setHighlighterMaxLength}
         onUndo={undo}
         onRedo={redo}
-        onBringForward={() => showToast("레이어 순서는 다음 업데이트에 추가돼요")}
-        onSendBackward={() => {}}
+        onBringForward={handleBringForward}
+        onSendBackward={handleSendBackward}
         onDelete={handleDelete}
         onSave={handleSave}
         onClear={handleClear}

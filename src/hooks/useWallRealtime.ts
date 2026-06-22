@@ -107,6 +107,16 @@ export function useWallRealtime({
             skipLocalSync.current = false;
           });
         },
+        onRemoteClear: () => {
+          if (isAnyWallNodeDragging()) return;
+
+          skipLocalSync.current = true;
+          useWallSceneStore.getState().syncRemoteObjects([]);
+          applyRemoteObjectsToNodes([]);
+          queueMicrotask(() => {
+            skipLocalSync.current = false;
+          });
+        },
         onRemotePatch: (id, patch) => {
           applyRemotePatchToNode(id, patch);
 
@@ -191,6 +201,10 @@ export function useWallRealtime({
     sessionRef.current?.broadcastPatch(id, patch);
   }, []);
 
+  const broadcastClear = useCallback(() => {
+    sessionRef.current?.broadcastClear();
+  }, []);
+
   return {
     peers,
     isConnected,
@@ -199,5 +213,6 @@ export function useWallRealtime({
     sessionId: sessionIdRef.current,
     updatePresence,
     broadcastObjectPatch,
+    broadcastClear,
   };
 }
