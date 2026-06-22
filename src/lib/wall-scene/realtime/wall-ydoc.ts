@@ -14,6 +14,7 @@ function isSyncPayload(value: Record<string, unknown>): value is SyncPayload {
   return (
     value.kind === "hello" ||
     value.kind === "full" ||
+    value.kind === "clear" ||
     (value.kind === "patch" && typeof value.id === "string" && !!value.patch)
   );
 }
@@ -46,6 +47,7 @@ export type WallObjectPatch = Partial<
 type SyncPayload =
   | { kind: "hello"; sessionId: string; userId: string }
   | { kind: "full"; sessionId: string; userId: string; objects: WallSceneObject[] }
+  | { kind: "clear"; sessionId: string; userId: string }
   | {
       kind: "patch";
       sessionId: string;
@@ -62,6 +64,7 @@ export interface WallRealtimeOptions {
   color: string;
   supabase: SupabaseClient;
   onRemoteFull: (objects: WallSceneObject[]) => void;
+  onRemoteClear: () => void;
   onRemotePatch: (id: string, patch: WallObjectPatch) => void;
   onPresenceChange: (peers: WallPresenceState[]) => void;
   onSyncEvent?: (kind: SyncPayload["kind"]) => void;
@@ -107,6 +110,14 @@ export class WallRealtimeSession {
 
   broadcastFull(objects: WallSceneObject[]): void {
     this.sendFull(objects);
+  }
+
+  broadcastClear(): void {
+    this.send({
+      kind: "clear",
+      sessionId: this.options.sessionId,
+      userId: this.options.userId,
+    });
   }
 
   updatePresence(
@@ -208,6 +219,11 @@ export class WallRealtimeSession {
 
       if (msg.kind === "full") {
         this.options.onRemoteFull(msg.objects);
+        return;
+      }
+
+      if (msg.kind === "clear") {
+        this.options.onRemoteClear();
         return;
       }
 

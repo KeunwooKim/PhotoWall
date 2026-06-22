@@ -19,9 +19,16 @@ import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { debounce } from "@/lib/debounce";
 import { createWallInvite } from "@/lib/wall-invite";
+import { shareWallImage } from "@/lib/wall-export";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
+import type { EditorMode } from "@/components/wall/editor-types";
+import { bringObjectForward, sendObjectBackward } from "@/lib/wall-scene/layer-order";
+import {
+  HIGHLIGHTER_COLORS,
+  HIGHLIGHTER_LENGTH_PRESETS,
+} from "@/lib/wall-scene/highlighter";
 
-const DRAW_COLORS = ["#e85d8f", "#1a1a1a", "#4a90d9", "#7bc67e", "#f5a623", "#9b59b6"];
+const DRAW_COLORS = [...HIGHLIGHTER_COLORS];
 
 interface SharedWallKonvaEditorProps {
   sharedId: string;
@@ -38,6 +45,14 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isInviting, setIsInviting] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [mode, setMode] = useState<EditorMode>("select");
+  const [drawColor, setDrawColor] = useState<string>(DRAW_COLORS[0]);
+  const [highlighterMaxLength, setHighlighterMaxLength] = useState<number>(
+    HIGHLIGHTER_LENGTH_PRESETS[1],
+  );
+
+  const wallStageRef = useRef<HTMLDivElement>(null);
 
   const themeIdRef = useRef(themeId);
   themeIdRef.current = themeId;
@@ -58,7 +73,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     user?.email?.split("@")[0] ??
     "친구";
 
-  const { peers, isConnected, sessionId, updatePresence, broadcastObjectPatch } =
+  const { peers, isConnected, sessionId, updatePresence, broadcastObjectPatch, broadcastClear } =
     useWallRealtime({
     wallId: sharedId,
     userId: user?.id ?? "",
@@ -199,6 +214,27 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     useWallSceneStore.getState().bumpRevision();
   }, [selectedId]);
 
+  const handleModeChange = useCallback((next: EditorMode) => {
+    setMode(next);
+    if (next === "draw") {
+      useWallSceneStore.getState().setSelectedId(null);
+    }
+  }, []);
+
+  const handleBringForward = useCallback(() => {
+    if (!selectedId) return;
+    if (!bringObjectForward(selectedId)) {
+      showToast("더 앞으로 보낼 수 없어요");
+    }
+  }, [selectedId, showToast]);
+
+  const handleSendBackward = useCallback(() => {
+    if (!selectedId) return;
+    if (!sendObjectBackward(selectedId)) {
+      showToast("더 뒤로 보낼 수 없어요");
+    }
+  }, [selectedId, showToast]);
+
   const handleAddSticker = useCallback(
     (stickerId: string) => {
       const added = addStickerToWallScene(stickerId, {
@@ -240,6 +276,33 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       setIsSharing(false);
     }
   }, [sharedId, showToast]);
+
+  const handleExport = useCallback(async () => {
+    const stage = wallStageRef.current;
+    if (!stage || isExporting) return;
+
+    setIsExporting(true);
+    try {
+      await shareWallImage(stage);
+      showToast("이미지를 저장했어요");
+    } catch {
+      showToast("이미지 저장에 실패했어요");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isExporting, showToast]);
+
+  const handleClear = useCallback(() => {
+    if (!confirm("공동 벽의 모든 꾸미기를 지울까요?")) return;
+
+    useWallSceneStore.getState().recordHistory();
+    useWallSceneStore.getState().reset();
+    broadcastClear();
+    const json = serializeWallScene(useWallSceneStore.getState().document);
+    void saveSharedWallToCloud(sharedId, themeIdRef.current, json);
+    setLoadedCanvasJson(json);
+    showToast("벽을 비웠어요");
+  }, [sharedId, broadcastClear, showToast]);
 
   const handleInvite = useCallback(async () => {
     setIsInviting(true);
@@ -315,6 +378,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onPresenceManipulating={handleManipulationChange}
         onObjectPatch={broadcastObjectPatch}
         onReady={handleReady}
+        wallStageRef={wallStageRef}
+        editorMode={mode}
+        drawColor={drawColor}
+        highlighterMaxLength={highlighterMaxLength}
       />
 
       <header className="fixed inset-x-0 top-0 z-[100] flex items-center justify-between gap-3 border-b border-rose-200 bg-rose-100 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-md">
@@ -388,11 +455,11 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         themeId={themeId}
-        mode="select"
-        drawColor={DRAW_COLORS[0]}
-        drawWidth={4}
+        mode={mode}
+        drawColor={drawColor}
         drawColors={DRAW_COLORS}
-        drawWidths={[2, 4, 8]}
+        highlighterMaxLength={highlighterMaxLength}
+        highlighterLengthPresets={HIGHLIGHTER_LENGTH_PRESETS}
         hasSelection={!!selectedId}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -401,21 +468,21 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onAddTape={handleAddTape}
         onAddSticker={handleAddSticker}
         onShare={handleShare}
-        onExport={() => showToast("이미지 저장은 다음 업데이트에 추가돼요")}
+        onExport={handleExport}
         onInvite={handleInvite}
         isSharing={isSharing}
-        isExporting={false}
+        isExporting={isExporting}
         isInviting={isInviting}
-        onModeChange={() => {}}
-        onDrawColorChange={() => {}}
-        onDrawWidthChange={() => {}}
+        onModeChange={handleModeChange}
+        onDrawColorChange={setDrawColor}
+        onHighlighterMaxLengthChange={setHighlighterMaxLength}
         onUndo={undo}
         onRedo={redo}
-        onBringForward={() => {}}
-        onSendBackward={() => {}}
+        onBringForward={handleBringForward}
+        onSendBackward={handleSendBackward}
         onDelete={handleDelete}
         onSave={() => showToast("자동 저장 중이에요")}
-        onClear={() => showToast("비우기는 다음 업데이트에 추가돼요")}
+        onClear={handleClear}
       />
     </div>
   );

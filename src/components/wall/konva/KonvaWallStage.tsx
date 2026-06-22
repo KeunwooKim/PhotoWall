@@ -2,14 +2,22 @@
 
 import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Group, Layer, Stage, Transformer } from "react-konva";
+import { Group, Layer, Rect, Stage, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { WallThemeId } from "@/types/wall";
+import type { EditorMode } from "@/components/wall/editor-types";
 import { getWallTheme } from "@/lib/wall-themes";
 import { computeFitScale } from "@/lib/wall-bounds";
 import { debounce } from "@/lib/debounce";
 import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene, fingerprintSceneObjects } from "@/lib/wall-scene/scene-fingerprint";
+import {
+  clampLineEndpoints,
+  HIGHLIGHTER_OPACITY,
+  type LineEndpoints,
+  endpointsToPoints,
+} from "@/lib/wall-scene/highlighter";
+import { commitHighlighterLine } from "@/lib/wall-scene/add-path";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
 import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
@@ -26,6 +34,8 @@ import WallPhotoNode from "./WallPhotoNode";
 import WallStickerNode from "./WallStickerNode";
 import WallEmojiNode from "./WallEmojiNode";
 import WallTapeNode from "./WallTapeNode";
+import WallPathNode from "./WallPathNode";
+import WallHighlighterRect from "./WallHighlighterRect";
 import WallPresenceOverlay from "./WallPresenceOverlay";
 import PeerObjectHighlight from "./PeerObjectHighlight";
 
@@ -45,6 +55,9 @@ export interface KonvaWallStageProps {
   onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onReady?: () => void;
   wallStageRef?: RefObject<HTMLDivElement | null>;
+  editorMode?: EditorMode;
+  drawColor?: string;
+  highlighterMaxLength?: number;
 }
 
 export default function KonvaWallStage({
@@ -63,12 +76,25 @@ export default function KonvaWallStage({
   onObjectPatch,
   onReady,
   wallStageRef,
+  editorMode = "select",
+  drawColor = "#fff59d",
+  highlighterMaxLength = 160,
 }: KonvaWallStageProps) {
   const theme = getWallTheme(themeId);
   const containerRef = useRef<HTMLDivElement>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRegistry = useRef(new Map<string, Konva.Group>());
   const locallyDraggingIds = useRef(new Set<string>());
+  const drawingRef = useRef<LineEndpoints | null>(null);
+  const editorModeRef = useRef(editorMode);
+  const drawColorRef = useRef(drawColor);
+  const highlighterMaxLengthRef = useRef(highlighterMaxLength);
+
+  editorModeRef.current = editorMode;
+  drawColorRef.current = drawColor;
+  highlighterMaxLengthRef.current = highlighterMaxLength;
+
+  const [draftPoints, setDraftPoints] = useState<number[] | null>(null);
 
   const document = useWallSceneStore((s) => s.document);
   const selectedId = useWallSceneStore((s) => s.selectedId);
@@ -177,10 +203,19 @@ export default function KonvaWallStage({
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    const node = selectedId ? nodeRegistry.current.get(selectedId) : null;
+
+    const selectedObject = selectedId
+      ? document.objects.find((object) => object.id === selectedId)
+      : null;
+    const canTransform =
+      editorMode === "select" &&
+      selectedObject != null &&
+      selectedObject.type !== "path";
+    const node = canTransform && selectedId ? nodeRegistry.current.get(selectedId) : null;
+
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  }, [selectedId]);
+  }, [selectedId, document.objects, editorMode]);
 
   const visibleObjects = useMemo(() => {
     const viewport = {
@@ -219,7 +254,7 @@ export default function KonvaWallStage({
           <WallPhotoNode
             key={object.id}
             object={object}
-            readOnly={readOnly}
+            readOnly={readOnly || editorMode === "draw"}
             resolvePhotoSrc={resolvePhotoSrc}
             onSelect={select}
             onInteractionStart={() => notifyPresenceSelection(object.id)}
@@ -235,7 +270,7 @@ export default function KonvaWallStage({
           <WallStickerNode
             key={object.id}
             object={object}
-            readOnly={readOnly}
+            readOnly={readOnly || editorMode === "draw"}
             onSelect={select}
             onInteractionStart={() => notifyPresenceSelection(object.id)}
             onManipulationChange={setManipulating}
@@ -249,7 +284,7 @@ export default function KonvaWallStage({
           <WallEmojiNode
             key={object.id}
             object={object}
-            readOnly={readOnly}
+            readOnly={readOnly || editorMode === "draw"}
             onSelect={select}
             onInteractionStart={() => notifyPresenceSelection(object.id)}
             onManipulationChange={setManipulating}
@@ -263,10 +298,23 @@ export default function KonvaWallStage({
           <WallTapeNode
             key={object.id}
             object={object}
-            readOnly={readOnly}
+            readOnly={readOnly || editorMode === "draw"}
             onSelect={select}
             onInteractionStart={() => notifyPresenceSelection(object.id)}
             onManipulationChange={setManipulating}
+            registerNode={registerNode}
+          />
+        );
+      }
+
+      if (object.type === "path") {
+        return (
+          <WallPathNode
+            key={object.id}
+            object={object}
+            readOnly={readOnly || editorMode === "draw"}
+            selected={selectedId === object.id}
+            onSelect={select}
             registerNode={registerNode}
           />
         );
@@ -276,6 +324,8 @@ export default function KonvaWallStage({
     },
     [
       readOnly,
+      editorMode,
+      selectedId,
       resolvePhotoSrc,
       onObjectPatch,
       setManipulating,
@@ -337,6 +387,93 @@ export default function KonvaWallStage({
     [onPointerMove],
   );
 
+  const getWallPointer = useCallback((stage: Konva.Stage | null) => {
+    if (!stage) return null;
+    return stage.getPointerPosition();
+  }, []);
+
+  const updateDraftLine = useCallback((stage: Konva.Stage | null) => {
+    const draft = drawingRef.current;
+    if (!stage || !draft) return;
+
+    const pos = getWallPointer(stage);
+    if (!pos) return;
+
+    drawingRef.current = { x1: draft.x1, y1: draft.y1, x2: pos.x, y2: pos.y };
+
+    const preview =
+      clampLineEndpoints(draft.x1, draft.y1, pos.x, pos.y, highlighterMaxLengthRef.current) ??
+      { x1: draft.x1, y1: draft.y1, x2: pos.x, y2: pos.y };
+
+    setDraftPoints(endpointsToPoints(preview));
+  }, [getWallPointer]);
+
+  const finishDrawing = useCallback(() => {
+    const draft = drawingRef.current;
+    drawingRef.current = null;
+    setDraftPoints(null);
+
+    if (!draft) return;
+
+    const clamped = clampLineEndpoints(
+      draft.x1,
+      draft.y1,
+      draft.x2,
+      draft.y2,
+      highlighterMaxLengthRef.current,
+    );
+    if (!clamped) return;
+
+    commitHighlighterLine(clamped, drawColorRef.current);
+  }, []);
+
+  const startDrawing = useCallback(
+    (stage: Konva.Stage | null) => {
+      if (readOnly || editorModeRef.current !== "draw") return;
+
+      const pos = getWallPointer(stage);
+      if (!pos) return;
+
+      setSelectedId(null);
+      notifyPresenceSelection(null);
+
+      const next: LineEndpoints = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
+      drawingRef.current = next;
+      setDraftPoints(endpointsToPoints(next));
+    },
+    [getWallPointer, notifyPresenceSelection, readOnly, setSelectedId],
+  );
+
+  const handleStagePointerDown = useCallback(
+    (stage: Konva.Stage | null, isStageTarget: boolean) => {
+      reportPointer(stage);
+
+      if (editorModeRef.current !== "draw" && isStageTarget) {
+        setSelectedId(null);
+        notifyPresenceSelection(null);
+      }
+    },
+    [notifyPresenceSelection, reportPointer, setSelectedId],
+  );
+
+  const handleStagePointerMove = useCallback(
+    (stage: Konva.Stage | null) => {
+      reportPointer(stage);
+    },
+    [reportPointer],
+  );
+
+  const handleStagePointerUp = useCallback(() => {
+    if (drawingRef.current) finishDrawing();
+  }, [finishDrawing]);
+
+  useEffect(() => {
+    if (editorMode !== "draw") {
+      drawingRef.current = null;
+      setDraftPoints(null);
+    }
+  }, [editorMode]);
+
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-neutral-200">
       <div
@@ -353,25 +490,20 @@ export default function KonvaWallStage({
           width={wallBounds.width}
           height={wallBounds.height}
           onMouseDown={(e) => {
-            if (e.target === e.target.getStage()) {
-              setSelectedId(null);
-              notifyPresenceSelection(null);
-            }
-            reportPointer(e.target.getStage());
+            handleStagePointerDown(e.target.getStage(), e.target === e.target.getStage());
           }}
           onTouchStart={(e) => {
-            if (e.target === e.target.getStage()) {
-              setSelectedId(null);
-              notifyPresenceSelection(null);
-            }
-            reportPointer(e.target.getStage());
+            handleStagePointerDown(e.target.getStage(), e.target === e.target.getStage());
           }}
-          onMouseMove={(e) => reportPointer(e.target.getStage())}
-          onTouchMove={(e) => reportPointer(e.target.getStage())}
+          onMouseMove={(e) => handleStagePointerMove(e.target.getStage())}
+          onTouchMove={(e) => handleStagePointerMove(e.target.getStage())}
+          onMouseUp={handleStagePointerUp}
+          onTouchEnd={handleStagePointerUp}
+          onMouseLeave={handleStagePointerUp}
         >
-          <Layer listening={!readOnly}>
+          <Layer listening={!readOnly && editorMode !== "draw"}>
             {visibleObjects.map((object) => renderSceneObject(object))}
-            {!readOnly && (
+            {!readOnly && editorMode === "select" && (
               <Transformer
                 ref={transformerRef}
                 rotateEnabled
@@ -423,6 +555,34 @@ export default function KonvaWallStage({
               );
             })}
           </Layer>
+          {!readOnly && editorMode === "draw" && (
+            <Layer>
+              {draftPoints && draftPoints.length === 4 && (
+                <WallHighlighterRect
+                  points={draftPoints}
+                  fill={drawColor}
+                  opacity={HIGHLIGHTER_OPACITY}
+                />
+              )}
+              <Rect
+                width={wallBounds.width}
+                height={wallBounds.height}
+                fill="rgba(0,0,0,0)"
+                onMouseDown={(e) => {
+                  e.cancelBubble = true;
+                  startDrawing(e.target.getStage());
+                }}
+                onTouchStart={(e) => {
+                  e.cancelBubble = true;
+                  startDrawing(e.target.getStage());
+                }}
+                onMouseMove={(e) => updateDraftLine(e.target.getStage())}
+                onTouchMove={(e) => updateDraftLine(e.target.getStage())}
+                onMouseUp={handleStagePointerUp}
+                onTouchEnd={handleStagePointerUp}
+              />
+            </Layer>
+          )}
         </Stage>
       </div>
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import type { WallThemeId } from "@/types/wall";
-import type { EditorMode } from "./WallCanvas";
+import type { EditorMode } from "./editor-types";
 import { WALL_THEMES } from "@/lib/wall-themes";
 import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
 import StickerPicker from "./StickerPicker";
@@ -14,9 +14,9 @@ interface ToolbarProps {
   themeId: WallThemeId;
   mode: EditorMode;
   drawColor: string;
-  drawWidth: number;
   drawColors: string[];
-  drawWidths: number[];
+  highlighterMaxLength: number;
+  highlighterLengthPresets: readonly number[];
   hasSelection: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -32,7 +32,7 @@ interface ToolbarProps {
   isInviting?: boolean;
   onModeChange: (mode: EditorMode) => void;
   onDrawColorChange: (color: string) => void;
-  onDrawWidthChange: (width: number) => void;
+  onHighlighterMaxLengthChange: (length: number) => void;
   onUndo: () => void;
   onRedo: () => void;
   onBringForward: () => void;
@@ -48,9 +48,9 @@ export default function Toolbar({
   themeId,
   mode,
   drawColor,
-  drawWidth,
   drawColors,
-  drawWidths,
+  highlighterMaxLength,
+  highlighterLengthPresets,
   hasSelection,
   canUndo,
   canRedo,
@@ -66,7 +66,7 @@ export default function Toolbar({
   isInviting,
   onModeChange,
   onDrawColorChange,
-  onDrawWidthChange,
+  onHighlighterMaxLengthChange,
   onUndo,
   onRedo,
   onBringForward,
@@ -245,7 +245,7 @@ export default function Toolbar({
                 선택
               </ToolButton>
               <ToolButton active={mode === "draw"} onClick={() => onModeChange("draw")}>
-                펜
+                형광펜
               </ToolButton>
               <ToolButton onClick={onUndo} disabled={!canUndo}>
                 ↩
@@ -257,7 +257,7 @@ export default function Toolbar({
 
             {mode === "draw" && (
               <div className="space-y-2 rounded-xl bg-foreground/3 p-3">
-                <p className="text-[11px] text-muted">펜 색상</p>
+                <p className="text-[11px] text-muted">형광펜 색상</p>
                 <div className="flex flex-wrap gap-2">
                   {drawColors.map((color) => (
                     <button
@@ -268,27 +268,30 @@ export default function Toolbar({
                         drawColor === color ? "ring-foreground" : "ring-transparent"
                       }`}
                       style={{ background: color }}
-                      aria-label={`펜 색상 ${color}`}
+                      aria-label={`형광펜 색상 ${color}`}
                     />
                   ))}
                 </div>
-                <p className="text-[11px] text-muted">펜 굵기</p>
+                <p className="text-[11px] text-muted">최대 길이</p>
                 <div className="flex gap-2">
-                  {drawWidths.map((width) => (
+                  {highlighterLengthPresets.map((length) => (
                     <button
-                      key={width}
+                      key={length}
                       type="button"
-                      onClick={() => onDrawWidthChange(width)}
+                      onClick={() => onHighlighterMaxLengthChange(length)}
                       className={`flex h-9 flex-1 items-center justify-center rounded-lg text-xs font-medium transition active:scale-95 ${
-                        drawWidth === width
+                        highlighterMaxLength === length
                           ? "bg-foreground text-background"
                           : "bg-foreground/6 text-foreground hover:bg-foreground/10"
                       }`}
                     >
-                      {width}px
+                      {length < 100 ? "짧게" : length < 200 ? "보통" : "길게"}
                     </button>
                   ))}
                 </div>
+                <p className="text-[11px] leading-relaxed text-muted">
+                  벽에서 드래그해 직선 형광펜을 그려요. 방향과 길이는 손가락으로 조절돼요.
+                </p>
               </div>
             )}
 

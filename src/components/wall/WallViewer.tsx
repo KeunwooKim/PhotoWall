@@ -1,14 +1,19 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import WallCanvas, { type WallCanvasHandle } from "./WallCanvas";
+import KonvaWallStageClient from "@/components/wall/konva";
 import WallSocialPanel from "./WallSocialPanel";
 import type { WallThemeId } from "@/types/wall";
 import { shareWallImage } from "@/lib/wall-export";
 import AuthButton from "@/components/auth/AuthButton";
 import ReportWallButton from "@/components/wall/ReportWallButton";
-import { resolveCanvasPhotoUrls, resolveWallPhotoSrc } from "@/lib/storage/resolve-wall-photos";
+import { parseWallScene } from "@/lib/wall-scene/fabric-import";
+import {
+  prefetchWallScenePhotoUrls,
+  resolveWallPhotoSrc,
+} from "@/lib/storage/resolve-wall-photos";
+import { useWallSceneStore } from "@/stores/wall-scene-store";
 
 interface WallViewerProps {
   themeId: WallThemeId;
@@ -25,30 +30,56 @@ export default function WallViewer({
   wallId,
   canGuestbook = false,
 }: WallViewerProps) {
-  const canvasRef = useRef<WallCanvasHandle>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const wallStageRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [currentCanvasJson, setCurrentCanvasJson] = useState(canvasJson);
-  const loadedRef = useRef(false);
+  const [loadedJson, setLoadedJson] = useState<object | null>(null);
+  const [viewerKey, setViewerKey] = useState(0);
 
-  const handleReady = useCallback(async () => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-    await canvasRef.current?.loadFromJSON(currentCanvasJson);
+  const resolvePhotoSrc = useCallback(
+    (src: string) => (wallId ? resolveWallPhotoSrc(src, wallId) : Promise.resolve(src)),
+    [wallId],
+  );
+
+  useEffect(() => {
+    setIsReady(false);
+    setLoadedJson(null);
+
+    void (async () => {
+      const doc = parseWallScene(canvasJson);
+      if (wallId) {
+        await prefetchWallScenePhotoUrls(doc, wallId);
+      }
+      setLoadedJson(canvasJson);
+    })();
+
+    return () => {
+      useWallSceneStore.getState().reset();
+    };
+  }, [canvasJson, wallId]);
+
+  const handleReady = useCallback(() => {
     setIsReady(true);
-  }, [currentCanvasJson]);
-
-  const handleGuestbookAdded = useCallback(async (updatedCanvas: object) => {
-    setCurrentCanvasJson(updatedCanvas);
-    loadedRef.current = false;
-    await canvasRef.current?.loadFromJSON(updatedCanvas);
-    loadedRef.current = true;
   }, []);
 
+  const handleGuestbookAdded = useCallback((updatedCanvas: object) => {
+    setIsReady(false);
+    setLoadedJson(null);
+    setViewerKey((key) => key + 1);
+
+    void (async () => {
+      const doc = parseWallScene(updatedCanvas);
+      if (wallId) {
+        await prefetchWallScenePhotoUrls(doc, wallId);
+      }
+      setLoadedJson(updatedCanvas);
+    })();
+  }, [wallId]);
+
   const handleExport = async () => {
-    const stage = canvasRef.current?.getWallStageElement();
+    const stage = wallStageRef.current;
     if (!stage || isExporting) return;
+
     setIsExporting(true);
     try {
       await shareWallImage(stage);
@@ -58,20 +89,19 @@ export default function WallViewer({
   };
 
   return (
-    <div ref={containerRef} className="relative h-[100dvh] w-screen overflow-hidden bg-white">
-      <WallCanvas
-        ref={canvasRef}
-        themeId={themeId}
-        drawColor="#e85d8f"
-        drawWidth={4}
-        readOnly={readOnly}
-        resolveStoragePhotos={
-          wallId ? (json) => resolveCanvasPhotoUrls(json, wallId) : undefined
-        }
-        resolvePhotoSrc={wallId ? (src) => resolveWallPhotoSrc(src, wallId) : undefined}
-        onSelectionChange={() => {}}
-        onReady={handleReady}
-      />
+    <div className="relative h-[100dvh] w-screen overflow-hidden bg-white">
+      {loadedJson && (
+        <KonvaWallStageClient
+          key={viewerKey}
+          themeId={themeId}
+          initialJson={loadedJson}
+          readOnly={readOnly}
+          wallId={wallId}
+          resolvePhotoSrc={wallId ? resolvePhotoSrc : undefined}
+          onReady={handleReady}
+          wallStageRef={wallStageRef}
+        />
+      )}
 
       <div
         className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between px-4 py-3"
@@ -110,7 +140,7 @@ export default function WallViewer({
         </div>
       </div>
 
-      {!isReady && (
+      {(!loadedJson || !isReady) && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm text-muted">
           벽 불러오는 중...
         </div>

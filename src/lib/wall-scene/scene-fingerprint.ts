@@ -18,6 +18,14 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
       if (object.type === "sticker") return { ...base, stickerId: object.stickerId };
       if (object.type === "emoji") return { ...base, text: object.text };
       if (object.type === "tape") return { ...base, fill: object.fill };
+      if (object.type === "path") {
+        return {
+          ...base,
+          stroke: object.stroke,
+          strokeWidth: object.strokeWidth,
+          opacity: object.opacity,
+        };
+      }
       return base;
     }),
   );
