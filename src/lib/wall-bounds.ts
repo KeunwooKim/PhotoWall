@@ -1,3 +1,5 @@
+import type { WallSceneObject } from "@/types/wall-scene-v2";
+
 export interface WallBounds {
   width: number;
   height: number;
@@ -101,4 +103,116 @@ export function getObjectsBounds(canvas: FabricCanvasLike): ObjectBounds | null 
   }
 
   return { minX, minY, maxX, maxY };
+}
+
+function mergeExtents(
+  acc: ObjectBounds | null,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+): ObjectBounds {
+  if (!acc) return { minX, minY, maxX, maxY };
+  return {
+    minX: Math.min(acc.minX, minX),
+    minY: Math.min(acc.minY, minY),
+    maxX: Math.max(acc.maxX, maxX),
+    maxY: Math.max(acc.maxY, maxY),
+  };
+}
+
+function rotatedRectExtents(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotationDeg: number,
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  if (!rotationDeg) {
+    return { minX: x, minY: y, maxX: x + width, maxY: y + height };
+  }
+
+  const rad = (rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const corners = [
+    [0, 0],
+    [width, 0],
+    [width, height],
+    [0, height],
+  ] as const;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const [cx, cy] of corners) {
+    const px = x + cx * cos - cy * sin;
+    const py = y + cx * sin + cy * cos;
+    minX = Math.min(minX, px);
+    minY = Math.min(minY, py);
+    maxX = Math.max(maxX, px);
+    maxY = Math.max(maxY, py);
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+function sceneObjectExtents(obj: WallSceneObject): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  const scaleX = obj.scaleX ?? 1;
+  const scaleY = obj.scaleY ?? 1;
+
+  if (obj.type === "photo" || obj.type === "svg" || obj.type === "tape" || obj.type === "sticker") {
+    return rotatedRectExtents(
+      obj.x,
+      obj.y,
+      obj.width * scaleX,
+      obj.height * scaleY,
+      obj.rotation,
+    );
+  }
+
+  if (obj.type === "emoji") {
+    const size = obj.fontSize * Math.max(scaleX, scaleY);
+    return rotatedRectExtents(obj.x, obj.y, size, size, obj.rotation);
+  }
+
+  if (obj.type === "path" && obj.points.length >= 2) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (let i = 0; i < obj.points.length; i += 2) {
+      const px = obj.points[i] + obj.x;
+      const py = obj.points[i + 1] + obj.y;
+      minX = Math.min(minX, px);
+      minY = Math.min(minY, py);
+      maxX = Math.max(maxX, px);
+      maxY = Math.max(maxY, py);
+    }
+
+    return { minX, minY, maxX, maxY };
+  }
+
+  return { minX: obj.x, minY: obj.y, maxX: obj.x + 1, maxY: obj.y + 1 };
+}
+
+/** Axis-aligned bounds of all v2 scene objects (Konva shared wall). */
+export function getSceneObjectsBounds(objects: WallSceneObject[]): ObjectBounds | null {
+  if (objects.length === 0) return null;
+
+  let bounds: ObjectBounds | null = null;
+  for (const obj of objects) {
+    const ext = sceneObjectExtents(obj);
+    bounds = mergeExtents(bounds, ext.minX, ext.minY, ext.maxX, ext.maxY);
+  }
+
+  return bounds;
 }

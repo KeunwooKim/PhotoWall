@@ -13,6 +13,8 @@ import {
   resolveWallPhotoSrc,
 } from "@/lib/storage/resolve-wall-photos";
 import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
+import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
+import { addTapeToWallScene } from "@/lib/wall-scene/add-tape";
 import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { debounce } from "@/lib/debounce";
@@ -46,6 +48,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   const selectedId = useWallSceneStore((s) => s.selectedId);
   const wallBounds = useWallSceneStore((s) => s.document.meta.wallBounds);
+  const canUndo = useWallSceneStore((s) => s.historyPast.length > 0);
+  const canRedo = useWallSceneStore((s) => s.historyFuture.length > 0);
+  const undo = useWallSceneStore((s) => s.undo);
+  const redo = useWallSceneStore((s) => s.redo);
 
   const displayName =
     user?.user_metadata?.full_name?.split(" ")[0] ??
@@ -193,6 +199,27 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     useWallSceneStore.getState().bumpRevision();
   }, [selectedId]);
 
+  const handleAddSticker = useCallback(
+    (stickerId: string) => {
+      const added = addStickerToWallScene(stickerId, {
+        wallWidth: wallBounds.width,
+        wallHeight: wallBounds.height,
+      });
+      if (!added) showToast("스티커를 붙이지 못했어요");
+    },
+    [wallBounds.width, wallBounds.height, showToast],
+  );
+
+  const handleAddTape = useCallback(
+    (color: string) => {
+      addTapeToWallScene(color, {
+        wallWidth: wallBounds.width,
+        wallHeight: wallBounds.height,
+      });
+    },
+    [wallBounds.width, wallBounds.height],
+  );
+
   const handleThemeChange = useCallback(
     (next: WallThemeId) => {
       setThemeId(next);
@@ -229,6 +256,21 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+
+      const isMod = e.metaKey || e.ctrlKey;
+
+      if (isMod && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (isMod && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedId) {
           e.preventDefault();
@@ -238,7 +280,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, handleDelete]);
+  }, [selectedId, handleDelete, undo, redo]);
 
   if (!user) {
     return (
@@ -352,13 +394,12 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         drawColors={DRAW_COLORS}
         drawWidths={[2, 4, 8]}
         hasSelection={!!selectedId}
-        canUndo={false}
-        canRedo={false}
+        canUndo={canUndo}
+        canRedo={canRedo}
         onThemeChange={handleThemeChange}
         onPhotoUpload={handlePhotoUpload}
-        onAddTape={() => showToast("테이프는 다음 업데이트에 추가돼요")}
-        onAddSticker={() => showToast("스티커는 다음 업데이트에 추가돼요")}
-        onAddSvgSticker={() => showToast("스티커는 다음 업데이트에 추가돼요")}
+        onAddTape={handleAddTape}
+        onAddSticker={handleAddSticker}
         onShare={handleShare}
         onExport={() => showToast("이미지 저장은 다음 업데이트에 추가돼요")}
         onInvite={handleInvite}
@@ -368,8 +409,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onModeChange={() => {}}
         onDrawColorChange={() => {}}
         onDrawWidthChange={() => {}}
-        onUndo={() => {}}
-        onRedo={() => {}}
+        onUndo={undo}
+        onRedo={redo}
         onBringForward={() => {}}
         onSendBackward={() => {}}
         onDelete={handleDelete}

@@ -11,7 +11,7 @@ function objectBounds(obj: WallSceneObject): ViewportRect {
   const scaleX = obj.scaleX ?? 1;
   const scaleY = obj.scaleY ?? 1;
 
-  if (obj.type === "photo" || obj.type === "svg" || obj.type === "tape") {
+  if (obj.type === "photo" || obj.type === "svg" || obj.type === "tape" || obj.type === "sticker") {
     return {
       x: obj.x,
       y: obj.y,

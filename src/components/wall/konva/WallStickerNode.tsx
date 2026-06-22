@@ -1,47 +1,45 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Group, Image as KonvaImage } from "react-konva";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Group, Image as KonvaImage, Text } from "react-konva";
 import type Konva from "konva";
+import { getStickerById } from "@/lib/stickers";
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
 import { throttle } from "@/lib/throttle";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
-import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
-import type { WallScenePhoto } from "@/types/wall-scene-v2";
-import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
-import { useResolvedImageSrc } from "./useResolvedImageSrc";
+import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
+import { useWallSceneStore } from "@/stores/wall-scene-store";
+import type { WallSceneSticker } from "@/types/wall-scene-v2";
 
-interface WallPhotoNodeProps {
-  object: WallScenePhoto;
+interface WallStickerNodeProps {
+  object: WallSceneSticker;
   readOnly?: boolean;
-  resolvePhotoSrc?: (src: string) => Promise<string>;
   onSelect: () => void;
   onInteractionStart?: () => void;
-  onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onManipulationChange?: (active: boolean, objectId: string) => void;
   registerNode: (id: string, node: Konva.Group | null) => void;
 }
 
-function applyTransformToNode(node: Konva.Group, object: WallScenePhoto) {
+function applyTransformToNode(node: Konva.Group, object: WallSceneSticker) {
   node.position({ x: object.x, y: object.y });
   node.rotation(object.rotation);
   node.scaleX(object.scaleX);
   node.scaleY(object.scaleY);
 }
 
-export default function WallPhotoNode({
+export default function WallStickerNode({
   object,
   readOnly = false,
-  resolvePhotoSrc,
   onSelect,
   onInteractionStart,
   onManipulationChange,
   registerNode,
-}: WallPhotoNodeProps) {
-  const displaySrc = useResolvedImageSrc(object.src, resolvePhotoSrc);
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const imageCacheRef = useRef<HTMLImageElement | null>(null);
+}: WallStickerNodeProps) {
+  const definition = getStickerById(object.stickerId);
+  const isEmoji = definition?.kind === "emoji";
+  const imageSrc = !isEmoji && definition ? definition.src : "";
+
   const groupRef = useRef<Konva.Group | null>(null);
   const isDraggingRef = useRef(false);
   const objectId = object.id;
@@ -68,7 +66,7 @@ export default function WallPhotoNode({
   const commitDragPosition = useCallback(
     (node: Konva.Node) => {
       applyPosition.flush();
-      const patch = {
+      const patch: WallObjectPatch = {
         x: node.x(),
         y: node.y(),
         rotation: node.rotation(),
@@ -119,30 +117,25 @@ export default function WallPhotoNode({
     node.getLayer()?.batchDraw();
   }, [object.x, object.y, object.rotation, object.scaleX, object.scaleY]);
 
-  useEffect(() => {
-    if (!displaySrc) {
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  // useResolvedImageSrc returns string; load image in effect
+  useLayoutEffect(() => {
+    if (!imageSrc || isEmoji) {
       setImage(null);
       return;
     }
-
     let cancelled = false;
-
-    void loadHtmlImage(displaySrc)
+    void loadHtmlImage(imageSrc)
       .then((img) => {
-        if (cancelled) return;
-        imageCacheRef.current = img;
-        setImage(img);
+        if (!cancelled) setImage(img);
       })
       .catch(() => {
         if (!cancelled) setImage(null);
       });
-
     return () => {
       cancelled = true;
     };
-  }, [displaySrc]);
-
-  const shownImage = image ?? imageCacheRef.current;
+  }, [imageSrc, isEmoji]);
 
   return (
     <Group
@@ -156,9 +149,18 @@ export default function WallPhotoNode({
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
     >
-      {shownImage ? (
+      {isEmoji && definition ? (
+        <Text
+          text={definition.src}
+          fontSize={object.height}
+          width={object.width}
+          height={object.height}
+          align="center"
+          verticalAlign="middle"
+        />
+      ) : image ? (
         <KonvaImage
-          image={shownImage}
+          image={image}
           width={object.width}
           height={object.height}
           perfectDrawEnabled={false}

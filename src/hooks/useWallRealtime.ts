@@ -16,7 +16,8 @@ import {
 } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { presenceColorForUser } from "@/lib/wall-scene/presence-colors";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
-import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
+import { structuralSceneFingerprint } from "@/lib/wall-scene/scene-fingerprint";
+import type { WallPresenceState } from "@/types/wall-scene-v2";
 
 interface UseWallRealtimeOptions {
   wallId: string;
@@ -25,17 +26,8 @@ interface UseWallRealtimeOptions {
   enabled?: boolean;
 }
 
-function structuralFingerprint(objects: WallSceneObject[]): string {
-  return JSON.stringify(
-    objects
-      .map((object) => ({
-        id: object.id,
-        type: object.type,
-        zIndex: object.zIndex,
-        src: object.type === "photo" ? object.src : undefined,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-  );
+function structuralFingerprint(objects: Parameters<typeof structuralSceneFingerprint>[0]): string {
+  return structuralSceneFingerprint(objects);
 }
 
 export function useWallRealtime({

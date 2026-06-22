@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { WallBounds } from "@/lib/wall-bounds";
-import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
+import {
+  DEFAULT_WALL_BOUNDS,
+  getSceneObjectsBounds,
+  reconcileWallBounds,
+} from "@/lib/wall-bounds";
 import type { WallSceneDocument, WallSceneObject } from "@/types/wall-scene-v2";
 
 export function createEmptyWallScene(): WallSceneDocument {
@@ -19,16 +23,24 @@ export interface WallSceneStore {
   document: WallSceneDocument;
   selectedId: string | null;
   viewportScale: number;
+  historyPast: WallSceneDocument[];
+  historyFuture: WallSceneDocument[];
 
   loadDocument: (doc: WallSceneDocument) => void;
   reset: () => void;
   setSelectedId: (id: string | null) => void;
   setViewportScale: (scale: number) => void;
+  recordHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
   upsertObject: (object: WallSceneObject) => void;
   patchObject: (id: string, patch: Partial<WallSceneObject>) => void;
   removeObject: (id: string) => void;
   reorderObject: (id: string, zIndex: number) => void;
   setWallBounds: (bounds: WallBounds) => void;
+  reconcileWallBoundsFromObjects: () => void;
   bumpRevision: () => void;
   /** Merge authoritative remote snapshot without replacing unrelated local state. */
   syncRemoteObjects: (objects: WallSceneObject[]) => void;
@@ -36,6 +48,25 @@ export interface WallSceneStore {
 
 function sortByZIndex(objects: WallSceneObject[]): WallSceneObject[] {
   return [...objects].sort((a, b) => a.zIndex - b.zIndex);
+}
+
+const MAX_HISTORY = 50;
+
+function cloneDocument(doc: WallSceneDocument): WallSceneDocument {
+  return JSON.parse(JSON.stringify(doc)) as WallSceneDocument;
+}
+
+function withReconciledWallBounds(document: WallSceneDocument): WallSceneDocument {
+  const next = reconcileWallBounds(
+    document.meta.wallBounds,
+    getSceneObjectsBounds(document.objects),
+  );
+  if (!next) return document;
+
+  return {
+    ...document,
+    meta: { ...document.meta, wallBounds: next },
+  };
 }
 
 export const useWallSceneStore = create<WallSceneStore>()(
@@ -50,15 +81,60 @@ export const useWallSceneStore = create<WallSceneStore>()(
     },
     selectedId: null,
     viewportScale: 1,
+    historyPast: [],
+    historyFuture: [],
 
-    loadDocument: (doc) => set({ document: { ...doc, objects: sortByZIndex(doc.objects) } }),
+    loadDocument: (doc) =>
+      set({
+        document: withReconciledWallBounds({
+          ...doc,
+          objects: sortByZIndex(doc.objects),
+        }),
+        historyPast: [],
+        historyFuture: [],
+      }),
 
     reset: () =>
       set({
         document: createEmptyWallScene(),
         selectedId: null,
         viewportScale: 1,
+        historyPast: [],
+        historyFuture: [],
       }),
+
+    recordHistory: () =>
+      set((state) => ({
+        historyPast: [...state.historyPast, cloneDocument(state.document)].slice(-MAX_HISTORY),
+        historyFuture: [],
+      })),
+
+    undo: () =>
+      set((state) => {
+        if (!state.historyPast.length) return state;
+        const previous = state.historyPast[state.historyPast.length - 1];
+        return {
+          document: previous,
+          historyPast: state.historyPast.slice(0, -1),
+          historyFuture: [cloneDocument(state.document), ...state.historyFuture],
+          selectedId: null,
+        };
+      }),
+
+    redo: () =>
+      set((state) => {
+        if (!state.historyFuture.length) return state;
+        const [next, ...rest] = state.historyFuture;
+        return {
+          document: next,
+          historyPast: [...state.historyPast, cloneDocument(state.document)].slice(-MAX_HISTORY),
+          historyFuture: rest,
+          selectedId: null,
+        };
+      }),
+
+    canUndo: () => get().historyPast.length > 0,
+    canRedo: () => get().historyFuture.length > 0,
 
     setSelectedId: (id) => set({ selectedId: id }),
 
@@ -70,7 +146,12 @@ export const useWallSceneStore = create<WallSceneStore>()(
         const objects = exists
           ? state.document.objects.map((o) => (o.id === object.id ? { ...o, ...object } : o))
           : [...state.document.objects, object];
-        return { document: { ...state.document, objects: sortByZIndex(objects) } };
+        return {
+          document: withReconciledWallBounds({
+            ...state.document,
+            objects: sortByZIndex(objects),
+          }),
+        };
       }),
 
     patchObject: (id, patch) =>
@@ -83,14 +164,16 @@ export const useWallSceneStore = create<WallSceneStore>()(
         },
       })),
 
-    removeObject: (id) =>
+    removeObject: (id) => {
+      get().recordHistory();
       set((state) => ({
-        document: {
+        document: withReconciledWallBounds({
           ...state.document,
           objects: state.document.objects.filter((o) => o.id !== id),
-        },
+        }),
         selectedId: state.selectedId === id ? null : state.selectedId,
-      })),
+      }));
+    },
 
     reorderObject: (id, zIndex) => {
       get().patchObject(id, { zIndex });
@@ -103,6 +186,13 @@ export const useWallSceneStore = create<WallSceneStore>()(
           meta: { ...state.document.meta, wallBounds: bounds },
         },
       })),
+
+    reconcileWallBoundsFromObjects: () =>
+      set((state) => {
+        const document = withReconciledWallBounds(state.document);
+        if (document === state.document) return state;
+        return { document };
+      }),
 
     bumpRevision: () =>
       set((state) => ({
@@ -119,7 +209,12 @@ export const useWallSceneStore = create<WallSceneStore>()(
           const local = localById.get(remote.id);
           return (local ? { ...local, ...remote } : remote) as WallSceneObject;
         });
-        return { document: { ...state.document, objects: sortByZIndex(merged) } };
+        return {
+          document: withReconciledWallBounds({
+            ...state.document,
+            objects: sortByZIndex(merged),
+          }),
+        };
       }),
   })),
 );
