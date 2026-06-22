@@ -50,11 +50,15 @@ export function applyRemotePatchToNode(id: string, patch: WallObjectPatch): bool
 }
 
 export function applyRemoteObjectsToNodes(objects: WallSceneObject[]): void {
+  const manipulable = new Set(["photo", "sticker", "emoji", "tape"]);
+
   for (const obj of objects) {
-    if (obj.type !== "photo") continue;
+    if (!manipulable.has(obj.type)) continue;
     if (locallyDragging.has(obj.id)) continue;
+
     const node = nodes.get(obj.id);
     if (!node) continue;
+
     node.position({ x: obj.x, y: obj.y });
     node.rotation(obj.rotation);
     node.scaleX(obj.scaleX);

@@ -5,14 +5,8 @@ import Link from "next/link";
 import type { WallThemeId } from "@/types/wall";
 import type { EditorMode } from "./WallCanvas";
 import { WALL_THEMES } from "@/lib/wall-themes";
-import { EMOJI_STICKERS, SVG_STICKERS } from "@/lib/sticker-assets";
-
-const TAPE_COLORS = [
-  { id: "pink", color: "#f9a8c9", label: "핑크" },
-  { id: "mint", color: "#a8e6cf", label: "민트" },
-  { id: "yellow", color: "#fde68a", label: "옐로" },
-  { id: "lavender", color: "#c4b5fd", label: "라벤더" },
-];
+import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
+import StickerPicker from "./StickerPicker";
 
 interface ToolbarProps {
   isOpen: boolean;
@@ -29,8 +23,7 @@ interface ToolbarProps {
   onThemeChange: (id: WallThemeId) => void;
   onPhotoUpload: (file: File) => void;
   onAddTape: (color: string) => void;
-  onAddSticker: (emoji: string) => void;
-  onAddSvgSticker: (src: string) => void;
+  onAddSticker: (stickerId: string) => void;
   onShare: () => void;
   onExport: () => void;
   onInvite: () => void;
@@ -65,7 +58,6 @@ export default function Toolbar({
   onPhotoUpload,
   onAddTape,
   onAddSticker,
-  onAddSvgSticker,
   onShare,
   onExport,
   onInvite,
@@ -212,29 +204,7 @@ export default function Toolbar({
 
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted">스티커</h3>
-            <div className="flex flex-wrap gap-1.5">
-              {SVG_STICKERS.map((sticker) => (
-                <button
-                  key={sticker.id}
-                  type="button"
-                  title={sticker.name}
-                  onClick={() => onAddSvgSticker(sticker.svg)}
-                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-foreground/4 p-1.5 transition hover:bg-foreground/8 active:scale-95"
-                >
-                  <img src={sticker.src} alt={sticker.name} className="h-full w-full object-contain" />
-                </button>
-              ))}
-              {EMOJI_STICKERS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => onAddSticker(emoji)}
-                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-foreground/4 text-xl transition hover:bg-foreground/8 active:scale-95"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            <StickerPicker onSelect={onAddSticker} />
           </section>
 
           <section className="space-y-2">

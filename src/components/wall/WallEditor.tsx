@@ -1,5 +1,7 @@
 "use client";
 
+// Legacy Fabric editor — kept for reference. Personal edit uses PersonalWallKonvaEditor.
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import WallCanvas, { type WallCanvasHandle, type EditorMode } from "./WallCanvas";
 import Toolbar from "./Toolbar";
@@ -8,6 +10,7 @@ import { loadWall, saveWall, clearWall, getOrCreateWallId } from "@/lib/wall-sto
 import { debounce } from "@/lib/debounce";
 import { publishWall } from "@/lib/wall-share";
 import { shareWallImage } from "@/lib/wall-export";
+import { getStickerById } from "@/lib/stickers";
 import { createWallInvite } from "@/lib/wall-invite";
 import AuthButton from "@/components/auth/AuthButton";
 import FriendsPanel from "@/components/social/FriendsPanel";
@@ -304,8 +307,18 @@ export default function WallEditor({ sharedId }: WallEditorProps = {}) {
     canvasRef.current?.setDrawWidth(width);
   }, []);
 
-  const handleAddSvgSticker = useCallback((src: string) => {
-    canvasRef.current?.addSvgSticker(src);
+  const handleAddSticker = useCallback(async (stickerId: string) => {
+    const definition = getStickerById(stickerId);
+    if (!definition) return;
+
+    if (definition.kind === "emoji") {
+      canvasRef.current?.addSticker(definition.src);
+      return;
+    }
+
+    const response = await fetch(definition.src);
+    const svg = await response.text();
+    canvasRef.current?.addSvgSticker(svg);
   }, []);
 
   const handleShare = useCallback(async () => {
@@ -553,8 +566,7 @@ export default function WallEditor({ sharedId }: WallEditorProps = {}) {
         onThemeChange={handleThemeChange}
         onPhotoUpload={(file) => canvasRef.current?.addPhoto(file)}
         onAddTape={(color) => canvasRef.current?.addTape(color)}
-        onAddSticker={(emoji) => canvasRef.current?.addSticker(emoji)}
-        onAddSvgSticker={handleAddSvgSticker}
+        onAddSticker={handleAddSticker}
         onShare={handleShare}
         onExport={handleExport}
         onInvite={handleInvite}

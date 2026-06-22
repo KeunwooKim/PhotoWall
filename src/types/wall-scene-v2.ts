@@ -3,7 +3,7 @@ import type { WallBounds } from "@/lib/wall-bounds";
 /** Normalized wall scene (v2) — replaces Fabric canvas_json blob */
 export const WALL_SCENE_VERSION = 2 as const;
 
-export type WallSceneObjectType = "photo" | "emoji" | "svg" | "tape" | "path";
+export type WallSceneObjectType = "photo" | "emoji" | "svg" | "tape" | "path" | "sticker";
 
 export interface WallSceneMeta {
   version: typeof WALL_SCENE_VERSION;
@@ -46,6 +46,13 @@ export interface WallSceneSvg extends WallSceneObjectBase {
   height: number;
 }
 
+export interface WallSceneSticker extends WallSceneObjectBase {
+  type: "sticker";
+  stickerId: string;
+  width: number;
+  height: number;
+}
+
 export interface WallSceneTape extends WallSceneObjectBase {
   type: "tape";
   width: number;
@@ -64,6 +71,7 @@ export type WallSceneObject =
   | WallScenePhoto
   | WallSceneEmoji
   | WallSceneSvg
+  | WallSceneSticker
   | WallSceneTape
   | WallScenePath;
 

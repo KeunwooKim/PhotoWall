@@ -1,22 +1,31 @@
 "use client";
 
+import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Layer, Stage, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { WallThemeId } from "@/types/wall";
 import { getWallTheme } from "@/lib/wall-themes";
 import { computeFitScale } from "@/lib/wall-bounds";
+import { debounce } from "@/lib/debounce";
 import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
-import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
+import { fingerprintPersistableScene, fingerprintSceneObjects } from "@/lib/wall-scene/scene-fingerprint";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
 import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import { throttle } from "@/lib/throttle";
-import type { WallPresenceState, WallScenePhoto } from "@/types/wall-scene-v2";
+import {
+  WallPresenceState,
+  WallSceneObject,
+  WallScenePhoto,
+} from "@/types/wall-scene-v2";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import WallPhotoNode from "./WallPhotoNode";
+import WallStickerNode from "./WallStickerNode";
+import WallEmojiNode from "./WallEmojiNode";
+import WallTapeNode from "./WallTapeNode";
 import WallPresenceOverlay from "./WallPresenceOverlay";
 import PeerObjectHighlight from "./PeerObjectHighlight";
 
@@ -35,6 +44,7 @@ export interface KonvaWallStageProps {
   onPresenceManipulating?: (active: boolean) => void;
   onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onReady?: () => void;
+  wallStageRef?: RefObject<HTMLDivElement | null>;
 }
 
 export default function KonvaWallStage({
@@ -52,6 +62,7 @@ export default function KonvaWallStage({
   onPresenceManipulating,
   onObjectPatch,
   onReady,
+  wallStageRef,
 }: KonvaWallStageProps) {
   const theme = getWallTheme(themeId);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,6 +79,7 @@ export default function KonvaWallStage({
   const patchObject = useWallSceneStore((s) => s.patchObject);
 
   const [containerSize, setContainerSize] = useState({ width: 390, height: 600 });
+  const wallBounds = document.meta.wallBounds;
 
   const setManipulating = useCallback(
     (active: boolean, objectId?: string) => {
@@ -114,17 +126,43 @@ export default function KonvaWallStage({
   }, []);
 
   useEffect(() => {
+    const reconcile = debounce(() => {
+      useWallSceneStore.getState().reconcileWallBoundsFromObjects();
+    }, 100);
+
+    const unsub = useWallSceneStore.subscribe(
+      (s) => fingerprintSceneObjects(s.document.objects),
+      () => reconcile(),
+    );
+
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const fit = computeFitScale(
+      containerSize.width,
+      containerSize.height,
+      wallBounds.width,
+      wallBounds.height,
+    );
+    setViewportScale(fit);
+  }, [
+    containerSize.width,
+    containerSize.height,
+    wallBounds.width,
+    wallBounds.height,
+    setViewportScale,
+  ]);
+
+  useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     const ro = new ResizeObserver(([entry]) => {
-      const width = entry.contentRect.width;
-      const height = entry.contentRect.height;
-      setContainerSize({ width, height });
-
-      const bounds = useWallSceneStore.getState().document.meta.wallBounds;
-      const fit = computeFitScale(width, height, bounds.width, bounds.height);
-      setViewportScale(fit);
+      setContainerSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
     });
 
     ro.observe(el);
@@ -144,21 +182,22 @@ export default function KonvaWallStage({
     tr.getLayer()?.batchDraw();
   }, [selectedId]);
 
-  const wallBounds = document.meta.wallBounds;
-
-  const visiblePhotos = useMemo(() => {
-    const photos = document.objects.filter((o): o is WallScenePhoto => o.type === "photo");
-    return cullObjectsForViewport(photos, {
+  const visibleObjects = useMemo(() => {
+    const viewport = {
       x: 0,
       y: 0,
       width: wallBounds.width,
       height: wallBounds.height,
-    }) as WallScenePhoto[];
+    };
+    return cullObjectsForViewport(
+      [...document.objects].sort((a, b) => a.zIndex - b.zIndex),
+      viewport,
+    );
   }, [document.objects, wallBounds.height, wallBounds.width]);
 
-  const peerHighlightsByObjectId = useMemo(
-    () => peerSelectionsByObjectId(peers, currentUserId),
-    [peers, currentUserId],
+  const visiblePhotos = useMemo(
+    () => visibleObjects.filter((object): object is WallScenePhoto => object.type === "photo"),
+    [visibleObjects],
   );
 
   const notifyPresenceSelection = useCallback(
@@ -166,6 +205,89 @@ export default function KonvaWallStage({
       onPresenceSelection?.(objectId);
     },
     [onPresenceSelection],
+  );
+
+  const renderSceneObject = useCallback(
+    (object: WallSceneObject) => {
+      const select = () => {
+        setSelectedId(object.id);
+        notifyPresenceSelection(object.id);
+      };
+
+      if (object.type === "photo") {
+        return (
+          <WallPhotoNode
+            key={object.id}
+            object={object}
+            readOnly={readOnly}
+            resolvePhotoSrc={resolvePhotoSrc}
+            onSelect={select}
+            onInteractionStart={() => notifyPresenceSelection(object.id)}
+            onObjectPatch={onObjectPatch}
+            onManipulationChange={setManipulating}
+            registerNode={registerNode}
+          />
+        );
+      }
+
+      if (object.type === "sticker") {
+        return (
+          <WallStickerNode
+            key={object.id}
+            object={object}
+            readOnly={readOnly}
+            onSelect={select}
+            onInteractionStart={() => notifyPresenceSelection(object.id)}
+            onManipulationChange={setManipulating}
+            registerNode={registerNode}
+          />
+        );
+      }
+
+      if (object.type === "emoji") {
+        return (
+          <WallEmojiNode
+            key={object.id}
+            object={object}
+            readOnly={readOnly}
+            onSelect={select}
+            onInteractionStart={() => notifyPresenceSelection(object.id)}
+            onManipulationChange={setManipulating}
+            registerNode={registerNode}
+          />
+        );
+      }
+
+      if (object.type === "tape") {
+        return (
+          <WallTapeNode
+            key={object.id}
+            object={object}
+            readOnly={readOnly}
+            onSelect={select}
+            onInteractionStart={() => notifyPresenceSelection(object.id)}
+            onManipulationChange={setManipulating}
+            registerNode={registerNode}
+          />
+        );
+      }
+
+      return null;
+    },
+    [
+      readOnly,
+      resolvePhotoSrc,
+      onObjectPatch,
+      setManipulating,
+      registerNode,
+      setSelectedId,
+      notifyPresenceSelection,
+    ],
+  );
+
+  const peerHighlightsByObjectId = useMemo(
+    () => peerSelectionsByObjectId(peers, currentUserId),
+    [peers, currentUserId],
   );
 
   const handleTransformEnd = useCallback(
@@ -181,6 +303,7 @@ export default function KonvaWallStage({
         rotation: node.rotation(),
       };
       patchObject(id, patch);
+      useWallSceneStore.getState().recordHistory();
       broadcastWallPatch(id, patch);
     },
     [patchObject],
@@ -217,6 +340,7 @@ export default function KonvaWallStage({
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-neutral-200">
       <div
+        ref={wallStageRef}
         className="absolute left-1/2 top-1/2 origin-center shadow-lg ring-1 ring-black/10"
         style={{
           width: wallBounds.width,
@@ -246,22 +370,7 @@ export default function KonvaWallStage({
           onTouchMove={(e) => reportPointer(e.target.getStage())}
         >
           <Layer listening={!readOnly}>
-            {visiblePhotos.map((photo) => (
-              <WallPhotoNode
-                key={photo.id}
-                object={photo}
-                readOnly={readOnly}
-                resolvePhotoSrc={resolvePhotoSrc}
-                onSelect={() => {
-                  setSelectedId(photo.id);
-                  notifyPresenceSelection(photo.id);
-                }}
-                onInteractionStart={() => notifyPresenceSelection(photo.id)}
-                onObjectPatch={onObjectPatch}
-                onManipulationChange={setManipulating}
-                registerNode={registerNode}
-              />
-            ))}
+            {visibleObjects.map((object) => renderSceneObject(object))}
             {!readOnly && (
               <Transformer
                 ref={transformerRef}
