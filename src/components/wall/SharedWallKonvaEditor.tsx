@@ -73,7 +73,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     user?.email?.split("@")[0] ??
     "친구";
 
-  const { peers, isConnected, sessionId, updatePresence, broadcastObjectPatch, broadcastClear } =
+  const { peers, isConnected, connectError, sessionId, updatePresence, broadcastObjectPatch, broadcastClear } =
     useWallRealtime({
     wallId: sharedId,
     userId: user?.id ?? "",
@@ -396,9 +396,15 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         </button>
         <p className="min-w-0 truncate text-sm font-semibold text-rose-800">
           {sharedWallTitle ?? "공동 벽"}
-          {isConnected && (
+          {isConnected ? (
             <span className="ml-2 text-[10px] font-normal text-rose-600">실시간</span>
-          )}
+          ) : connectError ? (
+            <span className="ml-2 text-[10px] font-normal text-red-600" title={connectError}>
+              연결 실패
+            </span>
+          ) : isReady ? (
+            <span className="ml-2 text-[10px] font-normal text-rose-500">연결 중…</span>
+          ) : null}
         </p>
         <AuthButton />
       </header>

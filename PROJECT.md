@@ -635,16 +635,15 @@ erDiagram
 ### 현재 포커스 (2026-06-16)
 
 ```
-① Konva 펜·레이어  →  ② SQL·프로덕션 E2E  →  ③ QR 실부스  →  ④ 스티커 콘텐츠 확장
+① 2-browser 실시간 QA  →  ② QR 실부스  →  ③ 스티커 콘텐츠 확장
 ```
 
 | 우선순위 | 작업 | 상태 |
 |---|---|---|
 | **P0** | Konva 펜 (`WallScenePath` + Line) + 레이어 앞/뒤 | ✅ |
-| **P1** | Supabase SQL 실행 확인 (`storage-private`, `walls-select-rls`, `admin-*`) | 🔄 로컬만 / Dashboard 확인 |
-| **P1** | Vercel `SUPABASE_SERVICE_ROLE_KEY` + signed-photos 프로덕션 200 | 🔄 |
-| **P2** | QR 실부스 E2E (인생네컷·포토이즘) | ⬜ |
-| **P2** | 2-browser 실시간 QA 체크리스트 (드래그·clear·재연결) | 🔄 |
+| **P1** | Supabase SQL 실행 확인 (`storage-private`, `walls-select-rls`, `admin-*`) | ✅ |
+| **P1** | Vercel `SUPABASE_SERVICE_ROLE_KEY` + `ADMIN_USER_IDS` + signed-photos 200 | ✅ |
+| **P2** | 2-browser 실시간 QA 체크리스트 (드래그·clear·재연결) | 🔄 진행 중 |
 | **P3** | Admin 2단계 (공지 배너·import 로그·기능 플래그) | ⬜ |
 | **P3** | 3단계 수익화 | ⬜ |
 
@@ -665,15 +664,15 @@ erDiagram
 - [x] Storage private + signed URL API (`/api/walls/[id]/signed-photos`)
 - [x] `wall-photo://` ref 저장·로드·resolve
 - [x] Konva 에디터·뷰어 연동 (Fabric 제거)
-- [ ] `storage-private-migration.sql` 프로덕션 적용 확인
-- [ ] `walls-select-rls-migration.sql` 적용 확인
-- [ ] 공개 URL → 404, 앱 signed URL → 200 (프로덕션 E2E)
+- [x] `storage-private-migration.sql` 프로덕션 적용 확인
+- [x] `walls-select-rls-migration.sql` 적용 확인
+- [x] 공개 Storage URL 차단 + signed-photos API 200
 
 ### 관리자 — 코드 ✅
 
 - [x] `/admin` 가드·대시보드·문의·벽·유저
-- [ ] `admin-inquiries-migration.sql` · `admin-rls-migration.sql` Dashboard 실행
-- [ ] `app_admins` 또는 `ADMIN_USER_IDS` 프로덕션 등록 확인
+- [x] `admin-inquiries-migration.sql` · `admin-rls-migration.sql` Dashboard 실행
+- [x] `app_admins` · `ADMIN_USER_IDS` 프로덕션 등록
 
 ### QR — 남은 작업
 
