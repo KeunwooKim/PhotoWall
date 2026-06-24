@@ -735,6 +735,7 @@ export default function KonvaWallStage({
                   rotation={layout.rotation}
                   scaleX={layout.scaleX}
                   scaleY={layout.scaleY}
+                  offsetY={layout.offsetY ?? 0}
                 >
                   <PeerObjectHighlight
                     peers={highlights}
