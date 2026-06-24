@@ -54,7 +54,7 @@ export function applyRemotePatchToNode(id: string, patch: WallObjectPatch): bool
 }
 
 export function applyRemoteObjectsToNodes(objects: WallSceneObject[]): void {
-  const manipulable = new Set(["photo", "sticker", "emoji", "tape"]);
+  const manipulable = new Set(["photo", "sticker", "emoji", "tape", "path"]);
 
   for (const obj of objects) {
     if (!manipulable.has(obj.type)) continue;

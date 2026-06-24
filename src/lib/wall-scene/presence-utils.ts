@@ -1,4 +1,9 @@
 import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
+import {
+  HIGHLIGHTER_STROKE_WIDTH,
+  isStraightHighlighterPath,
+  linePointsToHighlighterRect,
+} from "@/lib/wall-scene/highlighter";
 
 export interface PeerHighlightLayout {
   x: number;
@@ -8,6 +13,8 @@ export interface PeerHighlightLayout {
   scaleY: number;
   width: number;
   height: number;
+  /** Centered stroke highlight (form path / highlighter) */
+  offsetY?: number;
 }
 
 /** Local box for peer selection frames (photo, sticker, tape, emoji). */
@@ -31,6 +38,23 @@ export function peerHighlightLayout(object: WallSceneObject): PeerHighlightLayou
   if (object.type === "emoji") {
     const size = object.fontSize;
     return { ...base, width: size, height: size };
+  }
+
+  if (object.type === "path" && isStraightHighlighterPath(object.points)) {
+    const strokeWidth = object.strokeWidth || HIGHLIGHTER_STROKE_WIDTH;
+    const line = linePointsToHighlighterRect(object.points, strokeWidth + 4);
+    if (!line) return null;
+
+    return {
+      x: object.x + line.x,
+      y: object.y + line.y,
+      rotation: line.rotation,
+      scaleX: object.scaleX,
+      scaleY: object.scaleY,
+      width: line.width,
+      height: line.height,
+      offsetY: line.height / 2,
+    };
   }
 
   return null;
