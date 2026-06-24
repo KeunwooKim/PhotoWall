@@ -68,15 +68,19 @@ export async function getRouteUser(
   supabase: SupabaseClient,
   request: NextRequest,
 ): Promise<User | null> {
-  const bearerToken = getBearerToken(request);
-  if (bearerToken) {
-    const { data: { user }, error } = await supabase.auth.getUser(bearerToken);
-    if (!error && user) return user;
+  try {
+    const bearerToken = getBearerToken(request);
+    if (bearerToken) {
+      const { data: { user }, error } = await supabase.auth.getUser(bearerToken);
+      if (!error && user) return user;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    return user;
+  } catch {
+    return null;
   }
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  return user;
 }

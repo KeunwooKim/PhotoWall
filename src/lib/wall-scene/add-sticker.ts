@@ -43,7 +43,7 @@ export function addStickerToWallScene(
 
   useWallSceneStore.getState().recordHistory();
   useWallSceneStore.getState().upsertObject(sticker);
-  useWallSceneStore.getState().setSelectedId(sticker.id);
+  useWallSceneStore.getState().setSelectedIds([sticker.id]);
   useWallSceneStore.getState().bumpRevision();
   return true;
 }

@@ -25,6 +25,11 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  try {
+    await supabase.auth.getUser();
+  } catch {
+    // Supabase unreachable — keep existing session cookies and continue.
+  }
+
   return supabaseResponse;
 }

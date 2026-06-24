@@ -1,4 +1,55 @@
-import type { WallPresenceState } from "@/types/wall-scene-v2";
+import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
+
+export interface PeerHighlightLayout {
+  x: number;
+  y: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+  width: number;
+  height: number;
+}
+
+/** Local box for peer selection frames (photo, sticker, tape, emoji). */
+export function peerHighlightLayout(object: WallSceneObject): PeerHighlightLayout | null {
+  const base = {
+    x: object.x,
+    y: object.y,
+    rotation: object.rotation,
+    scaleX: object.scaleX,
+    scaleY: object.scaleY,
+  };
+
+  if (
+    object.type === "photo" ||
+    object.type === "sticker" ||
+    object.type === "tape"
+  ) {
+    return { ...base, width: object.width, height: object.height };
+  }
+
+  if (object.type === "emoji") {
+    const size = object.fontSize;
+    return { ...base, width: size, height: size };
+  }
+
+  return null;
+}
+
+/** Resolved selection list from a presence snapshot (multi-select aware). */
+export function peerSelectedObjectIds(peer: WallPresenceState): string[] {
+  if (peer.selectedObjectIds?.length) return peer.selectedObjectIds;
+  if (peer.selectedObjectId) return [peer.selectedObjectId];
+  return [];
+}
+
+function hasMeaningfulCursor(peer: WallPresenceState): boolean {
+  return (
+    Number.isFinite(peer.cursorX) &&
+    Number.isFinite(peer.cursorY) &&
+    !(peer.cursorX === 0 && peer.cursorY === 0)
+  );
+}
 
 /** Prefer the newest presence snapshot — do not resurrect cleared selection fields. */
 export function mergePeerPresence(
@@ -11,10 +62,17 @@ export function mergePeerPresence(
   const incomingAt = incoming.updatedAt ?? 0;
 
   if (incomingAt >= existingAt) {
+    const keepExistingCursor =
+      !hasMeaningfulCursor(incoming) && hasMeaningfulCursor(existing);
+    const incomingIds = peerSelectedObjectIds(incoming);
+
     return {
       ...existing,
       ...incoming,
-      selectedObjectId: incoming.selectedObjectId,
+      cursorX: keepExistingCursor ? existing.cursorX : incoming.cursorX,
+      cursorY: keepExistingCursor ? existing.cursorY : incoming.cursorY,
+      selectedObjectIds: incomingIds.length > 0 ? incomingIds : undefined,
+      selectedObjectId: incomingIds.at(-1),
       isManipulating: incoming.isManipulating,
       updatedAt: incomingAt,
     };
@@ -47,11 +105,12 @@ export function peerSelectionsByObjectId(
 
   for (const peer of dedupePresencePeers(peers)) {
     if (currentUserId && peer.userId === currentUserId) continue;
-    if (!peer.selectedObjectId) continue;
 
-    const list = map.get(peer.selectedObjectId) ?? [];
-    list.push(peer);
-    map.set(peer.selectedObjectId, list);
+    for (const objectId of peerSelectedObjectIds(peer)) {
+      const list = map.get(objectId) ?? [];
+      list.push(peer);
+      map.set(objectId, list);
+    }
   }
 
   return map;

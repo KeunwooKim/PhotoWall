@@ -3,20 +3,26 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Group, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import { loadHtmlImage } from "@/lib/storage/load-html-image";
-import { throttle } from "@/lib/throttle";
-import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
+import { getCachedHtmlImage, loadHtmlImage } from "@/lib/storage/load-html-image";
+import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { applyDragSnapToNode, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
+import {
+  applyGroupDrag,
+  beginGroupDrag,
+  commitGroupDrag,
+} from "@/lib/wall-scene/group-drag";
 import { useResolvedImageSrc } from "./useResolvedImageSrc";
+import { useNodeContextTrigger } from "./useNodeContextTrigger";
 
 interface WallPhotoNodeProps {
   object: WallScenePhoto;
   readOnly?: boolean;
   resolvePhotoSrc?: (src: string) => Promise<string>;
-  onSelect: () => void;
+  onSelect: (additive?: boolean) => void;
   onInteractionStart?: () => void;
   onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onManipulationChange?: (active: boolean, objectId: string) => void;
@@ -40,7 +46,10 @@ export default function WallPhotoNode({
   registerNode,
 }: WallPhotoNodeProps) {
   const displaySrc = useResolvedImageSrc(object.src, resolvePhotoSrc);
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [image, setImage] = useState<HTMLImageElement | null>(() => {
+    if (!displaySrc) return null;
+    return getCachedHtmlImage(displaySrc);
+  });
   const imageCacheRef = useRef<HTMLImageElement | null>(null);
   const groupRef = useRef<Konva.Group | null>(null);
   const isDraggingRef = useRef(false);
@@ -55,61 +64,54 @@ export default function WallPhotoNode({
     [objectId, registerNode],
   );
 
-  const applyPosition = useMemo(
-    () =>
-      throttle((id: string, x: number, y: number) => {
-        const patch = { x, y };
-        useWallSceneStore.getState().patchObject(id, patch);
-        broadcastWallPatch(id, patch);
-      }, 50),
-    [],
-  );
+  const broadcastLivePosition = useMemo(() => createLivePatchBroadcaster(), []);
 
-  const commitDragPosition = useCallback(
-    (node: Konva.Node) => {
-      applyPosition.flush();
-      const patch = {
-        x: node.x(),
-        y: node.y(),
-        rotation: node.rotation(),
-        scaleX: node.scaleX(),
-        scaleY: node.scaleY(),
-      };
-      useWallSceneStore.getState().patchObject(objectId, patch);
-      useWallSceneStore.getState().recordHistory();
-      broadcastWallPatch(objectId, patch);
+  const beginInteraction = useCallback(
+    (additive = false) => {
+      onSelect(additive);
+      onInteractionStart?.();
     },
-    [applyPosition, objectId],
+    [onSelect, onInteractionStart],
   );
 
-  const beginInteraction = useCallback(() => {
-    onSelect();
-    onInteractionStart?.();
-  }, [onSelect, onInteractionStart]);
+  const contextEnabled = !readOnly;
+  const {
+    handlePointerDown: handleContextPointerDown,
+    handlePointerMove: handleContextPointerMove,
+    handlePointerUp: handleContextPointerUp,
+    handleContextMenu,
+    cancelLongPress,
+  } = useNodeContextTrigger(objectId, contextEnabled);
 
   const handleDragStart = useCallback(() => {
+    cancelLongPress();
     isDraggingRef.current = true;
+    beginGroupDrag(objectId);
     setWallNodeDragging(objectId, true);
-    beginInteraction();
+    onInteractionStart?.();
     onManipulationChange?.(true, objectId);
-  }, [beginInteraction, onManipulationChange, objectId]);
+  }, [onInteractionStart, onManipulationChange, objectId, cancelLongPress]);
 
   const handleDragMove = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
       const node = e.target;
-      applyPosition(objectId, node.x(), node.y());
+      applyDragSnapToNode(node, objectId);
+      applyGroupDrag(node);
+      broadcastLivePosition(objectId, { x: node.x(), y: node.y() });
     },
-    [applyPosition, objectId],
+    [broadcastLivePosition, objectId],
   );
 
   const handleDragEnd = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
-      commitDragPosition(e.target);
+      clearDragSnapGuides();
+      broadcastLivePosition.flush();
+      commitGroupDrag(e.target);
       isDraggingRef.current = false;
       setWallNodeDragging(objectId, false);
       onManipulationChange?.(false, objectId);
     },
-    [commitDragPosition, onManipulationChange, objectId],
+    [broadcastLivePosition, onManipulationChange, objectId],
   );
 
   useLayoutEffect(() => {
@@ -122,6 +124,13 @@ export default function WallPhotoNode({
   useEffect(() => {
     if (!displaySrc) {
       setImage(null);
+      return;
+    }
+
+    const cached = getCachedHtmlImage(displaySrc);
+    if (cached) {
+      imageCacheRef.current = cached;
+      setImage(cached);
       return;
     }
 
@@ -150,8 +159,22 @@ export default function WallPhotoNode({
       id={objectId}
       opacity={object.opacity ?? 1}
       draggable={!readOnly}
-      onClick={beginInteraction}
-      onTap={beginInteraction}
+      listening
+      onContextMenu={handleContextMenu}
+      onMouseDown={(e) => {
+        e.cancelBubble = true;
+        handleContextPointerDown(e);
+        beginInteraction(e.evt.shiftKey);
+      }}
+      onTouchStart={(e) => {
+        e.cancelBubble = true;
+        handleContextPointerDown(e);
+        beginInteraction(false);
+      }}
+      onMouseMove={handleContextPointerMove}
+      onTouchMove={handleContextPointerMove}
+      onMouseUp={handleContextPointerUp}
+      onTouchEnd={handleContextPointerUp}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}

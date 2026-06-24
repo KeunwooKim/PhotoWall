@@ -6,6 +6,10 @@ const nodes = new Map<string, Konva.Group>();
 const locallyDragging = new Set<string>();
 const pendingPatches = new Map<string, WallObjectPatch>();
 
+export function getWallNode(id: string): Konva.Group | undefined {
+  return nodes.get(id);
+}
+
 export function registerWallNode(id: string, node: Konva.Group | null): void {
   if (node) {
     nodes.set(id, node);

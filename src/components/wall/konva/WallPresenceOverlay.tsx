@@ -38,7 +38,7 @@ export default function WallPresenceOverlay({
         return (
           <div
             key={peer.sessionId ?? peer.userId}
-            className="absolute flex items-center gap-1 transition-transform duration-75"
+            className="absolute flex items-center gap-1"
             style={{
               left,
               top,

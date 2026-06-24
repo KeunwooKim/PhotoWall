@@ -39,6 +39,6 @@ export function addTapeToWallScene(
 
   useWallSceneStore.getState().recordHistory();
   useWallSceneStore.getState().upsertObject(tape);
-  useWallSceneStore.getState().setSelectedId(tape.id);
+  useWallSceneStore.getState().setSelectedIds([tape.id]);
   useWallSceneStore.getState().bumpRevision();
 }

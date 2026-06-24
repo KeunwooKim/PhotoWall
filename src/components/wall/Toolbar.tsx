@@ -18,6 +18,7 @@ interface ToolbarProps {
   highlighterMaxLength: number;
   highlighterLengthPresets: readonly number[];
   hasSelection: boolean;
+  selectionCount?: number;
   canUndo: boolean;
   canRedo: boolean;
   onThemeChange: (id: WallThemeId) => void;
@@ -35,8 +36,33 @@ interface ToolbarProps {
   onHighlighterMaxLengthChange: (length: number) => void;
   onUndo: () => void;
   onRedo: () => void;
+  onSelectAll: () => void;
   onBringForward: () => void;
   onSendBackward: () => void;
+  onBringToFront: () => void;
+  onSendToBack: () => void;
+  onAlignLeft: () => void;
+  onAlignCenterH: () => void;
+  onAlignRight: () => void;
+  onAlignTop: () => void;
+  onAlignMiddle: () => void;
+  onAlignBottom: () => void;
+  onCenterOnWall: () => void;
+  onDistributeHorizontal: () => void;
+  onDistributeVertical: () => void;
+  onFlipHorizontal: () => void;
+  onFlipVertical: () => void;
+  onDuplicate: () => void;
+  onGroup: () => void;
+  onUngroup: () => void;
+  onToggleGrid: () => void;
+  onToggleSnapToGrid: () => void;
+  canGroupSelection: boolean;
+  canUngroupSelection: boolean;
+  showGrid: boolean;
+  snapToGrid: boolean;
+  canAlignSelection: boolean;
+  canDistributeSelection: boolean;
   onDelete: () => void;
   onSave: () => void;
   onClear: () => void;
@@ -52,6 +78,7 @@ export default function Toolbar({
   highlighterMaxLength,
   highlighterLengthPresets,
   hasSelection,
+  selectionCount = 0,
   canUndo,
   canRedo,
   onThemeChange,
@@ -69,8 +96,33 @@ export default function Toolbar({
   onHighlighterMaxLengthChange,
   onUndo,
   onRedo,
+  onSelectAll,
   onBringForward,
   onSendBackward,
+  onBringToFront,
+  onSendToBack,
+  onAlignLeft,
+  onAlignCenterH,
+  onAlignRight,
+  onAlignTop,
+  onAlignMiddle,
+  onAlignBottom,
+  onCenterOnWall,
+  onDistributeHorizontal,
+  onDistributeVertical,
+  onFlipHorizontal,
+  onFlipVertical,
+  onDuplicate,
+  onGroup,
+  onUngroup,
+  onToggleGrid,
+  onToggleSnapToGrid,
+  canGroupSelection,
+  canUngroupSelection,
+  showGrid,
+  snapToGrid,
+  canAlignSelection,
+  canDistributeSelection,
   onDelete,
   onSave,
   onClear,
@@ -296,11 +348,102 @@ export default function Toolbar({
             )}
 
             {hasSelection && mode === "select" && (
+              <div className="space-y-3">
+                {selectionCount > 1 && (
+                  <p className="text-[11px] text-muted">{selectionCount}개 선택됨</p>
+                )}
+
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted">정렬</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <AlignButton
+                      label="왼쪽"
+                      onClick={onAlignLeft}
+                      disabled={!canAlignSelection}
+                    />
+                    <AlignButton
+                      label="가로 중앙"
+                      onClick={onAlignCenterH}
+                      disabled={!canAlignSelection}
+                    />
+                    <AlignButton
+                      label="오른쪽"
+                      onClick={onAlignRight}
+                      disabled={!canAlignSelection}
+                    />
+                    <AlignButton
+                      label="위"
+                      onClick={onAlignTop}
+                      disabled={!canAlignSelection}
+                    />
+                    <AlignButton
+                      label="세로 중앙"
+                      onClick={onAlignMiddle}
+                      disabled={!canAlignSelection}
+                    />
+                    <AlignButton
+                      label="아래"
+                      onClick={onAlignBottom}
+                      disabled={!canAlignSelection}
+                    />
+                  </div>
+                  <ToolButton onClick={onCenterOnWall}>벽 가운데</ToolButton>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <AlignButton
+                      label="가로 균등"
+                      onClick={onDistributeHorizontal}
+                      disabled={!canDistributeSelection}
+                    />
+                    <AlignButton
+                      label="세로 균등"
+                      onClick={onDistributeVertical}
+                      disabled={!canDistributeSelection}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted">뒤집기</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <AlignButton label="좌우" onClick={onFlipHorizontal} />
+                    <AlignButton label="상하" onClick={onFlipVertical} />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <ToolButton onClick={onSelectAll}>전체 선택</ToolButton>
+                  <ToolButton onClick={onGroup} disabled={!canGroupSelection}>
+                    그룹
+                  </ToolButton>
+                  <ToolButton onClick={onUngroup} disabled={!canUngroupSelection}>
+                    그룹 해제
+                  </ToolButton>
+                  <ToolButton onClick={onDuplicate}>복제</ToolButton>
+                  <ToolButton onClick={onBringToFront}>맨 앞으로</ToolButton>
+                  <ToolButton onClick={onBringForward}>앞으로</ToolButton>
+                  <ToolButton onClick={onSendBackward}>뒤로</ToolButton>
+                  <ToolButton onClick={onSendToBack}>맨 뒤로</ToolButton>
+                  <ToolButton onClick={onDelete} variant="danger">
+                    삭제
+                  </ToolButton>
+                  <ToolButton onClick={onToggleGrid} active={showGrid}>
+                    격자 {showGrid ? "숨기기" : "보기"}
+                  </ToolButton>
+                  <ToolButton onClick={onToggleSnapToGrid} active={snapToGrid}>
+                    격자 맞춤
+                  </ToolButton>
+                </div>
+              </div>
+            )}
+
+            {mode === "select" && !hasSelection && (
               <div className="flex flex-wrap gap-2">
-                <ToolButton onClick={onBringForward}>앞으로</ToolButton>
-                <ToolButton onClick={onSendBackward}>뒤로</ToolButton>
-                <ToolButton onClick={onDelete} variant="danger">
-                  삭제
+                <ToolButton onClick={onSelectAll}>전체 선택</ToolButton>
+                <ToolButton onClick={onToggleGrid} active={showGrid}>
+                  격자 {showGrid ? "숨기기" : "보기"}
+                </ToolButton>
+                <ToolButton onClick={onToggleSnapToGrid} active={snapToGrid} disabled={!showGrid && !snapToGrid}>
+                  격자 맞춤
                 </ToolButton>
               </div>
             )}
@@ -325,6 +468,31 @@ export default function Toolbar({
         </div>
       </aside>
     </>
+  );
+}
+
+function AlignButton({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg px-2 py-2 text-[11px] font-medium transition active:scale-95 ${
+        disabled
+          ? "cursor-not-allowed bg-foreground/4 text-muted opacity-40"
+          : "bg-foreground/4 text-foreground hover:bg-foreground/8"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

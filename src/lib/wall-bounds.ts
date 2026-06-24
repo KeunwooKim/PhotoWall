@@ -159,7 +159,7 @@ function rotatedRectExtents(
   return { minX, minY, maxX, maxY };
 }
 
-function sceneObjectExtents(obj: WallSceneObject): {
+export function getSceneObjectExtents(obj: WallSceneObject): {
   minX: number;
   minY: number;
   maxX: number;
@@ -204,13 +204,20 @@ function sceneObjectExtents(obj: WallSceneObject): {
   return { minX: obj.x, minY: obj.y, maxX: obj.x + 1, maxY: obj.y + 1 };
 }
 
+export function boundsIntersect(
+  a: { minX: number; minY: number; maxX: number; maxY: number },
+  b: { minX: number; minY: number; maxX: number; maxY: number },
+): boolean {
+  return !(a.maxX < b.minX || a.minX > b.maxX || a.maxY < b.minY || a.minY > b.maxY);
+}
+
 /** Axis-aligned bounds of all v2 scene objects (Konva shared wall). */
 export function getSceneObjectsBounds(objects: WallSceneObject[]): ObjectBounds | null {
   if (objects.length === 0) return null;
 
   let bounds: ObjectBounds | null = null;
   for (const obj of objects) {
-    const ext = sceneObjectExtents(obj);
+    const ext = getSceneObjectExtents(obj);
     bounds = mergeExtents(bounds, ext.minX, ext.minY, ext.maxX, ext.maxY);
   }
 
