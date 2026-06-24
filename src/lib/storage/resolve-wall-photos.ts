@@ -12,6 +12,7 @@ import {
   wallPhotoRefToPath,
 } from "@/lib/storage/wall-photos";
 import { packCanvasJson, unpackCanvasJson } from "@/lib/wall-canvas-json";
+import { preloadHtmlImages, loadHtmlImage } from "@/lib/storage/load-html-image";
 import type { WallSceneDocument } from "@/types/wall-scene-v2";
 
 async function fetchSignedUrls(
@@ -30,6 +31,59 @@ async function fetchSignedUrls(
   return body.signedUrls ?? {};
 }
 
+type SignedUrlBatch = {
+  paths: Set<string>;
+  waiters: Map<string, Array<(url: string | undefined) => void>>;
+  scheduled: boolean;
+};
+
+const signedUrlBatches = new Map<string, SignedUrlBatch>();
+
+async function flushSignedUrlBatch(wallId: string): Promise<void> {
+  const batch = signedUrlBatches.get(wallId);
+  if (!batch) return;
+
+  signedUrlBatches.delete(wallId);
+  const paths = [...batch.paths];
+  const waiters = batch.waiters;
+
+  let signedUrls: Record<string, string> = {};
+  try {
+    signedUrls = await fetchSignedUrls(wallId, paths);
+  } catch {
+    signedUrls = {};
+  }
+
+  for (const path of paths) {
+    const signed = signedUrls[path];
+    for (const resolve of waiters.get(path) ?? []) {
+      resolve(signed);
+    }
+  }
+}
+
+function queueSignedUrl(wallId: string, path: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let batch = signedUrlBatches.get(wallId);
+    if (!batch) {
+      batch = { paths: new Set(), waiters: new Map(), scheduled: false };
+      signedUrlBatches.set(wallId, batch);
+    }
+
+    batch.paths.add(path);
+    const list = batch.waiters.get(path) ?? [];
+    list.push(resolve);
+    batch.waiters.set(path, list);
+
+    if (!batch.scheduled) {
+      batch.scheduled = true;
+      setTimeout(() => {
+        void flushSignedUrlBatch(wallId);
+      }, 32);
+    }
+  });
+}
+
 export async function resolveWallPhotoSrc(src: string, wallId: string): Promise<string> {
   if (!isWallPhotoRef(src)) return src;
 
@@ -39,10 +93,10 @@ export async function resolveWallPhotoSrc(src: string, wallId: string): Promise<
   const path = wallPhotoRefToPath(src);
   if (!path) return src;
 
-  const signedUrls = await fetchSignedUrls(wallId, [path]);
-  const signed = signedUrls[path];
+  const signed = await queueSignedUrl(wallId, path);
   if (signed) {
     cachePhotoDisplayUrl(src, signed);
+    void loadHtmlImage(signed);
     return signed;
   }
 
@@ -62,12 +116,16 @@ export async function prefetchWallScenePhotoUrls(
 
   const signedUrls = await fetchSignedUrls(wallId, paths);
 
+  const displayUrls: string[] = [];
   for (const ref of refs) {
     const path = wallPhotoRefToPath(ref);
     if (path && signedUrls[path]) {
       cachePhotoDisplayUrl(ref, signedUrls[path]);
+      displayUrls.push(signedUrls[path]);
     }
   }
+
+  await preloadHtmlImages(displayUrls);
 }
 
 export async function resolveCanvasPhotoUrls(

@@ -13,7 +13,12 @@ export function fingerprintSceneObjects(objects: WallSceneObject[]): string {
 export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
   return JSON.stringify(
     sortForFingerprint(objects).map((object) => {
-      const base = { id: object.id, type: object.type, zIndex: object.zIndex };
+      const base = {
+        id: object.id,
+        type: object.type,
+        zIndex: object.zIndex,
+        groupId: object.groupId ?? null,
+      };
       if (object.type === "photo") return { ...base, src: object.src };
       if (object.type === "sticker") return { ...base, stickerId: object.stickerId };
       if (object.type === "emoji") return { ...base, text: object.text };

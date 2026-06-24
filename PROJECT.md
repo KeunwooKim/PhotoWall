@@ -47,6 +47,7 @@
 |---|---|---|
 | 이미지 업로드 및 자유 배치 | 파일 선택 업로드 + 캔버스 내 드래그 이동 | ✅ 완료 |
 | 이미지 변형 | 크기 조절, 회전(각도), 레이어 순서(z-index) 변경 | ✅ 완료 |
+| PPT형 선택·정렬 | 다중 선택, 전체 선택, 정렬 6종, 벽 가운데, 복제, 화살표 미세 이동, 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드 | ✅ Phase A·B·C 완료 |
 | 벽지 테마 선택 | 화이트, 적벽돌, 코르크보드, 우드패널, 낡은 석고, 포토부스 커튼, 파스텔, 콘크리트 (8종) | ✅ 완료 |
 | 기본 꾸미기 에셋 | 마스킹 테이프 4종, 이모지 스티커 6종, SVG 스티커 6종, 펜(색상 6·굵기 3) | ✅ 완료 |
 | 에디터 UI | 전체 화면 흰 캔버스 + 좌상단 메뉴 → 왼쪽 슬라이드 팝업 | ✅ 완료 |
@@ -551,7 +552,7 @@ erDiagram
 
 ## 7. 진행 현황
 
-> **마지막 정리:** 2026-06-16 — 코드베이스 기준
+> **마지막 정리:** 2026-06-16 — 코드베이스 기준 (Konva Phase A·B, Presence 다중 선택 반영)
 
 ### 한눈에 보기
 
@@ -560,11 +561,12 @@ erDiagram
 | 개인·공동·뷰어 (Konva) | ✅ 완료 | `/wall/edit`, `/shared/[id]`, `/wall/[id]` |
 | 스티커 카탈로그 | ✅ 1차 | basic·christmas·valentine SVG 팩 |
 | 소셜·친구·프라이버시 | ✅ 1차 완료 | 좋아요·댓글·방명록·초대 |
-| 공동 벽 실시간 | ✅ 1차 | Broadcast + Presence — 양방향 sync·clear |
-| 보안 2차 (Storage) | 🔄 코드 완료 | private + signed URL — SQL·프로덕션 E2E |
+| 공동 벽 실시간 | ✅ 1차 | Broadcast + Presence — 다중 선택 테두리·live patch |
+| PPT형 에디터 도구 | ✅ Phase A·B·C | 다중 선택·정렬·복제·균등 배치·뒤집기·클립보드·스냅 가이드 |
+| 보안 2차 (Storage) | ✅ 완료 | private + signed URL — SQL·프로덕션 검증 완료 |
 | 관리자 | ✅ 코드 완료 | SQL·`SUPABASE_SERVICE_ROLE_KEY` 확인 |
 | QR 네컷 | 🔄 1차 | 실부스 QR E2E 검증 남음 |
-| 펜·레이어 순서 | ⬜ 미구현 | Konva parity 잔여 |
+| 펜·레이어 순서 | ✅ 완료 | draw mode + zIndex reorder + 맨 앞/뒤 |
 | 수익화 (3단계) | ⬜ 미착수 | — |
 
 ### 전체 진행률
@@ -572,9 +574,9 @@ erDiagram
 ```
 [기획]   ██████████ 100%
 [디자인] ███████░░░  70%
-[개발]   █████████░  94%  ← Konva 통합·Fabric 제거·뷰어 마이그레이션
-[배포]   ████████░░  85%  ← Vercel·OAuth
-[보안]   ████████░░  80%  ← Storage private 코드 완료, SQL·프로덕션 검증
+[개발]   ██████████  98%  ← PPT Phase C 완료
+[배포]   ████████░░  85%  ← Vercel·OAuth (photowall-one.vercel.app)
+[보안]   █████████░  90%  ← Storage private·walls SELECT RLS 적용
 [운영]   ████████░░  80%  ← Admin MVP 코드 완료
 ```
 
@@ -584,8 +586,8 @@ erDiagram
 |---|---|---|
 | 1단계 MVP | 내 방 벽꾸미기 + QR | 🔄 QR 실부스 검증 남음 |
 | 2단계 소셜 | 공유·방문·소통·프라이버시 | ✅ 1차 완료 |
-| 2.5 공동 벽 | 공동 인생네컷 + **실시간** | ✅ Konva 1차 — 펜·레이어 parity 남음 |
-| 보안 | RLS 1차 ✅ / Storage private 🔄 | 코드 완료, SQL 실행 확인 |
+| 2.5 공동 벽 | 공동 인생네컷 + **실시간** | ✅ Konva 1차 — 2-browser QA 남음 |
+| 보안 | RLS 1차 ✅ / Storage private ✅ | SQL·signed-photos 프로덕션 검증 완료 |
 | Admin | 문의·모더레이션·대시보드 | ✅ 코드 완료 |
 | 3단계 수익화 | 아이템 숍 | ⬜ 미착수 |
 
@@ -601,22 +603,36 @@ erDiagram
 | 이미지 export | ✅ | ✅ | ✅ |
 | 벽 비우기 (clear) | ✅ | ✅ (+ realtime) | — |
 | Supabase Broadcast 동기화 | — | ✅ | — |
-| Presence 커서·이름 | — | ✅ | — |
+| Presence 커서·이름·선택 테두리 | — | ✅ (다중 선택) | — |
 | DB 자동 저장 (debounce) | ✅ | ✅ | — |
 | v1 Fabric → v2 import | ✅ | ✅ | ✅ |
 | 방명록 (v2) | — | — | ✅ |
 | 펜 (draw) | ✅ | ✅ | — |
-| 레이어 앞/뒤 | ✅ | ✅ | — |
+| 레이어 앞/뒤·맨 앞/뒤 | ✅ | ✅ | — |
+| 다중 선택 (Shift+클릭·드래그 박스) | ✅ | ✅ | — |
+| 전체 선택 (⌘A)·Esc 해제 | ✅ | ✅ | — |
+| 정렬 6종·벽 가운데·복제 | ✅ | ✅ (+ patch) | — |
+| 화살표 미세 이동 (Shift=10px) | ✅ | ✅ (+ patch) | — |
+
+### PPT형 에디터 — 로드맵 진행
+
+| Phase | 내용 | 상태 |
+|---|---|---|
+| **A** | 다중 선택, 전체 선택, Esc, 맨 앞/뒤, 마퀴 선택 | ✅ |
+| **B** | 정렬 6종, 벽 가운데, 복제 (⌘D), 화살표 이동 | ✅ |
+| **C** | 가로·세로 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드 | ✅ |
+| **D** | 그룹/해제, 레이어 패널, 격자, 컨텍스트 메뉴 | ✅ |
 
 ### 최근 완료 (2026-06-16 기준)
 
-- [x] **Konva 통합** — 개인·공동·공개 뷰어 단일 엔진 (`PersonalWallKonvaEditor`, `WallViewer`)
-- [x] **스티커 카탈로그** — `StickerPack` + `public/stickers/` SVG 팩
-- [x] **테이프·Undo·export·clear** — 개인·공동 parity
+- [x] **Phase A 선택** — `selectedIds[]`, Shift+클릭, 마퀴, 다중 Transformer, ⌘A/Esc
+- [x] **Phase B 정렬·복제** — `align-objects.ts`, 정렬 UI, 벽 가운데, ⌘D, 화살표 nudge
+- [x] **실시간 Presence 다중 선택** — `selectedObjectIds[]` 브로드캐스트, 피어 테두리 전체 표시
+- [x] **드래그·로딩 성능** — 이미지 캐시·preload, live patch (드래그 중 Zustand 지연)
+- [x] **Konva 펜** — `WallScenePath` draw mode + 레이어 zIndex reorder
+- [x] **Konva 통합** — 개인·공동·공개 뷰어 단일 엔진
 - [x] **실시간 양방향 sync** — Broadcast hello/full/patch/clear + auto-reconnect
-- [x] **Fabric 제거** — `WallCanvas`·`WallEditor` 삭제, npm `fabric`·`yjs` 제거
-- [x] **방명록 v2** — `guestbook.ts` photowallScene 기반
-- [x] `wall-scene-v2` 씬 모델 + Zustand store + legacy import
+- [x] **Fabric 제거** — npm `fabric`·`yjs` 제거
 - [x] Storage **private** + `wall-photo://` ref + `/signed-photos` API
 - [x] 관리자 MVP (`/admin`, 문의·벽·유저·신고)
 
@@ -632,19 +648,24 @@ erDiagram
 
 ## 8. 다음 할 일
 
-### 현재 포커스 (2026-06-16)
+### 현재 포커스 (2026-06-24)
 
 ```
-① 2-browser 실시간 QA  →  ② QR 실부스  →  ③ 스티커 콘텐츠 확장
+① 2-browser 실시간 QA  →  ② QR 실부스 E2E  →  ③ 운영 고도화
 ```
 
 | 우선순위 | 작업 | 상태 |
 |---|---|---|
-| **P0** | Konva 펜 (`WallScenePath` + Line) + 레이어 앞/뒤 | ✅ |
-| **P1** | Supabase SQL 실행 확인 (`storage-private`, `walls-select-rls`, `admin-*`) | ✅ |
-| **P1** | Vercel `SUPABASE_SERVICE_ROLE_KEY` + `ADMIN_USER_IDS` + signed-photos 200 | ✅ |
-| **P2** | 2-browser 실시간 QA 체크리스트 (드래그·clear·재연결) | 🔄 진행 중 |
-| **P3** | Admin 2단계 (공지 배너·import 로그·기능 플래그) | ⬜ |
+| **P0** | Konva 펜 + 레이어 앞/뒤 | ✅ |
+| **P0** | PPT Phase A (다중 선택·전체 선택·맨 앞/뒤) | ✅ |
+| **P0** | PPT Phase B (정렬·벽 가운데·복제·화살표 이동) | ✅ |
+| **P0** | 실시간 Presence 다중 선택 테두리 | ✅ |
+| **P1** | Supabase SQL·Vercel env·signed-photos 검증 | ✅ |
+| **P2** | **PPT Phase C** — 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드 | ✅ |
+| **P2** | **PPT Phase D** — 그룹/해제, 레이어 패널, 격자, 컨텍스트 메뉴 | ✅ |
+| **P2** | 2-browser 실시간 QA (다중 선택·정렬·복제·재연결) | 🔄 |
+| **P3** | QR 실부스 E2E + 홈 CTA | ⬜ |
+| **P3** | Admin 2단계 (공지·import 로그·기능 플래그) | ⬜ |
 | **P3** | 3단계 수익화 | ⬜ |
 
 ### Konva 벽 — 남은 작업
@@ -657,9 +678,21 @@ erDiagram
 - [x] 스티커 카탈로그·테이프·Undo·export·clear
 - [x] Fabric 코드·의존성 제거
 - [x] 펜 (draw mode) + 레이어 zIndex reorder
+- [x] Phase A·B — 다중 선택·정렬·복제·화살표 이동
+- [x] Presence `selectedObjectIds[]` — 피어 다중 선택 테두리
+- [x] Phase C — 균등 배치·뒤집기·클립보드·스냅 가이드
+- [x] Phase D — 그룹/해제·레이어 패널·격자·컨텍스트 메뉴·형광펜 이동
 - [ ] 2-browser 실시간 QA 체크리스트 통과
+- [ ] (선택) `path` 타입 피어 선택 테두리
 
-### 보안 2차 — 코드 ✅ / SQL·검증 🔄
+### PPT Phase C 체크리스트
+
+- [x] 가로·세로 균등 배치 (3개 이상 선택)
+- [x] 좌우·상하 뒤집기 (`scaleX`/`scaleY` 반전)
+- [x] 복사/붙여넣기 (`⌘C` / `⌘V` / `⌘X`)
+- [x] 드래그 스냅 가이드 (객체 가장자리·중심 맞춤)
+
+### 보안 2차 — ✅ 완료
 
 - [x] Storage private + signed URL API (`/api/walls/[id]/signed-photos`)
 - [x] `wall-photo://` ref 저장·로드·resolve
@@ -718,6 +751,17 @@ erDiagram
 | 2026-06-16 | **보안 2차 코드** — Storage private, `wall-photo://`, signed-photos API |
 | 2026-06-16 | 실시간 sync·Presence dedupe·PATCH autosave 최적화, `PROJECT.md` 진행 현황 정리 |
 | 2026-06-16 | `supabase/` SQL git 미추적 — Dashboard 로컬 실행 전용 |
+| 2026-06-16 | **PPT Phase A** — `selectedIds[]`, Shift+클릭·마퀴·다중 Transformer, ⌘A/Esc, 맨 앞/뒤 |
+| 2026-06-16 | **PPT Phase B** — 정렬 6종·벽 가운데·복제(⌘D)·화살표 nudge, `align-objects.ts` |
+| 2026-06-16 | **Presence 다중 선택** — `selectedObjectIds[]` 브로드캐스트, 피어 테두리 전체 표시 |
+| 2026-06-16 | **성능** — 이미지 캐시·preload, 드래그 live patch (Zustand 지연 갱신) |
+| 2026-06-24 | **PPT Phase D** — 그룹/해제(⌘G/⌘⇧G), 레이어 패널, 격자·격자 맞춤 |
+| 2026-06-24 | **컨텍스트 메뉴** — 우클릭(PC)·길게 누르기(모바일), 그룹하기/해제 조건부 표시 |
+| 2026-06-24 | **그룹 실시간 동기화** — `groupId` fingerprint·patch 브로드캐스트 |
+| 2026-06-24 | **형광펜 이동** — 드래그·스냅·다중 선택 이동 (크기 조절 없음) |
+| 2026-06-24 | **PC 드래그 UX** — 마우스 드래그 시 길게 누르기 메뉴 비활성 |
+| 2026-06-24 | **PPT Phase C** — 가로·세로 균등 배치, 좌우·상하 뒤집기, ⌘C/V/X 클립보드, 드래그 스냅 가이드 |
+| 2026-06-16 | `PROJECT.md` 갱신 — Phase A·B·Presence·다음 포커스(Phase C) 반영 |
 
 ---
 

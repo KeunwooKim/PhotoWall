@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import KonvaWallStageClient from "@/components/wall/konva";
 import Toolbar from "@/components/wall/Toolbar";
+import LayerPanel from "@/components/wall/LayerPanel";
 import AuthButton from "@/components/auth/AuthButton";
 import FriendsPanel from "@/components/social/FriendsPanel";
 import SharedWallsPanel from "@/components/social/SharedWallsPanel";
@@ -28,7 +29,18 @@ import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint"
 import { debounce } from "@/lib/debounce";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { EditorMode } from "@/components/wall/editor-types";
-import { bringObjectForward, sendObjectBackward } from "@/lib/wall-scene/layer-order";
+import {
+  bringObjectForward,
+  bringObjectsToFront,
+  sendObjectBackward,
+  sendObjectsToBack,
+} from "@/lib/wall-scene/layer-order";
+import { primarySelectedId } from "@/lib/wall-scene/selection-utils";
+import { canGroupSelection, selectionHasGroup } from "@/lib/wall-scene/group-objects";
+import { useWallTransformActions } from "@/hooks/useWallTransformActions";
+import { useWallEditorContextMenu } from "@/hooks/useWallEditorContextMenu";
+import type { WallContextMenuActions } from "@/lib/wall-scene/build-context-menu-sections";
+import WallContextMenu from "@/components/wall/WallContextMenu";
 import {
   HIGHLIGHTER_COLORS,
   HIGHLIGHTER_LENGTH_PRESETS,
@@ -45,6 +57,7 @@ export default function PersonalWallKonvaEditor() {
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
@@ -68,7 +81,13 @@ export default function PersonalWallKonvaEditor() {
   themeIdRef.current = themeId;
   userRef.current = user;
 
-  const selectedId = useWallSceneStore((s) => s.selectedId);
+  const selectedIds = useWallSceneStore((s) => s.selectedIds);
+  const sceneObjects = useWallSceneStore((s) => s.document.objects);
+  const showGrid = useWallSceneStore((s) => s.showGrid);
+  const snapToGrid = useWallSceneStore((s) => s.snapToGrid);
+  const toggleShowGrid = useWallSceneStore((s) => s.toggleShowGrid);
+  const toggleSnapToGrid = useWallSceneStore((s) => s.toggleSnapToGrid);
+  const primaryId = primarySelectedId(selectedIds);
   const wallBounds = useWallSceneStore((s) => s.document.meta.wallBounds);
   const canUndo = useWallSceneStore((s) => s.historyPast.length > 0);
   const canRedo = useWallSceneStore((s) => s.historyFuture.length > 0);
@@ -236,31 +255,198 @@ export default function PersonalWallKonvaEditor() {
   );
 
   const handleDelete = useCallback(() => {
-    if (!selectedId) return;
-    useWallSceneStore.getState().removeObject(selectedId);
+    if (selectedIds.length === 0) return;
+    useWallSceneStore.getState().removeSelectedObjects();
     useWallSceneStore.getState().bumpRevision();
-  }, [selectedId]);
+  }, [selectedIds.length]);
 
   const handleModeChange = useCallback((next: EditorMode) => {
     setMode(next);
     if (next === "draw") {
-      useWallSceneStore.getState().setSelectedId(null);
+      useWallSceneStore.getState().clearSelection();
     }
   }, []);
 
+  const handleSelectAll = useCallback(() => {
+    useWallSceneStore.getState().selectAll();
+  }, []);
+
   const handleBringForward = useCallback(() => {
-    if (!selectedId) return;
-    if (!bringObjectForward(selectedId)) {
+    if (!primaryId) return;
+    if (!bringObjectForward(primaryId)) {
       showToast("더 앞으로 보낼 수 없어요");
     }
-  }, [selectedId, showToast]);
+  }, [primaryId, showToast]);
 
   const handleSendBackward = useCallback(() => {
-    if (!selectedId) return;
-    if (!sendObjectBackward(selectedId)) {
+    if (!primaryId) return;
+    if (!sendObjectBackward(primaryId)) {
       showToast("더 뒤로 보낼 수 없어요");
     }
-  }, [selectedId, showToast]);
+  }, [primaryId, showToast]);
+
+  const handleBringToFront = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    if (!bringObjectsToFront(selectedIds)) {
+      showToast("이미 맨 앞이에요");
+    }
+  }, [selectedIds, showToast]);
+
+  const handleSendToBack = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    if (!sendObjectsToBack(selectedIds)) {
+      showToast("이미 맨 뒤예요");
+    }
+  }, [selectedIds, showToast]);
+
+  const {
+    handleAlignLeft,
+    handleAlignCenterH,
+    handleAlignRight,
+    handleAlignTop,
+    handleAlignMiddle,
+    handleAlignBottom,
+    handleDistributeHorizontal: distributeHorizontal,
+    handleDistributeVertical: distributeVertical,
+    handleFlipHorizontal: flipHorizontal,
+    handleFlipVertical: flipVertical,
+    centerOnWall,
+    nudgeSelection,
+    duplicateSelection,
+    copySelection,
+    cutSelection,
+    pasteSelection,
+    groupSelection,
+    ungroupSelection,
+  } = useWallTransformActions();
+
+  const handleCenterOnWall = useCallback(() => {
+    if (!centerOnWall()) {
+      showToast("이동할 수 없어요");
+    }
+  }, [centerOnWall, showToast]);
+
+  const onDistributeHorizontal = useCallback(() => {
+    if (!distributeHorizontal()) {
+      showToast("3개 이상 선택해야 균등 배치할 수 있어요");
+    }
+  }, [distributeHorizontal, showToast]);
+
+  const onDistributeVertical = useCallback(() => {
+    if (!distributeVertical()) {
+      showToast("3개 이상 선택해야 균등 배치할 수 있어요");
+    }
+  }, [distributeVertical, showToast]);
+
+  const onFlipHorizontal = useCallback(() => {
+    if (!flipHorizontal()) {
+      showToast("뒤집을 항목이 없어요");
+    }
+  }, [flipHorizontal, showToast]);
+
+  const onFlipVertical = useCallback(() => {
+    if (!flipVertical()) {
+      showToast("뒤집을 항목이 없어요");
+    }
+  }, [flipVertical, showToast]);
+
+  const handleDuplicate = useCallback(() => {
+    if (!duplicateSelection()) {
+      showToast("복제할 항목이 없어요");
+    }
+  }, [duplicateSelection, showToast]);
+
+  const handleCopy = useCallback(() => {
+    if (!copySelection()) {
+      showToast("복사할 항목이 없어요");
+    }
+  }, [copySelection, showToast]);
+
+  const handleCut = useCallback(() => {
+    if (!cutSelection()) {
+      showToast("잘라낼 항목이 없어요");
+    }
+  }, [cutSelection, showToast]);
+
+  const handlePaste = useCallback(() => {
+    if (!pasteSelection()) {
+      showToast("붙여넣을 항목이 없어요");
+    }
+  }, [pasteSelection, showToast]);
+
+  const handleGroup = useCallback(() => {
+    if (!groupSelection()) {
+      showToast("2개 이상 선택해야 그룹할 수 있어요");
+    }
+  }, [groupSelection, showToast]);
+
+  const handleUngroup = useCallback(() => {
+    if (!ungroupSelection()) {
+      showToast("그룹이 없어요");
+    }
+  }, [ungroupSelection, showToast]);
+
+  const contextMenuActions = useMemo<WallContextMenuActions>(
+    () => ({
+      onCopy: handleCopy,
+      onCut: handleCut,
+      onPaste: handlePaste,
+      onDuplicate: handleDuplicate,
+      onDelete: handleDelete,
+      onAlignLeft: handleAlignLeft,
+      onAlignCenterH: handleAlignCenterH,
+      onAlignRight: handleAlignRight,
+      onAlignTop: handleAlignTop,
+      onAlignMiddle: handleAlignMiddle,
+      onAlignBottom: handleAlignBottom,
+      onCenterOnWall: handleCenterOnWall,
+      onDistributeHorizontal: onDistributeHorizontal,
+      onDistributeVertical: onDistributeVertical,
+      onFlipHorizontal: onFlipHorizontal,
+      onFlipVertical: onFlipVertical,
+      onGroup: handleGroup,
+      onUngroup: handleUngroup,
+      onBringToFront: handleBringToFront,
+      onBringForward: handleBringForward,
+      onSendBackward: handleSendBackward,
+      onSendToBack: handleSendToBack,
+    }),
+    [
+      handleAlignBottom,
+      handleAlignCenterH,
+      handleAlignLeft,
+      handleAlignMiddle,
+      handleAlignRight,
+      handleAlignTop,
+      handleBringForward,
+      handleBringToFront,
+      handleCenterOnWall,
+      handleCopy,
+      handleCut,
+      handleDelete,
+      handleDuplicate,
+      handleGroup,
+      handlePaste,
+      handleSendBackward,
+      handleSendToBack,
+      handleUngroup,
+      onDistributeHorizontal,
+      onDistributeVertical,
+      onFlipHorizontal,
+      onFlipVertical,
+    ],
+  );
+
+  const {
+    isOpen: isContextMenuOpen,
+    position: contextMenuPosition,
+    sections: contextMenuSections,
+    close: closeContextMenu,
+    handleContextMenuRequest,
+  } = useWallEditorContextMenu({
+    mode,
+    actions: contextMenuActions,
+  });
 
   const handleThemeChange = useCallback(
     (next: WallThemeId) => {
@@ -366,8 +552,82 @@ export default function PersonalWallKonvaEditor() {
         redo();
         return;
       }
+      if (isMod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        handleSelectAll();
+        return;
+      }
+      if (e.key === "Escape") {
+        useWallSceneStore.getState().clearSelection();
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "d") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleDuplicate();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "c") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleCopy();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "x") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleCut();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "v") {
+        if (mode === "select") {
+          e.preventDefault();
+          handlePaste();
+        }
+        return;
+      }
+      if (isMod && e.shiftKey && e.key.toLowerCase() === "g") {
+        if (mode === "select") {
+          e.preventDefault();
+          handleUngroup();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "g") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleGroup();
+        }
+        return;
+      }
+      if (mode === "select" && selectedIds.length > 0) {
+        const step = e.shiftKey ? 10 : 1;
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          nudgeSelection(-step, 0);
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          nudgeSelection(step, 0);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          nudgeSelection(0, -step);
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          nudgeSelection(0, step);
+          return;
+        }
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId) {
+        if (selectedIds.length > 0) {
           e.preventDefault();
           handleDelete();
         }
@@ -375,7 +635,7 @@ export default function PersonalWallKonvaEditor() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, handleDelete, undo, redo]);
+  }, [handleCopy, handleCut, handleDelete, handleDuplicate, handleGroup, handlePaste, handleSelectAll, handleUngroup, mode, nudgeSelection, redo, selectedIds.length, undo]);
 
   if (!loadedCanvasJson) {
     return (
@@ -398,6 +658,14 @@ export default function PersonalWallKonvaEditor() {
         editorMode={mode}
         drawColor={drawColor}
         highlighterMaxLength={highlighterMaxLength}
+        onContextMenuRequest={handleContextMenuRequest}
+      />
+
+      <WallContextMenu
+        isOpen={isContextMenuOpen}
+        position={contextMenuPosition}
+        sections={contextMenuSections}
+        onClose={closeContextMenu}
       />
 
       <button
@@ -424,6 +692,13 @@ export default function PersonalWallKonvaEditor() {
         style={{ top: "max(1rem, env(safe-area-inset-top))" }}
       >
         <AuthButton />
+        <button
+          type="button"
+          onClick={() => setIsLayerPanelOpen(true)}
+          className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8"
+        >
+          레이어
+        </button>
         {user && (
           <>
             <button
@@ -473,7 +748,8 @@ export default function PersonalWallKonvaEditor() {
         drawColors={DRAW_COLORS}
         highlighterMaxLength={highlighterMaxLength}
         highlighterLengthPresets={HIGHLIGHTER_LENGTH_PRESETS}
-        hasSelection={!!selectedId}
+        hasSelection={selectedIds.length > 0}
+        selectionCount={selectedIds.length}
         canUndo={canUndo}
         canRedo={canRedo}
         onThemeChange={handleThemeChange}
@@ -491,8 +767,33 @@ export default function PersonalWallKonvaEditor() {
         onHighlighterMaxLengthChange={setHighlighterMaxLength}
         onUndo={undo}
         onRedo={redo}
+        onSelectAll={handleSelectAll}
         onBringForward={handleBringForward}
         onSendBackward={handleSendBackward}
+        onBringToFront={handleBringToFront}
+        onSendToBack={handleSendToBack}
+        onAlignLeft={handleAlignLeft}
+        onAlignCenterH={handleAlignCenterH}
+        onAlignRight={handleAlignRight}
+        onAlignTop={handleAlignTop}
+        onAlignMiddle={handleAlignMiddle}
+        onAlignBottom={handleAlignBottom}
+        onCenterOnWall={handleCenterOnWall}
+        onDistributeHorizontal={onDistributeHorizontal}
+        onDistributeVertical={onDistributeVertical}
+        onFlipHorizontal={onFlipHorizontal}
+        onFlipVertical={onFlipVertical}
+        onDuplicate={handleDuplicate}
+        onGroup={handleGroup}
+        onUngroup={handleUngroup}
+        onToggleGrid={toggleShowGrid}
+        onToggleSnapToGrid={toggleSnapToGrid}
+        canGroupSelection={canGroupSelection(selectedIds)}
+        canUngroupSelection={selectionHasGroup(selectedIds, sceneObjects)}
+        showGrid={showGrid}
+        snapToGrid={snapToGrid}
+        canAlignSelection={selectedIds.length >= 2}
+        canDistributeSelection={selectedIds.length >= 3}
         onDelete={handleDelete}
         onSave={handleSave}
         onClear={handleClear}
@@ -500,6 +801,7 @@ export default function PersonalWallKonvaEditor() {
 
       <FriendsPanel isOpen={isFriendsOpen} onClose={() => setIsFriendsOpen(false)} />
       <SharedWallsPanel isOpen={isSharedOpen} onClose={() => setIsSharedOpen(false)} />
+      <LayerPanel isOpen={isLayerPanelOpen} onClose={() => setIsLayerPanelOpen(false)} />
     </div>
   );
 }

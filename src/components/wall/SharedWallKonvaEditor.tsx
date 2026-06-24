@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KonvaWallStageClient from "@/components/wall/konva";
 import Toolbar from "@/components/wall/Toolbar";
+import LayerPanel from "@/components/wall/LayerPanel";
 import type { WallThemeId } from "@/types/wall";
 import AuthButton from "@/components/auth/AuthButton";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,7 +23,18 @@ import { createWallInvite } from "@/lib/wall-invite";
 import { shareWallImage } from "@/lib/wall-export";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { EditorMode } from "@/components/wall/editor-types";
-import { bringObjectForward, sendObjectBackward } from "@/lib/wall-scene/layer-order";
+import {
+  bringObjectForward,
+  bringObjectsToFront,
+  sendObjectBackward,
+  sendObjectsToBack,
+} from "@/lib/wall-scene/layer-order";
+import { primarySelectedId } from "@/lib/wall-scene/selection-utils";
+import { canGroupSelection, selectionHasGroup } from "@/lib/wall-scene/group-objects";
+import { useWallTransformActions } from "@/hooks/useWallTransformActions";
+import { useWallEditorContextMenu } from "@/hooks/useWallEditorContextMenu";
+import type { WallContextMenuActions } from "@/lib/wall-scene/build-context-menu-sections";
+import WallContextMenu from "@/components/wall/WallContextMenu";
 import {
   HIGHLIGHTER_COLORS,
   HIGHLIGHTER_LENGTH_PRESETS,
@@ -41,6 +53,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isInviting, setIsInviting] = useState(false);
@@ -61,7 +74,13 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const isManipulatingRef = useRef(false);
 
-  const selectedId = useWallSceneStore((s) => s.selectedId);
+  const selectedIds = useWallSceneStore((s) => s.selectedIds);
+  const sceneObjects = useWallSceneStore((s) => s.document.objects);
+  const showGrid = useWallSceneStore((s) => s.showGrid);
+  const snapToGrid = useWallSceneStore((s) => s.snapToGrid);
+  const toggleShowGrid = useWallSceneStore((s) => s.toggleShowGrid);
+  const toggleSnapToGrid = useWallSceneStore((s) => s.toggleSnapToGrid);
+  const primaryId = primarySelectedId(selectedIds);
   const wallBounds = useWallSceneStore((s) => s.document.meta.wallBounds);
   const canUndo = useWallSceneStore((s) => s.historyPast.length > 0);
   const canRedo = useWallSceneStore((s) => s.historyFuture.length > 0);
@@ -100,15 +119,13 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   );
 
   const broadcastPresence = useCallback(
-    (objectId?: string | null, immediate = true) => {
+    (objectIds?: string[] | null, immediate = true) => {
       const { x, y } = lastPointerRef.current;
-      updatePresence(
-        x,
-        y,
-        objectId ?? undefined,
-        isManipulatingRef.current,
-        immediate,
-      );
+      const ids =
+        objectIds === null
+          ? []
+          : (objectIds ?? useWallSceneStore.getState().selectedIds);
+      updatePresence(x, y, ids, isManipulatingRef.current, immediate);
     },
     [updatePresence],
   );
@@ -117,8 +134,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     (active: boolean) => {
       isManipulatingRef.current = active;
       const { x, y } = lastPointerRef.current;
-      const selectedId = useWallSceneStore.getState().selectedId;
-      updatePresence(x, y, selectedId ?? undefined, active, true);
+      const ids = useWallSceneStore.getState().selectedIds;
+      updatePresence(x, y, ids, active, true);
     },
     [updatePresence],
   );
@@ -134,16 +151,16 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const handlePointerMove = useCallback(
     (x: number, y: number) => {
       lastPointerRef.current = { x, y };
-      const selectedId = useWallSceneStore.getState().selectedId;
-      updatePresence(x, y, selectedId ?? undefined, isManipulatingRef.current);
+      const ids = useWallSceneStore.getState().selectedIds;
+      updatePresence(x, y, ids, isManipulatingRef.current);
     },
     [updatePresence],
   );
 
   useEffect(() => {
     if (!isReady) return;
-    broadcastPresence(selectedId);
-  }, [selectedId, isReady, broadcastPresence]);
+    broadcastPresence(selectedIds);
+  }, [selectedIds, isReady, broadcastPresence]);
 
   const resolvePhotoSrc = useCallback(
     (src: string) => resolveWallPhotoSrc(src, sharedId),
@@ -209,31 +226,204 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   );
 
   const handleDelete = useCallback(() => {
-    if (!selectedId) return;
-    useWallSceneStore.getState().removeObject(selectedId);
+    if (selectedIds.length === 0) return;
+    useWallSceneStore.getState().removeSelectedObjects();
     useWallSceneStore.getState().bumpRevision();
-  }, [selectedId]);
+  }, [selectedIds.length]);
 
   const handleModeChange = useCallback((next: EditorMode) => {
     setMode(next);
     if (next === "draw") {
-      useWallSceneStore.getState().setSelectedId(null);
+      useWallSceneStore.getState().clearSelection();
     }
   }, []);
 
+  const handleSelectAll = useCallback(() => {
+    useWallSceneStore.getState().selectAll();
+    const ids = useWallSceneStore.getState().selectedIds;
+    broadcastPresence(ids);
+  }, [broadcastPresence]);
+
   const handleBringForward = useCallback(() => {
-    if (!selectedId) return;
-    if (!bringObjectForward(selectedId)) {
+    if (!primaryId) return;
+    if (!bringObjectForward(primaryId)) {
       showToast("더 앞으로 보낼 수 없어요");
     }
-  }, [selectedId, showToast]);
+  }, [primaryId, showToast]);
 
   const handleSendBackward = useCallback(() => {
-    if (!selectedId) return;
-    if (!sendObjectBackward(selectedId)) {
+    if (!primaryId) return;
+    if (!sendObjectBackward(primaryId)) {
       showToast("더 뒤로 보낼 수 없어요");
     }
-  }, [selectedId, showToast]);
+  }, [primaryId, showToast]);
+
+  const handleBringToFront = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    if (!bringObjectsToFront(selectedIds)) {
+      showToast("이미 맨 앞이에요");
+    }
+  }, [selectedIds, showToast]);
+
+  const handleSendToBack = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    if (!sendObjectsToBack(selectedIds)) {
+      showToast("이미 맨 뒤예요");
+    }
+  }, [selectedIds, showToast]);
+
+  const {
+    handleAlignLeft,
+    handleAlignCenterH,
+    handleAlignRight,
+    handleAlignTop,
+    handleAlignMiddle,
+    handleAlignBottom,
+    handleDistributeHorizontal: distributeHorizontal,
+    handleDistributeVertical: distributeVertical,
+    handleFlipHorizontal: flipHorizontal,
+    handleFlipVertical: flipVertical,
+    centerOnWall,
+    nudgeSelection,
+    duplicateSelection,
+    copySelection,
+    cutSelection,
+    pasteSelection,
+    groupSelection,
+    ungroupSelection,
+  } = useWallTransformActions({
+    broadcastPatch: broadcastObjectPatch,
+    onDuplicate: (newIds) => broadcastPresence(newIds),
+    onPaste: (newIds) => broadcastPresence(newIds),
+  });
+
+  const handleCenterOnWall = useCallback(() => {
+    if (!centerOnWall()) {
+      showToast("이동할 수 없어요");
+    }
+  }, [centerOnWall, showToast]);
+
+  const onDistributeHorizontal = useCallback(() => {
+    if (!distributeHorizontal()) {
+      showToast("3개 이상 선택해야 균등 배치할 수 있어요");
+    }
+  }, [distributeHorizontal, showToast]);
+
+  const onDistributeVertical = useCallback(() => {
+    if (!distributeVertical()) {
+      showToast("3개 이상 선택해야 균등 배치할 수 있어요");
+    }
+  }, [distributeVertical, showToast]);
+
+  const onFlipHorizontal = useCallback(() => {
+    if (!flipHorizontal()) {
+      showToast("뒤집을 항목이 없어요");
+    }
+  }, [flipHorizontal, showToast]);
+
+  const onFlipVertical = useCallback(() => {
+    if (!flipVertical()) {
+      showToast("뒤집을 항목이 없어요");
+    }
+  }, [flipVertical, showToast]);
+
+  const handleDuplicate = useCallback(() => {
+    if (!duplicateSelection()) {
+      showToast("복제할 항목이 없어요");
+    }
+  }, [duplicateSelection, showToast]);
+
+  const handleCopy = useCallback(() => {
+    if (!copySelection()) {
+      showToast("복사할 항목이 없어요");
+    }
+  }, [copySelection, showToast]);
+
+  const handleCut = useCallback(() => {
+    if (!cutSelection()) {
+      showToast("잘라낼 항목이 없어요");
+    }
+  }, [cutSelection, showToast]);
+
+  const handlePaste = useCallback(() => {
+    if (!pasteSelection()) {
+      showToast("붙여넣을 항목이 없어요");
+    }
+  }, [pasteSelection, showToast]);
+
+  const handleGroup = useCallback(() => {
+    if (!groupSelection()) {
+      showToast("2개 이상 선택해야 그룹할 수 있어요");
+    }
+  }, [groupSelection, showToast]);
+
+  const handleUngroup = useCallback(() => {
+    if (!ungroupSelection()) {
+      showToast("그룹이 없어요");
+    }
+  }, [ungroupSelection, showToast]);
+
+  const contextMenuActions = useMemo<WallContextMenuActions>(
+    () => ({
+      onCopy: handleCopy,
+      onCut: handleCut,
+      onPaste: handlePaste,
+      onDuplicate: handleDuplicate,
+      onDelete: handleDelete,
+      onAlignLeft: handleAlignLeft,
+      onAlignCenterH: handleAlignCenterH,
+      onAlignRight: handleAlignRight,
+      onAlignTop: handleAlignTop,
+      onAlignMiddle: handleAlignMiddle,
+      onAlignBottom: handleAlignBottom,
+      onCenterOnWall: handleCenterOnWall,
+      onDistributeHorizontal: onDistributeHorizontal,
+      onDistributeVertical: onDistributeVertical,
+      onFlipHorizontal: onFlipHorizontal,
+      onFlipVertical: onFlipVertical,
+      onGroup: handleGroup,
+      onUngroup: handleUngroup,
+      onBringToFront: handleBringToFront,
+      onBringForward: handleBringForward,
+      onSendBackward: handleSendBackward,
+      onSendToBack: handleSendToBack,
+    }),
+    [
+      handleAlignBottom,
+      handleAlignCenterH,
+      handleAlignLeft,
+      handleAlignMiddle,
+      handleAlignRight,
+      handleAlignTop,
+      handleBringForward,
+      handleBringToFront,
+      handleCenterOnWall,
+      handleCopy,
+      handleCut,
+      handleDelete,
+      handleDuplicate,
+      handleGroup,
+      handlePaste,
+      handleSendBackward,
+      handleSendToBack,
+      handleUngroup,
+      onDistributeHorizontal,
+      onDistributeVertical,
+      onFlipHorizontal,
+      onFlipVertical,
+    ],
+  );
+
+  const {
+    isOpen: isContextMenuOpen,
+    position: contextMenuPosition,
+    sections: contextMenuSections,
+    close: closeContextMenu,
+    handleContextMenuRequest,
+  } = useWallEditorContextMenu({
+    mode,
+    actions: contextMenuActions,
+  });
 
   const handleAddSticker = useCallback(
     (stickerId: string) => {
@@ -334,8 +524,83 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         redo();
         return;
       }
+      if (isMod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        handleSelectAll();
+        return;
+      }
+      if (e.key === "Escape") {
+        useWallSceneStore.getState().clearSelection();
+        broadcastPresence(null);
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "d") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleDuplicate();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "c") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleCopy();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "x") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleCut();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "v") {
+        if (mode === "select") {
+          e.preventDefault();
+          handlePaste();
+        }
+        return;
+      }
+      if (isMod && e.shiftKey && e.key.toLowerCase() === "g") {
+        if (mode === "select") {
+          e.preventDefault();
+          handleUngroup();
+        }
+        return;
+      }
+      if (isMod && e.key.toLowerCase() === "g") {
+        if (selectedIds.length > 0 && mode === "select") {
+          e.preventDefault();
+          handleGroup();
+        }
+        return;
+      }
+      if (mode === "select" && selectedIds.length > 0) {
+        const step = e.shiftKey ? 10 : 1;
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          nudgeSelection(-step, 0);
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          nudgeSelection(step, 0);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          nudgeSelection(0, -step);
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          nudgeSelection(0, step);
+          return;
+        }
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId) {
+        if (selectedIds.length > 0) {
           e.preventDefault();
           handleDelete();
         }
@@ -343,7 +608,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, handleDelete, undo, redo]);
+  }, [broadcastPresence, handleCopy, handleCut, handleDelete, handleDuplicate, handleGroup, handlePaste, handleSelectAll, handleUngroup, mode, nudgeSelection, redo, selectedIds.length, undo]);
 
   if (!user) {
     return (
@@ -382,6 +647,14 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         editorMode={mode}
         drawColor={drawColor}
         highlighterMaxLength={highlighterMaxLength}
+        onContextMenuRequest={handleContextMenuRequest}
+      />
+
+      <WallContextMenu
+        isOpen={isContextMenuOpen}
+        position={contextMenuPosition}
+        sections={contextMenuSections}
+        onClose={closeContextMenu}
       />
 
       <header className="fixed inset-x-0 top-0 z-[100] flex items-center justify-between gap-3 border-b border-rose-200 bg-rose-100 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-md">
@@ -406,7 +679,16 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             <span className="ml-2 text-[10px] font-normal text-rose-500">연결 중…</span>
           ) : null}
         </p>
-        <AuthButton />
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsLayerPanelOpen(true)}
+            className="rounded-full bg-white px-3 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-rose-200"
+          >
+            레이어
+          </button>
+          <AuthButton />
+        </div>
       </header>
 
       <button
@@ -466,7 +748,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         drawColors={DRAW_COLORS}
         highlighterMaxLength={highlighterMaxLength}
         highlighterLengthPresets={HIGHLIGHTER_LENGTH_PRESETS}
-        hasSelection={!!selectedId}
+        hasSelection={selectedIds.length > 0}
+        selectionCount={selectedIds.length}
         canUndo={canUndo}
         canRedo={canRedo}
         onThemeChange={handleThemeChange}
@@ -484,12 +767,39 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onHighlighterMaxLengthChange={setHighlighterMaxLength}
         onUndo={undo}
         onRedo={redo}
+        onSelectAll={handleSelectAll}
         onBringForward={handleBringForward}
         onSendBackward={handleSendBackward}
+        onBringToFront={handleBringToFront}
+        onSendToBack={handleSendToBack}
+        onAlignLeft={handleAlignLeft}
+        onAlignCenterH={handleAlignCenterH}
+        onAlignRight={handleAlignRight}
+        onAlignTop={handleAlignTop}
+        onAlignMiddle={handleAlignMiddle}
+        onAlignBottom={handleAlignBottom}
+        onCenterOnWall={handleCenterOnWall}
+        onDistributeHorizontal={onDistributeHorizontal}
+        onDistributeVertical={onDistributeVertical}
+        onFlipHorizontal={onFlipHorizontal}
+        onFlipVertical={onFlipVertical}
+        onDuplicate={handleDuplicate}
+        onGroup={handleGroup}
+        onUngroup={handleUngroup}
+        onToggleGrid={toggleShowGrid}
+        onToggleSnapToGrid={toggleSnapToGrid}
+        canGroupSelection={canGroupSelection(selectedIds)}
+        canUngroupSelection={selectionHasGroup(selectedIds, sceneObjects)}
+        showGrid={showGrid}
+        snapToGrid={snapToGrid}
+        canAlignSelection={selectedIds.length >= 2}
+        canDistributeSelection={selectedIds.length >= 3}
         onDelete={handleDelete}
         onSave={() => showToast("자동 저장 중이에요")}
         onClear={handleClear}
       />
+
+      <LayerPanel isOpen={isLayerPanelOpen} onClose={() => setIsLayerPanelOpen(false)} />
     </div>
   );
 }

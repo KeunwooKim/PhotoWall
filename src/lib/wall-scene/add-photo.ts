@@ -63,6 +63,6 @@ export async function addPhotoToWallScene(
 
   useWallSceneStore.getState().recordHistory();
   useWallSceneStore.getState().upsertObject(photo);
-  useWallSceneStore.getState().setSelectedId(photo.id);
+  useWallSceneStore.getState().setSelectedIds([photo.id]);
   useWallSceneStore.getState().bumpRevision();
 }

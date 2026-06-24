@@ -1,5 +1,6 @@
 "use client";
 
+import type Konva from "konva";
 import { Rect } from "react-konva";
 import {
   HIGHLIGHTER_OPACITY,
@@ -13,7 +14,11 @@ interface WallHighlighterRectProps {
   height?: number;
   opacity?: number;
   listening?: boolean;
-  onSelect?: () => void;
+  onSelect?: (additive?: boolean) => void;
+  onContextMenu?: (event: Konva.KonvaEventObject<MouseEvent | TouchEvent | PointerEvent>) => void;
+  onPointerDown?: (event: Konva.KonvaEventObject<MouseEvent | TouchEvent | PointerEvent>) => void;
+  onPointerMove?: (event: Konva.KonvaEventObject<MouseEvent | TouchEvent | PointerEvent>) => void;
+  onPointerUp?: (event: Konva.KonvaEventObject<MouseEvent | TouchEvent | PointerEvent>) => void;
 }
 
 export default function WallHighlighterRect({
@@ -23,6 +28,10 @@ export default function WallHighlighterRect({
   opacity = HIGHLIGHTER_OPACITY,
   listening = false,
   onSelect,
+  onContextMenu,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
 }: WallHighlighterRectProps) {
   const layout = linePointsToHighlighterRect(points, height);
   if (!layout) return null;
@@ -38,8 +47,21 @@ export default function WallHighlighterRect({
       fill={fill}
       opacity={opacity}
       listening={listening}
-      onClick={onSelect}
-      onTap={onSelect}
+      onContextMenu={onContextMenu}
+      onMouseDown={(e) => {
+        e.cancelBubble = true;
+        onPointerDown?.(e);
+        onSelect?.(e.evt.shiftKey);
+      }}
+      onTouchStart={(e) => {
+        e.cancelBubble = true;
+        onPointerDown?.(e);
+        onSelect?.(false);
+      }}
+      onMouseMove={onPointerMove}
+      onTouchMove={onPointerMove}
+      onMouseUp={onPointerUp}
+      onTouchEnd={onPointerUp}
       perfectDrawEnabled={false}
     />
   );

@@ -23,6 +23,8 @@ export interface WallSceneObjectBase {
   scaleY: number;
   zIndex: number;
   opacity?: number;
+  /** Logical group — members move/select together */
+  groupId?: string;
 }
 
 export interface WallScenePhoto extends WallSceneObjectBase {
@@ -96,7 +98,9 @@ export interface WallPresenceState {
   color: string;
   cursorX: number;
   cursorY: number;
+  /** @deprecated Use selectedObjectIds — kept for older clients */
   selectedObjectId?: string;
+  selectedObjectIds?: string[];
   /** True while dragging/resizing — peers hide cursor, show object border only */
   isManipulating?: boolean;
   updatedAt: number;

@@ -53,7 +53,7 @@ export function useWallRealtime({
   const presenceRef = useRef({
     cursorX: 0,
     cursorY: 0,
-    selectedObjectId: undefined as string | undefined,
+    selectedObjectIds: undefined as string[] | undefined,
     isManipulating: false,
   });
 
@@ -61,8 +61,8 @@ export function useWallRealtime({
     throttle(() => {
       const session = sessionRef.current;
       if (!session) return;
-      const { cursorX, cursorY, selectedObjectId, isManipulating } = presenceRef.current;
-      session.updatePresence(cursorX, cursorY, selectedObjectId, isManipulating);
+      const { cursorX, cursorY, selectedObjectIds, isManipulating } = presenceRef.current;
+      session.updatePresence(cursorX, cursorY, selectedObjectIds, isManipulating);
     }, 50),
   );
 
@@ -176,18 +176,31 @@ export function useWallRealtime({
     (
       cursorX: number,
       cursorY: number,
-      selectedObjectId?: string,
+      selectedObjectIds?: string[],
       isManipulating = false,
       immediate = false,
     ) => {
-      presenceRef.current = { cursorX, cursorY, selectedObjectId, isManipulating };
+      const prev = presenceRef.current;
+      const staleZero =
+        cursorX === 0 &&
+        cursorY === 0 &&
+        (prev.cursorX !== 0 || prev.cursorY !== 0);
+      const x = staleZero ? prev.cursorX : cursorX;
+      const y = staleZero ? prev.cursorY : cursorY;
+      const ids =
+        selectedObjectIds !== undefined
+          ? selectedObjectIds
+          : prev.selectedObjectIds;
+
+      presenceRef.current = { cursorX: x, cursorY: y, selectedObjectIds: ids, isManipulating };
 
       if (immediate) {
         sessionRef.current?.updatePresence(
-          cursorX,
-          cursorY,
-          selectedObjectId,
+          x,
+          y,
+          ids,
           isManipulating,
+          true,
         );
         return;
       }

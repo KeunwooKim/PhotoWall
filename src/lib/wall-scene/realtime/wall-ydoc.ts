@@ -42,7 +42,10 @@ function unwrapBroadcastPayload<T extends SyncPayload>(message: unknown): T | nu
 
 export type WallObjectPatch = Partial<
   Pick<WallSceneObject, "x" | "y" | "rotation" | "scaleX" | "scaleY" | "zIndex">
->;
+> & {
+  /** Set to null to remove group membership on peers */
+  groupId?: string | null;
+};
 
 type SyncPayload =
   | { kind: "hello"; sessionId: string; userId: string }
@@ -123,11 +126,13 @@ export class WallRealtimeSession {
   updatePresence(
     cursorX: number,
     cursorY: number,
-    selectedObjectId?: string,
+    selectedObjectIds?: string[],
     isManipulating?: boolean,
     immediate = false,
   ): void {
     if (!this.channel || this.disposed) return;
+
+    const ids = selectedObjectIds?.filter(Boolean) ?? [];
 
     const state: WallPresenceState = {
       userId: this.options.userId,
@@ -136,7 +141,8 @@ export class WallRealtimeSession {
       color: this.options.color,
       cursorX,
       cursorY,
-      selectedObjectId: selectedObjectId || undefined,
+      selectedObjectIds: ids.length > 0 ? ids : undefined,
+      selectedObjectId: ids.length > 0 ? ids[ids.length - 1] : undefined,
       isManipulating: isManipulating ? true : undefined,
       updatedAt: Date.now(),
     };
