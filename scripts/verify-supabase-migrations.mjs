@@ -196,6 +196,28 @@ async function main() {
     }
   }
 
+  // ── admin-operations-migration.sql ──
+  if (admin) {
+    const { error: annErr } = await admin.from("announcements").select("id").limit(1);
+    results.push(
+      annErr
+        ? fail("announcements 테이블", annErr.message)
+        : ok("announcements 테이블", "admin-operations-migration.sql 적용됨"),
+    );
+
+    const { data: flags, error: flagErr } = await admin.from("feature_flags").select("key, enabled");
+    if (flagErr) {
+      results.push(fail("feature_flags 테이블", flagErr.message));
+    } else {
+      const count = flags?.length ?? 0;
+      results.push(
+        count >= 5
+          ? ok("feature_flags 테이블", `${count}개 플래그 — admin-operations-migration.sql 적용됨`)
+          : fail("feature_flags 시드", `${count}개 — 5개 기대, admin-operations-migration.sql 실행 필요`),
+      );
+    }
+  }
+
   // Policy names — run supabase/verify-migrations.sql in Dashboard for full list
   results.push(
     warn(

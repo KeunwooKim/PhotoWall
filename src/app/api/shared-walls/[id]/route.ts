@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { fetchSharedWallForEdit } from "@/lib/supabase/shared-walls";
 import { saveSharedWallToDb } from "@/lib/supabase/walls";
-import { isWallThemeId } from "@/lib/wall-themes";
+import { resolveWallThemeId } from "@/lib/wall-themes";
 
 export async function GET(
   request: NextRequest,
@@ -51,7 +51,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const themeId = isWallThemeId(body.themeId) ? body.themeId : "white";
+  const themeId = resolveWallThemeId(body.themeId ?? "");
 
   const wall = await saveSharedWallToDb(
     id,

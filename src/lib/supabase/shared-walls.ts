@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SharedWall, SharedWallMember, WallMemberInvite, WallMemberRole } from "@/types/shared-wall";
-import { isWallThemeId } from "@/lib/wall-themes";
+import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { PublishedWall } from "@/types/wall";
 
 export async function getUserWallRole(
@@ -58,7 +58,7 @@ export async function createSharedWall(
       wall: {
         id: row.id,
         title: row.title ?? trimmedTitle,
-        themeId: isWallThemeId(row.theme_id) ? row.theme_id : "white",
+        themeId: resolveWallThemeId(row.theme_id),
         updatedAt: row.updated_at,
         myRole: "owner",
         memberCount: 1,
@@ -72,7 +72,7 @@ export async function createSharedWall(
       owner_id: userId,
       title: trimmedTitle,
       is_shared: true,
-      theme_id: "white",
+      theme_id: DEFAULT_WALL_THEME_ID,
       canvas_json: { version: "6.0.0", objects: [] },
     })
     .select("id, title, theme_id, updated_at")
@@ -100,7 +100,7 @@ export async function createSharedWall(
     wall: {
       id: wall.id,
       title: wall.title ?? trimmedTitle,
-      themeId: isWallThemeId(wall.theme_id) ? wall.theme_id : "white",
+      themeId: resolveWallThemeId(wall.theme_id),
       updatedAt: wall.updated_at,
       myRole: "owner",
       memberCount: 1,
@@ -274,7 +274,7 @@ export async function getSharedWallsForUser(
   return walls.map((wall) => ({
     id: wall.id,
     title: wall.title ?? "우리 인생네컷",
-    themeId: isWallThemeId(wall.theme_id) ? wall.theme_id : "white",
+    themeId: resolveWallThemeId(wall.theme_id),
     updatedAt: wall.updated_at,
     myRole: roleByWall.get(wall.id) ?? "viewer",
     memberCount: countByWall.get(wall.id) ?? 1,
@@ -338,7 +338,7 @@ export async function fetchSharedWallForEdit(
   return {
     id: data.id,
     title: data.title ?? "우리 인생네컷",
-    themeId: isWallThemeId(data.theme_id) ? data.theme_id : "white",
+    themeId: resolveWallThemeId(data.theme_id),
     canvasJson: data.canvas_json,
     updatedAt: data.updated_at,
     myRole: role,

@@ -7,11 +7,13 @@ import { Html5Qrcode } from "html5-qrcode";
 import { savePendingImports } from "@/lib/booth-import/import-session";
 import type { BoothImportFailure, BoothImportResult } from "@/lib/booth-import/types";
 import { authFetch } from "@/lib/auth/api-fetch";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 type ImportState = "idle" | "scanning" | "loading" | "error";
 
 export default function QrImportPage() {
   const router = useRouter();
+  const { flags, loading: flagsLoading } = useFeatureFlags();
   const searchParams = useSearchParams();
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const handledUrlRef = useRef<string | null>(null);
@@ -120,13 +122,19 @@ export default function QrImportPage() {
   }, [searchParams, importFromUrl]);
 
   useEffect(() => {
+    if (flagsLoading || flags.qr_import) return;
+    void stopScanner();
+  }, [flagsLoading, flags.qr_import, stopScanner]);
+
+  useEffect(() => {
+    if (flagsLoading || !flags.qr_import) return;
     if (searchParams.get("url")) return;
 
     void startScanner();
     return () => {
       void stopScanner();
     };
-  }, [searchParams, startScanner, stopScanner]);
+  }, [flagsLoading, flags.qr_import, searchParams, startScanner, stopScanner]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,6 +160,19 @@ export default function QrImportPage() {
       </header>
 
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-5 px-4 py-5">
+        {!flagsLoading && !flags.qr_import ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <p className="text-sm font-medium">QR 가져오기가 일시 중단되었어요</p>
+            <p className="text-xs text-muted">점검 중이에요. 잠시 후 다시 시도해 주세요.</p>
+            <Link
+              href="/wall/edit"
+              className="mt-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-background"
+            >
+              벽 꾸미기로 돌아가기
+            </Link>
+          </div>
+        ) : (
+        <>
         <section className="space-y-2 text-center">
           <p className="text-sm font-medium">인생네컷 QR을 스캔하세요</p>
           <p className="text-xs leading-relaxed text-muted">
@@ -205,6 +226,8 @@ export default function QrImportPage() {
             </button>
           </form>
         </section>
+        </>
+        )}
       </main>
     </div>
   );

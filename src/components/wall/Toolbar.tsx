@@ -231,6 +231,7 @@ export default function Toolbar({
                   <span
                     className="h-5 w-5 shrink-0 rounded-md ring-1 ring-black/10"
                     style={{ background: theme.preview }}
+                    title={theme.description}
                   />
                   {theme.name}
                 </button>

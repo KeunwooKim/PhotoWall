@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PublishedWall } from "@/types/wall";
-import { isWallThemeId } from "@/lib/wall-themes";
+import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import { getSupabaseEnv } from "./env";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { canEditWall } from "./shared-walls";
@@ -26,7 +26,7 @@ export async function fetchWallFromDb(
 
   if (error || !data) return null;
 
-  const themeId = isWallThemeId(data.theme_id) ? data.theme_id : "white";
+  const themeId = resolveWallThemeId(data.theme_id);
 
   return {
     id: data.id,
@@ -181,7 +181,7 @@ function mapRow(data: {
 }): PublishedWall {
   return {
     id: data.id,
-    themeId: isWallThemeId(data.theme_id) ? data.theme_id : "white",
+    themeId: resolveWallThemeId(data.theme_id),
     canvasJson: data.canvas_json,
     updatedAt: data.updated_at,
   };
