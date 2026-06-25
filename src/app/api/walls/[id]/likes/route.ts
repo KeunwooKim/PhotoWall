@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getWallLikes, toggleWallLike } from "@/lib/supabase/social";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
+import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
 
 export async function GET(
   request: NextRequest,
@@ -10,9 +11,15 @@ export async function GET(
   const visitorId = new URL(request.url).searchParams.get("visitorId") ?? "";
 
   const routeClient = createRouteClient(request);
-  const userId = routeClient
-    ? (await getRouteUser(routeClient.supabase, request))?.id ?? null
-    : null;
+  if (!routeClient) {
+    return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  if (!(await isFeatureEnabled("likes", routeClient.supabase))) {
+    return NextResponse.json(featureDisabledResponse("좋아요"), { status: 503 });
+  }
+
+  const userId = (await getRouteUser(routeClient.supabase, request))?.id ?? null;
 
   const likes = await getWallLikes(id, visitorId, userId);
   if (!likes) {
@@ -31,6 +38,10 @@ export async function POST(
   const routeClient = createRouteClient(request);
   if (!routeClient) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  if (!(await isFeatureEnabled("likes", routeClient.supabase))) {
+    return NextResponse.json(featureDisabledResponse("좋아요"), { status: 503 });
   }
 
   const user = await getRouteUser(routeClient.supabase, request);

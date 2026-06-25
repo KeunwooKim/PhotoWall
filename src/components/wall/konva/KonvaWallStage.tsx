@@ -630,7 +630,10 @@ export default function KonvaWallStage({
           height: wallBounds.height,
           transform: `translate(-50%, -50%) scale(${viewportScale})`,
           background: showGrid ? undefined : theme.background,
-          backgroundSize: showGrid ? `${gridSize}px ${gridSize}px` : undefined,
+          backgroundSize: showGrid
+            ? `${gridSize}px ${gridSize}px`
+            : theme.backgroundSize,
+          backgroundPosition: showGrid ? undefined : theme.backgroundPosition,
         }}
       >
         <WallContextMenuProvider

@@ -2,12 +2,20 @@ import { NextResponse, type NextRequest } from "next/server";
 import { importPhotosFromBoothUrl } from "@/lib/booth-import/fetch-booth-images";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
 
 export async function POST(request: NextRequest) {
   const routeClient = createRouteClient(request);
   if (!routeClient) {
     return NextResponse.json(
       { ok: false, error: "server_error", message: "서버 설정이 필요해요" },
+      { status: 503 },
+    );
+  }
+
+  if (!(await isFeatureEnabled("qr_import", routeClient.supabase))) {
+    return NextResponse.json(
+      { ok: false, ...featureDisabledResponse("QR 가져오기") },
       { status: 503 },
     );
   }

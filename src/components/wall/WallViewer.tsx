@@ -14,6 +14,7 @@ import {
   resolveWallPhotoSrc,
 } from "@/lib/storage/resolve-wall-photos";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 interface WallViewerProps {
   themeId: WallThemeId;
@@ -30,6 +31,7 @@ export default function WallViewer({
   wallId,
   canGuestbook = false,
 }: WallViewerProps) {
+  const { flags } = useFeatureFlags();
   const wallStageRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -119,7 +121,9 @@ export default function WallViewer({
           {wallId && (
             <WallSocialPanel
               wallId={wallId}
-              canGuestbook={canGuestbook}
+              canGuestbook={canGuestbook && flags.guestbook}
+              enableLikes={flags.likes}
+              enableComments={flags.comments}
               onGuestbookAdded={handleGuestbookAdded}
             />
           )}

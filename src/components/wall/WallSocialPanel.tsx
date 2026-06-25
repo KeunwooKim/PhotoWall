@@ -9,12 +9,16 @@ import { useAuth } from "@/hooks/useAuth";
 interface WallSocialPanelProps {
   wallId: string;
   canGuestbook?: boolean;
+  enableLikes?: boolean;
+  enableComments?: boolean;
   onGuestbookAdded?: (canvasJson: object) => void;
 }
 
 export default function WallSocialPanel({
   wallId,
   canGuestbook = false,
+  enableLikes = true,
+  enableComments = true,
   onGuestbookAdded,
 }: WallSocialPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -48,28 +52,47 @@ export default function WallSocialPanel({
 
   const loadSocial = useCallback(async () => {
     try {
-      const [likesRes, commentsRes] = await Promise.all([
-        authFetch(`/api/walls/${wallId}/likes?visitorId=${visitorId}`),
-        fetch(`/api/walls/${wallId}/comments`),
-      ]);
+      const requests: Promise<Response>[] = [];
+      if (enableLikes) {
+        requests.push(authFetch(`/api/walls/${wallId}/likes?visitorId=${visitorId}`));
+      }
+      if (enableComments) {
+        requests.push(fetch(`/api/walls/${wallId}/comments`));
+      }
 
-      if (likesRes.status === 503 || commentsRes.status === 503) {
+      if (requests.length === 0) {
         setSocialAvailable(false);
         return;
       }
 
-      if (likesRes.ok) setLikes((await likesRes.json()) as WallLikesSummary);
-      if (commentsRes.ok) setComments((await commentsRes.json()) as WallComment[]);
+      const responses = await Promise.all(requests);
+      let likesRes: Response | null = null;
+      let commentsRes: Response | null = null;
+      let idx = 0;
+      if (enableLikes) likesRes = responses[idx++];
+      if (enableComments) commentsRes = responses[idx++];
+
+      if (
+        (likesRes && likesRes.status === 503) ||
+        (commentsRes && commentsRes.status === 503)
+      ) {
+        setSocialAvailable(false);
+        return;
+      }
+
+      if (likesRes?.ok) setLikes((await likesRes.json()) as WallLikesSummary);
+      if (commentsRes?.ok) setComments((await commentsRes.json()) as WallComment[]);
     } catch {
       setSocialAvailable(false);
     }
-  }, [wallId, visitorId]);
+  }, [wallId, visitorId, enableLikes, enableComments]);
 
   useEffect(() => {
     loadSocial();
   }, [loadSocial]);
 
   const handleToggleLike = async () => {
+    if (!enableLikes) return;
     if (!user) {
       showMessage("응원하려면 로그인이 필요해요");
       return;
@@ -89,6 +112,7 @@ export default function WallSocialPanel({
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!enableComments) return;
     if (!user) {
       showMessage("댓글을 남기려면 로그인이 필요해요");
       return;
@@ -148,6 +172,19 @@ export default function WallSocialPanel({
 
   if (!socialAvailable) return null;
 
+  if (!enableLikes && !enableComments && !canGuestbook) {
+    return null;
+  }
+
+  const panelLabel =
+    enableLikes && (enableComments || canGuestbook)
+      ? "응원 & 방명록"
+      : enableLikes
+        ? "응원하기"
+        : canGuestbook
+          ? "방명록"
+          : "응원 댓글";
+
   return (
     <>
       <button
@@ -155,7 +192,7 @@ export default function WallSocialPanel({
         onClick={() => setIsOpen(true)}
         className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8 backdrop-blur-sm"
       >
-        {likes ? `♥ ${likes.count}` : "응원하기"}
+        {likes ? `♥ ${likes.count}` : enableLikes ? "응원하기" : panelLabel}
       </button>
 
       {isOpen && (
@@ -170,7 +207,7 @@ export default function WallSocialPanel({
             style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
           >
             <div className="sticky top-0 flex items-center justify-between border-b border-foreground/8 bg-surface px-5 py-4">
-              <h2 className="text-sm font-semibold">응원 & 방명록</h2>
+              <h2 className="text-sm font-semibold">{panelLabel}</h2>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
@@ -182,20 +219,22 @@ export default function WallSocialPanel({
             </div>
 
             <div className="space-y-5 px-5 py-4">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleToggleLike}
-                  className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                    likes?.likedByMe
-                      ? "bg-rose-100 text-rose-600"
-                      : "bg-foreground/5 text-foreground hover:bg-foreground/8"
-                  }`}
-                >
-                  {likes?.likedByMe ? "♥ 응원 중" : "♡ 응원하기"}
-                </button>
-                <span className="text-sm text-muted">{likes?.count ?? 0}명이 응원했어요</span>
-              </div>
+              {enableLikes && (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleToggleLike}
+                    className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                      likes?.likedByMe
+                        ? "bg-rose-100 text-rose-600"
+                        : "bg-foreground/5 text-foreground hover:bg-foreground/8"
+                    }`}
+                  >
+                    {likes?.likedByMe ? "♥ 응원 중" : "♡ 응원하기"}
+                  </button>
+                  <span className="text-sm text-muted">{likes?.count ?? 0}명이 응원했어요</span>
+                </div>
+              )}
 
               {canGuestbook ? (
                 <section className="space-y-2">
@@ -229,12 +268,11 @@ export default function WallSocialPanel({
                     {isSubmittingGuestbook ? "붙이는 중..." : "사진 선택해서 붙이기"}
                   </label>
                 </section>
-              ) : (
-                <p className="text-xs text-muted">
-                  이 벽에는 방명록 사진을 붙일 수 없어요. 응원 댓글은 남길 수 있어요.
-                </p>
-              )}
+              ) : !enableLikes && enableComments ? (
+                <p className="text-xs text-muted">이 벽에는 방명록 사진을 붙일 수 없어요.</p>
+              ) : null}
 
+              {enableComments && (
               <section className="space-y-3">
                 <h3 className="text-xs font-medium uppercase tracking-wide text-muted">응원 댓글</h3>
                 <div className="max-h-40 space-y-2 overflow-y-auto">
@@ -266,6 +304,7 @@ export default function WallSocialPanel({
                   </button>
                 </form>
               </section>
+              )}
             </div>
           </aside>
         </>

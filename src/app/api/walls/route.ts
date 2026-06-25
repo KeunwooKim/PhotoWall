@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { savePersonalWallToDb } from "@/lib/supabase/walls";
-import { isWallThemeId } from "@/lib/wall-themes";
+import { resolveWallThemeId } from "@/lib/wall-themes";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 
 export async function POST(request: NextRequest) {
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
-    const themeId = isWallThemeId(body.themeId) ? body.themeId : "white";
+    const themeId = resolveWallThemeId(body.themeId ?? "");
 
     const wall = await savePersonalWallToDb(
       {

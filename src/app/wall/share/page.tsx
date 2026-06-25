@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import WallViewer from "@/components/wall/WallViewer";
 import { decodeWallFromShare } from "@/lib/wall-share";
-import { isWallThemeId } from "@/lib/wall-themes";
+import { resolveWallThemeId } from "@/lib/wall-themes";
 
 function ShareWallContent() {
   const searchParams = useSearchParams();
@@ -16,13 +16,15 @@ function ShareWallContent() {
   }
 
   const data = decodeWallFromShare(encoded);
-  if (!data || !isWallThemeId(data.themeId)) {
+  if (!data) {
     return <WallError message="벽 데이터를 불러올 수 없어요" />;
   }
 
+  const themeId = resolveWallThemeId(data.themeId);
+
   return (
     <WallViewer
-      themeId={data.themeId}
+      themeId={themeId}
       canvasJson={data.canvasJson}
       readOnly
     />

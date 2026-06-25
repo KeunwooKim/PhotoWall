@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Friend } from "@/types/profile";
 import type { SharedWall, WallMemberInvite } from "@/types/shared-wall";
 import { authFetch } from "@/lib/auth/api-fetch";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 interface SharedWallsPanelProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface SharedWallsPanelProps {
 }
 
 export default function SharedWallsPanel({ isOpen, onClose }: SharedWallsPanelProps) {
+  const { flags } = useFeatureFlags();
   const [walls, setWalls] = useState<SharedWall[]>([]);
   const [invites, setInvites] = useState<WallMemberInvite[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -232,6 +234,11 @@ export default function SharedWallsPanel({ isOpen, onClose }: SharedWallsPanelPr
 
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted">새 공동 벽</h3>
+            {!flags.shared_walls ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                공동 벽 기능이 일시적으로 중단되었어요. 기존 벽은 계속 이용할 수 있어요.
+              </p>
+            ) : (
             <form onSubmit={handleCreate} className="space-y-2">
               <input
                 type="text"
@@ -249,6 +256,7 @@ export default function SharedWallsPanel({ isOpen, onClose }: SharedWallsPanelPr
                 {isCreating ? "만드는 중..." : "공동 벽 만들기"}
               </button>
             </form>
+            )}
           </section>
 
           <section className="space-y-2">

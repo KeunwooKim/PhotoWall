@@ -3,6 +3,7 @@ import { addGuestbookPhoto } from "@/lib/supabase/social";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { ensureProfile } from "@/lib/supabase/profiles";
 import { checkWallAccess } from "@/lib/supabase/wall-access";
+import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
 
 export async function POST(
   request: NextRequest,
@@ -22,6 +23,10 @@ export async function POST(
   const routeClient = createRouteClient(request);
   if (!routeClient) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  if (!(await isFeatureEnabled("guestbook", routeClient.supabase))) {
+    return NextResponse.json(featureDisabledResponse("방명록"), { status: 503 });
   }
 
   const user = await getRouteUser(routeClient.supabase, request);

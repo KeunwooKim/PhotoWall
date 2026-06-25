@@ -8,6 +8,7 @@ import LayerPanel from "@/components/wall/LayerPanel";
 import AuthButton from "@/components/auth/AuthButton";
 import FriendsPanel from "@/components/social/FriendsPanel";
 import SharedWallsPanel from "@/components/social/SharedWallsPanel";
+import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { WallThemeId } from "@/types/wall";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchCloudWall, saveWallToCloud } from "@/lib/auth/migrate-wall";
@@ -41,6 +42,7 @@ import { useWallTransformActions } from "@/hooks/useWallTransformActions";
 import { useWallEditorContextMenu } from "@/hooks/useWallEditorContextMenu";
 import type { WallContextMenuActions } from "@/lib/wall-scene/build-context-menu-sections";
 import WallContextMenu from "@/components/wall/WallContextMenu";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
 import {
   HIGHLIGHTER_COLORS,
   HIGHLIGHTER_LENGTH_PRESETS,
@@ -53,7 +55,7 @@ export default function PersonalWallKonvaEditor() {
   const wallId = getOrCreateWallId();
   const wallStageRef = useRef<HTMLDivElement>(null);
 
-  const [themeId, setThemeId] = useState<WallThemeId>("white");
+  const [themeId, setThemeId] = useState<WallThemeId>(DEFAULT_WALL_THEME_ID);
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -156,7 +158,7 @@ export default function PersonalWallKonvaEditor() {
     void (async () => {
       const saved = loadWall();
       if (saved) {
-        setThemeId(saved.themeId);
+        setThemeId(resolveWallThemeId(saved.themeId));
         const doc = parseWallScene(saved.canvasJson);
         await prefetchWallScenePhotoUrls(doc, wallId);
         setLoadedCanvasJson(saved.canvasJson);
@@ -176,7 +178,7 @@ export default function PersonalWallKonvaEditor() {
       const saved = await saveWallToCloud(local.themeId, json, local.id);
       if (saved) {
         saveWall(saved.themeId, saved.canvasJson);
-        setThemeId(saved.themeId);
+        setThemeId(resolveWallThemeId(saved.themeId));
         setLoadedCanvasJson(saved.canvasJson);
         showToast("내 벽을 클라우드에 연결했어요");
         return;
@@ -186,7 +188,7 @@ export default function PersonalWallKonvaEditor() {
     const cloud = await fetchCloudWall();
     if (!cloud) return;
 
-    setThemeId(cloud.themeId);
+    setThemeId(resolveWallThemeId(cloud.themeId));
     setLoadedCanvasJson(cloud.canvasJson);
     saveWall(cloud.themeId, cloud.canvasJson);
     showToast("클라우드 벽을 불러왔어요");
@@ -647,6 +649,15 @@ export default function PersonalWallKonvaEditor() {
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-white">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-50 px-3"
+        style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
+      >
+        <div className="pointer-events-auto mx-auto max-w-lg">
+          <AnnouncementBanner target="editor" compact />
+        </div>
+      </div>
+
       <KonvaWallStageClient
         themeId={themeId}
         initialJson={loadedCanvasJson}

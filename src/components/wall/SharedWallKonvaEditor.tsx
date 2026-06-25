@@ -5,6 +5,7 @@ import KonvaWallStageClient from "@/components/wall/konva";
 import Toolbar from "@/components/wall/Toolbar";
 import LayerPanel from "@/components/wall/LayerPanel";
 import type { WallThemeId } from "@/types/wall";
+import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import AuthButton from "@/components/auth/AuthButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useWallRealtime } from "@/hooks/useWallRealtime";
@@ -35,6 +36,7 @@ import { useWallTransformActions } from "@/hooks/useWallTransformActions";
 import { useWallEditorContextMenu } from "@/hooks/useWallEditorContextMenu";
 import type { WallContextMenuActions } from "@/lib/wall-scene/build-context-menu-sections";
 import WallContextMenu from "@/components/wall/WallContextMenu";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
 import {
   HIGHLIGHTER_COLORS,
   HIGHLIGHTER_LENGTH_PRESETS,
@@ -48,7 +50,7 @@ interface SharedWallKonvaEditorProps {
 
 export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEditorProps) {
   const { user } = useAuth();
-  const [themeId, setThemeId] = useState<WallThemeId>("white");
+  const [themeId, setThemeId] = useState<WallThemeId>(DEFAULT_WALL_THEME_ID);
   const [sharedWallTitle, setSharedWallTitle] = useState<string | null>(null);
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -189,7 +191,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       }
 
       setSharedWallTitle(wall.title);
-      setThemeId(wall.themeId);
+      setThemeId(resolveWallThemeId(wall.themeId));
 
       const { parseWallScene } = await import("@/lib/wall-scene/fabric-import");
       const doc = parseWallScene(wall.canvasJson);
@@ -629,6 +631,15 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-white">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-50 px-3"
+        style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
+      >
+        <div className="pointer-events-auto mx-auto max-w-lg">
+          <AnnouncementBanner target="editor" compact />
+        </div>
+      </div>
+
       <KonvaWallStageClient
         themeId={themeId}
         initialJson={loadedCanvasJson}

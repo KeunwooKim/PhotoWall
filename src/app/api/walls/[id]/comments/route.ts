@@ -3,6 +3,7 @@ import { addWallComment, getWallComments } from "@/lib/supabase/social";
 import { getSupabaseServer } from "@/lib/supabase/walls";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { ensureProfile } from "@/lib/supabase/profiles";
+import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
 
 export async function GET(
   _request: Request,
@@ -10,8 +11,13 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  if (!getSupabaseServer()) {
+  const supabase = getSupabaseServer();
+  if (!supabase) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  if (!(await isFeatureEnabled("comments", supabase))) {
+    return NextResponse.json(featureDisabledResponse("댓글"), { status: 503 });
   }
 
   const comments = await getWallComments(id);
@@ -32,6 +38,10 @@ export async function POST(
   const routeClient = createRouteClient(request);
   if (!routeClient) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  if (!(await isFeatureEnabled("comments", routeClient.supabase))) {
+    return NextResponse.json(featureDisabledResponse("댓글"), { status: 503 });
   }
 
   const user = await getRouteUser(routeClient.supabase, request);

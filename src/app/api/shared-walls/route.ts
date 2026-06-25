@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { createSharedWall, getSharedWallsForUser } from "@/lib/supabase/shared-walls";
+import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
 
 export async function GET(request: NextRequest) {
   const routeClient = createRouteClient(request);
@@ -30,6 +31,12 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!(await isFeatureEnabled("shared_walls", supabase))) {
+    return applyCookies(
+      NextResponse.json(featureDisabledResponse("공동 벽"), { status: 503 }),
+    );
   }
 
   const body = (await request.json()) as { title?: string };

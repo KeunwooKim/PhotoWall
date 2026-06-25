@@ -1,12 +1,11 @@
 export type WallThemeId =
-  | "corkboard"
-  | "concrete"
-  | "pastel"
-  | "white"
-  | "brick-red"
-  | "plaster-worn"
-  | "wood-panel"
-  | "booth-curtain";
+  | "linen-cream"
+  | "studio-pink"
+  | "sage-room"
+  | "starry-dream"
+  | "cafe-chalkboard"
+  | "cafe-cork"
+  | "cafe-brick";
 
 export type WallObjectType = "photo" | "sticker" | "tape" | "drawing";
 
@@ -35,6 +34,9 @@ export interface WallTheme {
   description: string;
   background: string;
   preview: string;
+  /** CSS background-size — image 벽지는 cover 권장 */
+  backgroundSize?: string;
+  backgroundPosition?: string;
 }
 
 export interface PublishedWall {
