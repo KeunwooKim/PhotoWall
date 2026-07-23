@@ -7,12 +7,21 @@ export interface SharedWallEditData extends PublishedWall {
   myRole: WallMemberRole;
 }
 
-export async function fetchSharedWallForEdit(
-  wallId: string,
-): Promise<SharedWallEditData | null> {
+export type FetchSharedWallResult =
+  | { ok: true; wall: SharedWallEditData }
+  | { ok: false; reason: "not_found" | "not_member" | "viewer_only" | "unauthorized" };
+
+export async function fetchSharedWallForEdit(wallId: string): Promise<FetchSharedWallResult> {
   const res = await authFetch(`/api/shared-walls/${wallId}`);
-  if (!res.ok) return null;
-  return (await res.json()) as SharedWallEditData;
+  if (res.ok) {
+    return { ok: true, wall: (await res.json()) as SharedWallEditData };
+  }
+
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (res.status === 401) return { ok: false, reason: "unauthorized" };
+  if (res.status === 403 && body.error === "viewer_only") return { ok: false, reason: "viewer_only" };
+  if (res.status === 403 && body.error === "not_member") return { ok: false, reason: "not_member" };
+  return { ok: false, reason: "not_found" };
 }
 
 export async function saveSharedWallToCloud(

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getWallLikes, toggleWallLike } from "@/lib/supabase/social";
+import { checkWallAccess } from "@/lib/supabase/wall-access";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
 
@@ -20,6 +21,10 @@ export async function GET(
   }
 
   const userId = (await getRouteUser(routeClient.supabase, request))?.id ?? null;
+  const access = await checkWallAccess(routeClient.supabase, id, userId);
+  if (!access.allowed) {
+    return routeClient.applyCookies(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+  }
 
   const likes = await getWallLikes(id, visitorId, userId);
   if (!likes) {

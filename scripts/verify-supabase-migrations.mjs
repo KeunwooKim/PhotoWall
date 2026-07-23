@@ -172,6 +172,47 @@ async function main() {
     }
   }
 
+  // ── shared-walls-members-only-migration.sql ──
+  if (admin) {
+    const { data: sharedWall } = await admin
+      .from("walls")
+      .select("id")
+      .eq("is_shared", true)
+      .eq("is_hidden", false)
+      .limit(1)
+      .maybeSingle();
+
+    if (!sharedWall?.id) {
+      results.push(warn("공동 벽 멤버 전용", "is_shared=true 벽 샘플 없음 — 수동 확인"));
+    } else {
+      const { data: anonShared } = await anon
+        .from("walls")
+        .select("id")
+        .eq("id", sharedWall.id)
+        .maybeSingle();
+      results.push(
+        anonShared
+          ? fail(
+              "공동 벽 멤버 전용",
+              "anon이 공동 벽 조회 가능 — shared-walls-members-only-migration.sql 필요",
+            )
+          : ok("공동 벽 멤버 전용", "anon 공동 벽 차단 — members-only migration 적용 추정"),
+      );
+
+      const { data: meta, error: metaErr } = await anon.rpc("get_wall_access_meta", {
+        p_wall_id: sharedWall.id,
+        p_user_id: null,
+      });
+      results.push(
+        metaErr
+          ? warn("get_wall_access_meta RPC", metaErr.message)
+          : meta?.exists && meta?.is_shared
+            ? ok("get_wall_access_meta RPC", "공동 벽 메타 조회 가능 (캔버스 미노출)")
+            : fail("get_wall_access_meta RPC", "RPC 응답 확인 필요"),
+      );
+    }
+  }
+
   // ── production signed-photos (optional) ──
   if (admin) {
     const { data: sampleWall } = await admin.from("walls").select("id").limit(1).maybeSingle();
