@@ -3,7 +3,7 @@ import type { PublishedWall } from "@/types/wall";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import { getSupabaseEnv } from "./env";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { canEditWall } from "./shared-walls";
+import { canEditWall } from "./wall-role";
 
 export function getSupabaseServer(): SupabaseClient | null {
   const { url, key } = getSupabaseEnv();
