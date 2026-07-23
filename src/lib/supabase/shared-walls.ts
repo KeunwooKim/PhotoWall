@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SharedWall, SharedWallMember, WallMemberInvite, WallMemberRole } from "@/types/shared-wall";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { PublishedWall } from "@/types/wall";
+import { checkWallAccess } from "./wall-access";
 
 export async function getUserWallRole(
   supabase: SupabaseClient,
@@ -323,8 +324,51 @@ export async function fetchSharedWallForEdit(
   wallId: string,
   userId: string,
 ): Promise<(PublishedWall & { title: string; myRole: WallMemberRole }) | null> {
+  const access = await resolveSharedWallEditAccess(supabase, wallId, userId);
+  if (access.status !== "ok") return null;
+  return access.wall;
+}
+
+export type SharedWallEditAccess =
+  | { status: "ok"; wall: PublishedWall & { title: string; myRole: WallMemberRole } }
+  | { status: "not_found" }
+  | { status: "not_member" }
+  | { status: "viewer_only" };
+
+export async function resolveSharedWallEditAccess(
+  supabase: SupabaseClient,
+  wallId: string,
+  userId: string,
+): Promise<SharedWallEditAccess> {
   const role = await getUserWallRole(supabase, wallId, userId);
-  if (!role || role === "viewer") return null;
+
+  if (role === "viewer") {
+    return { status: "viewer_only" };
+  }
+
+  if (!role) {
+    const { data: meta, error: metaError } = await supabase.rpc("get_wall_access_meta", {
+      p_wall_id: wallId,
+      p_user_id: userId,
+    });
+
+    if (!metaError && meta?.exists && meta?.is_shared) {
+      return { status: "not_member" };
+    }
+
+    if (metaError) {
+      const access = await checkWallAccess(supabase, wallId, userId);
+      if (!access.allowed && access.reason === "not_member") {
+        return { status: "not_member" };
+      }
+      if (!access.allowed) {
+        return { status: "not_found" };
+      }
+      return { status: "viewer_only" };
+    }
+
+    return { status: "not_found" };
+  }
 
   const { data, error } = await supabase
     .from("walls")
@@ -333,14 +377,19 @@ export async function fetchSharedWallForEdit(
     .eq("is_shared", true)
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    return { status: "not_found" };
+  }
 
   return {
-    id: data.id,
-    title: data.title ?? "우리 인생네컷",
-    themeId: resolveWallThemeId(data.theme_id),
-    canvasJson: data.canvas_json,
-    updatedAt: data.updated_at,
-    myRole: role,
+    status: "ok",
+    wall: {
+      id: data.id,
+      title: data.title ?? "우리 인생네컷",
+      themeId: resolveWallThemeId(data.theme_id),
+      canvasJson: data.canvas_json,
+      updatedAt: data.updated_at,
+      myRole: role,
+    },
   };
 }

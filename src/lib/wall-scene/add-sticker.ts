@@ -13,9 +13,8 @@ export function addStickerToWallScene(
   const definition = getStickerById(stickerId);
   if (!definition) return false;
 
-  const size = definition.defaultSize ?? 64;
-  const width = definition.kind === "emoji" ? size : size;
-  const height = definition.kind === "emoji" ? size : size;
+  const width = definition.defaultWidth ?? definition.defaultSize ?? 64;
+  const height = definition.defaultHeight ?? definition.defaultSize ?? 64;
 
   const x =
     options.position?.x ??

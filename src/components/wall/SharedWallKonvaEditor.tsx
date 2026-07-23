@@ -53,6 +53,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const [themeId, setThemeId] = useState<WallThemeId>(DEFAULT_WALL_THEME_ID);
   const [sharedWallTitle, setSharedWallTitle] = useState<string | null>(null);
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "not_found">("loading");
   const [isReady, setIsReady] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
@@ -179,17 +180,23 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     if (!user) return;
 
     setLoadedCanvasJson(null);
+    setLoadState("loading");
     setIsReady(false);
     persistEnabledRef.current = false;
     lastSavedFingerprintRef.current = null;
 
     void (async () => {
-      const wall = await fetchSharedWallForEdit(sharedId);
-      if (!wall) {
-        showToast("공동 벽을 불러올 수 없어요");
+      const result = await fetchSharedWallForEdit(sharedId);
+      if (!result.ok) {
+        if (result.reason === "viewer_only") {
+          window.location.href = `/wall/${sharedId}`;
+          return;
+        }
+        setLoadState(result.reason === "not_member" ? "denied" : "not_found");
         return;
       }
 
+      const wall = result.wall;
       setSharedWallTitle(wall.title);
       setThemeId(resolveWallThemeId(wall.themeId));
 
@@ -198,8 +205,9 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       await prefetchWallScenePhotoUrls(doc, sharedId);
 
       setLoadedCanvasJson(wall.canvasJson);
+      setLoadState("ready");
     })();
-  }, [sharedId, user, showToast]);
+  }, [sharedId, user]);
 
   const handleDocumentChange = useCallback(
     (json: object) => {
@@ -463,7 +471,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     try {
       const url = `${window.location.origin}/wall/${sharedId}`;
       await navigator.clipboard.writeText(url);
-      showToast("공동 벽 링크가 복사됐어요");
+      showToast("멤버 전용 링크가 복사됐어요 · 로그인한 멤버만 볼 수 있어요");
     } finally {
       setIsSharing(false);
     }
@@ -621,7 +629,43 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     );
   }
 
-  if (!loadedCanvasJson) {
+  if (loadState === "denied") {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-lg font-medium text-foreground">이 공동 벽의 멤버가 아니에요</p>
+        <p className="text-sm text-muted">벽 주인에게 멤버 초대를 요청해 보세요.</p>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/wall/edit";
+          }}
+          className="mt-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-medium text-background"
+        >
+          내 벽으로
+        </button>
+      </div>
+    );
+  }
+
+  if (loadState === "not_found") {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-lg font-medium text-foreground">공동 벽을 찾을 수 없어요</p>
+        <p className="text-sm text-muted">삭제되었거나 링크가 잘못됐을 수 있어요.</p>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/wall/edit";
+          }}
+          className="mt-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-medium text-background"
+        >
+          내 벽으로
+        </button>
+      </div>
+    );
+  }
+
+  if (loadState === "loading" || !loadedCanvasJson) {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6">
         <p className="text-sm text-muted">공동 벽 불러오는 중...</p>

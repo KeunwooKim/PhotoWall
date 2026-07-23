@@ -1,11 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getUserWallRole } from "./shared-walls";
 
 export interface WallAccessResult {
   allowed: boolean;
   isOwner: boolean;
   isShared: boolean;
   canGuestbook: boolean;
-  reason?: "private" | "not_found";
+  reason?: "private" | "not_found" | "members_only" | "not_member";
+}
+
+interface WallAccessMeta {
+  exists: boolean;
+  is_shared?: boolean;
+  owner_id?: string | null;
+  is_member?: boolean;
 }
 
 export async function areFriends(
@@ -26,11 +34,21 @@ export async function areFriends(
   return !!data;
 }
 
-export async function checkWallAccess(
+async function loadWallAccessMeta(
   supabase: SupabaseClient,
   wallId: string,
   visitorId?: string | null,
-): Promise<WallAccessResult> {
+): Promise<WallAccessMeta | null> {
+  const { data, error } = await supabase.rpc("get_wall_access_meta", {
+    p_wall_id: wallId,
+    p_user_id: visitorId ?? null,
+  });
+
+  if (!error && data && typeof data === "object") {
+    return data as WallAccessMeta;
+  }
+
+  // Migration 미적용 환경 fallback
   const { data: wall } = await supabase
     .from("walls")
     .select("id, owner_id, is_shared")
@@ -38,45 +56,97 @@ export async function checkWallAccess(
     .maybeSingle();
 
   if (!wall) {
-    return { allowed: false, isOwner: false, isShared: false, canGuestbook: false, reason: "not_found" };
+    return { exists: false };
   }
 
-  const isOwner = !!visitorId && wall.owner_id === visitorId;
-  const isShared = !!wall.is_shared;
-
-  if (isShared) {
-    let canGuestbook = isOwner;
-    if (visitorId && !isOwner) {
+  let isMember = false;
+  if (visitorId) {
+    if (wall.owner_id === visitorId) {
+      isMember = true;
+    } else {
       const { data: member } = await supabase
         .from("wall_members")
-        .select("role")
+        .select("id")
         .eq("wall_id", wallId)
         .eq("user_id", visitorId)
         .maybeSingle();
-      canGuestbook = member?.role === "owner" || member?.role === "editor";
+      isMember = !!member;
     }
-    return { allowed: true, isOwner, isShared: true, canGuestbook };
+  }
+
+  return {
+    exists: true,
+    is_shared: !!wall.is_shared,
+    owner_id: wall.owner_id,
+    is_member: isMember,
+  };
+}
+
+export async function checkWallAccess(
+  supabase: SupabaseClient,
+  wallId: string,
+  visitorId?: string | null,
+): Promise<WallAccessResult> {
+  const meta = await loadWallAccessMeta(supabase, wallId, visitorId);
+
+  if (!meta?.exists) {
+    return { allowed: false, isOwner: false, isShared: false, canGuestbook: false, reason: "not_found" };
+  }
+
+  const ownerId = meta.owner_id ?? null;
+  const isOwner = !!visitorId && ownerId === visitorId;
+  const isShared = !!meta.is_shared;
+
+  if (isShared) {
+    if (!visitorId) {
+      return {
+        allowed: false,
+        isOwner: false,
+        isShared: true,
+        canGuestbook: false,
+        reason: "members_only",
+      };
+    }
+
+    if (!meta.is_member) {
+      return {
+        allowed: false,
+        isOwner: false,
+        isShared: true,
+        canGuestbook: false,
+        reason: "not_member",
+      };
+    }
+
+    const role = await getUserWallRole(supabase, wallId, visitorId);
+    const canGuestbook = role === "owner" || role === "editor";
+    return {
+      allowed: true,
+      isOwner: role === "owner",
+      isShared: true,
+      canGuestbook,
+    };
   }
 
   if (isOwner) {
     return { allowed: true, isOwner: true, isShared: false, canGuestbook: true };
   }
 
-  if (!visitorId || !wall.owner_id) {
+  if (!visitorId || !ownerId) {
     return { allowed: false, isOwner: false, isShared: false, canGuestbook: false, reason: "private" };
   }
 
   const { data: ownerProfile } = await supabase
     .from("profiles")
     .select("allow_wall_visits")
-    .eq("id", wall.owner_id)
+    .eq("id", ownerId)
     .maybeSingle();
 
   if (!ownerProfile?.allow_wall_visits) {
     return { allowed: false, isOwner: false, isShared: false, canGuestbook: false, reason: "private" };
   }
 
-  const friends = await areFriends(supabase, visitorId, wall.owner_id);
+  const friends = await areFriends(supabase, visitorId, ownerId);
   if (!friends) {
     return { allowed: false, isOwner: false, isShared: false, canGuestbook: false, reason: "private" };
   }

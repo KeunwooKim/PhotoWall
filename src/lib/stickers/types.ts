@@ -7,6 +7,8 @@ export interface StickerDefinition {
   /** Public path, emoji char, or image URL */
   src: string;
   defaultSize?: number;
+  defaultWidth?: number;
+  defaultHeight?: number;
   tags?: string[];
   premium?: boolean;
 }
