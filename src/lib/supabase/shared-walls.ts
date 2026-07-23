@@ -3,38 +3,9 @@ import type { SharedWall, SharedWallMember, WallMemberInvite, WallMemberRole } f
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { PublishedWall } from "@/types/wall";
 import { checkWallAccess } from "./wall-access";
+import { getUserWallRole } from "./wall-role";
 
-export async function getUserWallRole(
-  supabase: SupabaseClient,
-  wallId: string,
-  userId: string,
-): Promise<WallMemberRole | null> {
-  const { data: wall } = await supabase
-    .from("walls")
-    .select("owner_id")
-    .eq("id", wallId)
-    .maybeSingle();
-
-  if (wall?.owner_id === userId) return "owner";
-
-  const { data: member } = await supabase
-    .from("wall_members")
-    .select("role")
-    .eq("wall_id", wallId)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  return (member?.role as WallMemberRole) ?? null;
-}
-
-export async function canEditWall(
-  supabase: SupabaseClient,
-  wallId: string,
-  userId: string,
-): Promise<boolean> {
-  const role = await getUserWallRole(supabase, wallId, userId);
-  return role === "owner" || role === "editor";
-}
+export { getUserWallRole, canEditWall } from "./wall-role";
 
 export async function createSharedWall(
   supabase: SupabaseClient,
