@@ -101,7 +101,10 @@ export interface WallPresenceState {
   /** @deprecated Use selectedObjectIds — kept for older clients */
   selectedObjectId?: string;
   selectedObjectIds?: string[];
-  /** True while dragging/resizing — peers hide cursor, show object border only */
+  /**
+   * True while dragging/resizing.
+   * Peers also hide the cursor chip whenever selectedObjectIds is non-empty.
+   */
   isManipulating?: boolean;
   updatedAt: number;
   /** Unique per browser tab — avoids Supabase presence key collisions */
