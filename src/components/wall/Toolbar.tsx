@@ -66,6 +66,8 @@ interface ToolbarProps {
   onDelete: () => void;
   onSave: () => void;
   onClear: () => void;
+  /** Shared walls auto-save — hide manual save CTA */
+  autoSaveOnly?: boolean;
 }
 
 export default function Toolbar({
@@ -126,6 +128,7 @@ export default function Toolbar({
   onDelete,
   onSave,
   onClear,
+  autoSaveOnly = false,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -168,7 +171,7 @@ export default function Toolbar({
         <div className="flex items-center justify-between border-b border-foreground/8 px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-foreground">꾸미기</h2>
-            <p className="mt-0.5 text-xs text-muted">사진을 끌어다 놓거나 올려보세요</p>
+            <p className="mt-0.5 text-xs text-muted">사진·테이프·스티커·벽지를 추가해요</p>
           </div>
           <button
             type="button"
@@ -181,6 +184,8 @@ export default function Toolbar({
         </div>
 
         <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">추가</p>
+
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted">사진</h3>
             <input
@@ -291,23 +296,9 @@ export default function Toolbar({
             <p className="text-[11px] text-muted">인스타 스토리용 이미지로 저장할 수 있어요</p>
           </section>
 
-          <section className="space-y-3">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">도구</h3>
-            <div className="flex gap-2">
-              <ToolButton active={mode === "select"} onClick={() => onModeChange("select")}>
-                선택
-              </ToolButton>
-              <ToolButton active={mode === "draw"} onClick={() => onModeChange("draw")}>
-                형광펜
-              </ToolButton>
-              <ToolButton onClick={onUndo} disabled={!canUndo}>
-                ↩
-              </ToolButton>
-              <ToolButton onClick={onRedo} disabled={!canRedo}>
-                ↪
-              </ToolButton>
-            </div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">도구</p>
 
+          <section className="space-y-3">
             {mode === "draw" && (
               <div className="space-y-2 rounded-xl bg-foreground/3 p-3">
                 <p className="text-[11px] text-muted">형광펜 색상</p>
@@ -343,8 +334,29 @@ export default function Toolbar({
                   ))}
                 </div>
                 <p className="text-[11px] leading-relaxed text-muted">
-                  벽에서 드래그해 직선 형광펜을 그려요. 방향과 길이는 손가락으로 조절돼요.
+                  하단 독에서 펜을 켠 뒤, 벽에서 드래그해 직선 형광펜을 그려요.
                 </p>
+              </div>
+            )}
+
+            {mode === "select" && !hasSelection && (
+              <div className="space-y-3">
+                <p className="text-[11px] text-muted">
+                  선택·펜·실행취소는 하단 도구 바에서 바로 쓸 수 있어요. 물체를 길게 누르면 더 많은 편집 메뉴가 열려요.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <ToolButton onClick={onSelectAll}>전체 선택</ToolButton>
+                  <ToolButton onClick={onToggleGrid} active={showGrid}>
+                    격자 {showGrid ? "숨기기" : "보기"}
+                  </ToolButton>
+                  <ToolButton
+                    onClick={onToggleSnapToGrid}
+                    active={snapToGrid}
+                    disabled={!showGrid && !snapToGrid}
+                  >
+                    격자 맞춤
+                  </ToolButton>
+                </div>
               </div>
             )}
 
@@ -436,29 +448,23 @@ export default function Toolbar({
                 </div>
               </div>
             )}
-
-            {mode === "select" && !hasSelection && (
-              <div className="flex flex-wrap gap-2">
-                <ToolButton onClick={onSelectAll}>전체 선택</ToolButton>
-                <ToolButton onClick={onToggleGrid} active={showGrid}>
-                  격자 {showGrid ? "숨기기" : "보기"}
-                </ToolButton>
-                <ToolButton onClick={onToggleSnapToGrid} active={snapToGrid} disabled={!showGrid && !snapToGrid}>
-                  격자 맞춤
-                </ToolButton>
-              </div>
-            )}
           </section>
         </div>
 
         <div className="space-y-2 border-t border-foreground/8 px-5 py-4">
-          <button
-            type="button"
-            onClick={onSave}
-            className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-medium text-background transition hover:opacity-90 active:scale-[0.98]"
-          >
-            저장하기
-          </button>
+          {autoSaveOnly ? (
+            <p className="rounded-xl bg-foreground/4 px-4 py-3 text-center text-xs text-muted">
+              변경 사항은 자동으로 저장돼요
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={onSave}
+              className="w-full rounded-xl bg-foreground px-4 py-3 text-sm font-medium text-background transition hover:opacity-90 active:scale-[0.98]"
+            >
+              저장하기
+            </button>
+          )}
           <button
             type="button"
             onClick={onClear}

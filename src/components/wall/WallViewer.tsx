@@ -33,10 +33,12 @@ export default function WallViewer({
 }: WallViewerProps) {
   const { flags } = useFeatureFlags();
   const wallStageRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [loadedJson, setLoadedJson] = useState<object | null>(null);
   const [viewerKey, setViewerKey] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const resolvePhotoSrc = useCallback(
     (src: string) => (wallId ? resolveWallPhotoSrc(src, wallId) : Promise.resolve(src)),
@@ -60,28 +62,43 @@ export default function WallViewer({
     };
   }, [canvasJson, wallId]);
 
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [moreOpen]);
+
   const handleReady = useCallback(() => {
     setIsReady(true);
   }, []);
 
-  const handleGuestbookAdded = useCallback((updatedCanvas: object) => {
-    setIsReady(false);
-    setLoadedJson(null);
-    setViewerKey((key) => key + 1);
+  const handleGuestbookAdded = useCallback(
+    (updatedCanvas: object) => {
+      setIsReady(false);
+      setLoadedJson(null);
+      setViewerKey((key) => key + 1);
 
-    void (async () => {
-      const doc = parseWallScene(updatedCanvas);
-      if (wallId) {
-        await prefetchWallScenePhotoUrls(doc, wallId);
-      }
-      setLoadedJson(updatedCanvas);
-    })();
-  }, [wallId]);
+      void (async () => {
+        const doc = parseWallScene(updatedCanvas);
+        if (wallId) {
+          await prefetchWallScenePhotoUrls(doc, wallId);
+        }
+        setLoadedJson(updatedCanvas);
+      })();
+    },
+    [wallId],
+  );
 
   const handleExport = async () => {
     const stage = wallStageRef.current;
     if (!stage || isExporting) return;
 
+    setMoreOpen(false);
     setIsExporting(true);
     try {
       await shareWallImage(stage);
@@ -106,18 +123,18 @@ export default function WallViewer({
       )}
 
       <div
-        className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between px-4 py-3"
+        className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between gap-3 px-4 py-3"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
         <Link
-          href="/"
+          href="/wall/edit"
           className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8 backdrop-blur-sm"
         >
           나도 꾸미기
         </Link>
 
         <div className="flex items-center gap-2">
-          <AuthButton />
+          <AuthButton compact />
           {wallId && (
             <WallSocialPanel
               wallId={wallId}
@@ -127,20 +144,40 @@ export default function WallViewer({
               onGuestbookAdded={handleGuestbookAdded}
             />
           )}
-          {wallId && (
-            <span className="rounded-full bg-white/90 px-3 py-2 text-[11px] text-muted shadow-sm ring-1 ring-black/6 backdrop-blur-sm">
-              @{wallId.slice(0, 8)}
-            </span>
-          )}
-          {wallId && <ReportWallButton wallId={wallId} />}
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={!isReady || isExporting}
-            className="rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background shadow-sm transition hover:opacity-90 disabled:opacity-50"
-          >
-            {isExporting ? "저장 중..." : "이미지 저장"}
-          </button>
+
+          <div ref={moreRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setMoreOpen((open) => !open)}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-sm font-medium text-neutral-900 shadow-sm ring-1 ring-black/8 backdrop-blur-sm"
+              aria-label="더보기"
+              aria-expanded={moreOpen}
+            >
+              ⋯
+            </button>
+            {moreOpen && (
+              <div className="absolute right-0 top-full z-40 mt-2 w-44 overflow-hidden rounded-2xl bg-white py-1 shadow-lg ring-1 ring-black/10">
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={!isReady || isExporting}
+                  className="w-full px-3 py-2.5 text-left text-xs font-medium text-foreground transition hover:bg-foreground/5 disabled:opacity-50"
+                >
+                  {isExporting ? "저장 중..." : "이미지 저장"}
+                </button>
+                {wallId && (
+                  <div className="border-t border-foreground/6 px-1 py-1">
+                    <ReportWallButton wallId={wallId} variant="menu" />
+                  </div>
+                )}
+                {wallId && (
+                  <p className="border-t border-foreground/6 px-3 py-2 text-[10px] text-muted">
+                    @{wallId.slice(0, 8)}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
