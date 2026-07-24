@@ -785,6 +785,7 @@ export default function KonvaWallStage({
         <WallPresenceOverlay
           peers={peers}
           currentSessionId={currentSessionId}
+          currentUserId={currentUserId}
           wallWidth={wallBounds.width}
           wallHeight={wallBounds.height}
           containerWidth={containerSize.width}

@@ -75,6 +75,22 @@ function hasMeaningfulCursor(peer: WallPresenceState): boolean {
   );
 }
 
+/** Peer cursor chip — others only, and only while idle (no selection / drag). */
+export function shouldShowPeerCursor(
+  peer: WallPresenceState,
+  options: { currentSessionId?: string; currentUserId?: string },
+): boolean {
+  if (options.currentSessionId && peer.sessionId === options.currentSessionId) {
+    return false;
+  }
+  if (options.currentUserId && peer.userId === options.currentUserId) {
+    return false;
+  }
+  if (peer.isManipulating) return false;
+  if (peerSelectedObjectIds(peer).length > 0) return false;
+  return hasMeaningfulCursor(peer);
+}
+
 /** Prefer the newest presence snapshot — do not resurrect cleared selection fields. */
 export function mergePeerPresence(
   existing: WallPresenceState | undefined,

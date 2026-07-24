@@ -1,11 +1,12 @@
 "use client";
 
 import type { WallPresenceState } from "@/types/wall-scene-v2";
-import { dedupePresencePeers } from "@/lib/wall-scene/presence-utils";
+import { dedupePresencePeers, shouldShowPeerCursor } from "@/lib/wall-scene/presence-utils";
 
 interface WallPresenceOverlayProps {
   peers: WallPresenceState[];
   currentSessionId: string;
+  currentUserId?: string;
   wallWidth: number;
   wallHeight: number;
   containerWidth: number;
@@ -16,6 +17,7 @@ interface WallPresenceOverlayProps {
 export default function WallPresenceOverlay({
   peers,
   currentSessionId,
+  currentUserId,
   wallWidth,
   wallHeight,
   containerWidth,
@@ -25,8 +27,8 @@ export default function WallPresenceOverlay({
   const offsetX = containerWidth / 2 - (wallWidth * wallScale) / 2;
   const offsetY = containerHeight / 2 - (wallHeight * wallScale) / 2;
 
-  const visiblePeers = dedupePresencePeers(peers).filter(
-    (peer) => peer.sessionId !== currentSessionId && !peer.isManipulating,
+  const visiblePeers = dedupePresencePeers(peers).filter((peer) =>
+    shouldShowPeerCursor(peer, { currentSessionId, currentUserId }),
   );
 
   return (
