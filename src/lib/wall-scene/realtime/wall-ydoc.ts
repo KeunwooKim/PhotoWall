@@ -5,12 +5,13 @@ import { throttle } from "@/lib/throttle";
 
 const CHANNEL_PREFIX = "shared-wall";
 const SYNC_EVENT = "wall-sync";
+const PRESENCE_LIVE_EVENT = "wall-presence-live";
 
 function channelTopic(wallId: string): string {
   return `${CHANNEL_PREFIX}:${wallId}`;
 }
 
-function isSyncPayload(value: Record<string, unknown>): value is SyncPayload {
+function isSyncPayload(value: Record<string, unknown>): boolean {
   return (
     value.kind === "hello" ||
     value.kind === "full" ||
@@ -19,7 +20,21 @@ function isSyncPayload(value: Record<string, unknown>): value is SyncPayload {
   );
 }
 
-function unwrapBroadcastPayload<T extends SyncPayload>(message: unknown): T | null {
+function isPresenceLivePayload(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.userId === "string" &&
+    typeof value.displayName === "string" &&
+    typeof value.color === "string" &&
+    typeof value.cursorX === "number" &&
+    typeof value.cursorY === "number" &&
+    typeof value.updatedAt === "number"
+  );
+}
+
+function unwrapBroadcastPayload<T>(
+  message: unknown,
+  guard: (value: Record<string, unknown>) => boolean,
+): T | null {
   if (!message || typeof message !== "object") return null;
 
   const queue: unknown[] = [message];
@@ -31,7 +46,7 @@ function unwrapBroadcastPayload<T extends SyncPayload>(message: unknown): T | nu
     seen.add(current);
 
     const obj = current as Record<string, unknown>;
-    if (isSyncPayload(obj)) return obj as T;
+    if (guard(obj)) return obj as T;
 
     if (obj.payload !== undefined) queue.push(obj.payload);
     if (obj.data !== undefined) queue.push(obj.data);
@@ -59,6 +74,12 @@ type SyncPayload =
       patch: WallObjectPatch;
     };
 
+/** Identity-only presence track — cursor/selection travel on broadcast. */
+type PresenceRosterState = Pick<
+  WallPresenceState,
+  "userId" | "sessionId" | "displayName" | "color" | "updatedAt"
+>;
+
 export interface WallRealtimeOptions {
   wallId: string;
   userId: string;
@@ -80,12 +101,12 @@ export class WallRealtimeSession {
   private reconnecting = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private livePeers = new Map<string, WallPresenceState>();
-  private flushPresence: ReturnType<typeof throttle<(state: WallPresenceState) => void>>;
+  private lastLivePresence: WallPresenceState | null = null;
+  private flushPresenceLive: ReturnType<typeof throttle<(state: WallPresenceState) => void>>;
 
   constructor(private options: WallRealtimeOptions) {
-    this.flushPresence = throttle((state: WallPresenceState) => {
-      if (!this.channel || this.disposed || this.channel.state !== "joined") return;
-      void this.channel.track(state);
+    this.flushPresenceLive = throttle((state: WallPresenceState) => {
+      void this.deliverPresenceLive(state);
     }, 50);
   }
 
@@ -146,18 +167,15 @@ export class WallRealtimeSession {
       isManipulating: isManipulating ? true : undefined,
       updatedAt: Date.now(),
     };
+    this.lastLivePresence = state;
 
     if (immediate) {
-      this.flushPresence.flush();
-      if (this.channel.state !== "joined") {
-        this.scheduleReconnect();
-        return;
-      }
-      void this.channel.track(state);
+      this.flushPresenceLive.flush();
+      void this.deliverPresenceLive(state);
       return;
     }
 
-    this.flushPresence(state);
+    this.flushPresenceLive(state);
   }
 
   async dispose(): Promise<void> {
@@ -167,7 +185,7 @@ export class WallRealtimeSession {
       this.reconnectTimer = null;
     }
     this.livePeers.clear();
-    this.flushPresence.flush();
+    this.flushPresenceLive.flush();
 
     const channel = this.channel;
     this.channel = null;
@@ -193,15 +211,14 @@ export class WallRealtimeSession {
     this.bindHandlers(channel);
 
     await this.waitForSubscribe(channel, async () => {
-      await channel.track({
+      const roster: PresenceRosterState = {
         userId,
         sessionId,
         displayName,
         color,
-        cursorX: 0,
-        cursorY: 0,
         updatedAt: Date.now(),
-      });
+      };
+      await channel.track(roster);
     });
 
     return channel;
@@ -213,13 +230,19 @@ export class WallRealtimeSession {
     const handleSyncMessage = (message: unknown) => {
       if (this.disposed) return;
 
-      const msg = unwrapBroadcastPayload<SyncPayload>(message);
+      const msg = unwrapBroadcastPayload<SyncPayload>(message, isSyncPayload);
       if (!msg || msg.sessionId === sessionId) return;
 
       this.options.onSyncEvent?.(msg.kind);
 
       if (msg.kind === "hello") {
         this.sendFull(this.options.getLocalObjects());
+        if (this.lastLivePresence) {
+          void this.deliverPresenceLive({
+            ...this.lastLivePresence,
+            updatedAt: Date.now(),
+          });
+        }
         return;
       }
 
@@ -238,12 +261,24 @@ export class WallRealtimeSession {
       }
     };
 
+    const handlePresenceLive = (message: unknown) => {
+      if (this.disposed) return;
+
+      const peer = unwrapBroadcastPayload<WallPresenceState>(message, isPresenceLivePayload);
+      if (!peer?.userId || peer.sessionId === sessionId) return;
+
+      const existing = this.livePeers.get(peer.userId);
+      this.livePeers.set(peer.userId, mergePeerPresence(existing, peer));
+      this.emitPeers();
+    };
+
     channel
       .on("broadcast", { event: SYNC_EVENT }, handleSyncMessage)
+      .on("broadcast", { event: PRESENCE_LIVE_EVENT }, handlePresenceLive)
       .on("presence", { event: "sync" }, () => this.syncPeersFromChannel())
       .on("presence", { event: "join" }, () => this.syncPeersFromChannel())
       .on("presence", { event: "leave" }, ({ leftPresences }) => {
-        const departed = Object.values(leftPresences ?? {}).flat() as unknown as WallPresenceState[];
+        const departed = Object.values(leftPresences ?? {}).flat() as unknown as PresenceRosterState[];
         for (const peer of departed) {
           if (peer?.userId) this.livePeers.delete(peer.userId);
         }
@@ -343,16 +378,27 @@ export class WallRealtimeSession {
   private send(payload: SyncPayload): void {
     if (!this.channel || this.disposed) return;
 
-    void this.deliverBroadcast(payload);
+    void this.deliverBroadcast(SYNC_EVENT, payload);
   }
 
-  private async deliverBroadcast(payload: SyncPayload): Promise<void> {
+  private async deliverPresenceLive(state: WallPresenceState): Promise<void> {
+    if (!this.channel || this.disposed) return;
+
+    if (this.channel.state !== "joined") {
+      this.scheduleReconnect();
+      return;
+    }
+
+    await this.deliverBroadcast(PRESENCE_LIVE_EVENT, state);
+  }
+
+  private async deliverBroadcast(event: string, payload: object): Promise<void> {
     const channel = this.channel;
     if (!channel || this.disposed) return;
 
     const message = {
       type: "broadcast" as const,
-      event: SYNC_EVENT,
+      event,
       payload,
     };
 
@@ -362,7 +408,7 @@ export class WallRealtimeSession {
         if (result === "ok") return;
       }
 
-      await channel.httpSend(SYNC_EVENT, payload);
+      await channel.httpSend(event, payload);
 
       if (channel.state !== "joined") {
         this.scheduleReconnect();
@@ -372,17 +418,37 @@ export class WallRealtimeSession {
     }
   }
 
+  /** Presence = who is online. Cursor/selection come from broadcast live updates. */
   private syncPeersFromChannel(): void {
     if (!this.channel) return;
 
-    const channelState = this.channel.presenceState<WallPresenceState>();
+    const channelState = this.channel.presenceState<PresenceRosterState>();
+    const onlineUserIds = new Set<string>();
 
     for (const entries of Object.values(channelState)) {
-      for (const peer of entries as WallPresenceState[]) {
+      for (const peer of entries as PresenceRosterState[]) {
         if (!peer?.userId || peer.sessionId === this.options.sessionId) continue;
 
+        onlineUserIds.add(peer.userId);
         const existing = this.livePeers.get(peer.userId);
-        this.livePeers.set(peer.userId, mergePeerPresence(existing, peer));
+        this.livePeers.set(peer.userId, {
+          userId: peer.userId,
+          sessionId: peer.sessionId,
+          displayName: peer.displayName,
+          color: peer.color,
+          cursorX: existing?.cursorX ?? 0,
+          cursorY: existing?.cursorY ?? 0,
+          selectedObjectIds: existing?.selectedObjectIds,
+          selectedObjectId: existing?.selectedObjectId,
+          isManipulating: existing?.isManipulating,
+          updatedAt: existing?.updatedAt ?? peer.updatedAt ?? Date.now(),
+        });
+      }
+    }
+
+    for (const userId of [...this.livePeers.keys()]) {
+      if (!onlineUserIds.has(userId)) {
+        this.livePeers.delete(userId);
       }
     }
 
