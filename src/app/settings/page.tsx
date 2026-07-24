@@ -187,7 +187,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-muted">에디터</dt>
-              <dd>Fabric.js</dd>
+              <dd>Konva</dd>
             </div>
           </dl>
         </section>

@@ -1,15 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 
 interface AuthButtonProps {
   className?: string;
+  /** Avatar / short login — for immersive editor & viewer chrome */
+  compact?: boolean;
 }
 
-export default function AuthButton({ className = "" }: AuthButtonProps) {
+export default function AuthButton({ className = "", compact = false }: AuthButtonProps) {
   const { user, isLoading, isConfigured, signInWithGoogle, signOut } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
 
   if (!isConfigured) return null;
 
@@ -26,6 +41,7 @@ export default function AuthButton({ className = "" }: AuthButtonProps) {
     setIsSubmitting(true);
     try {
       await signOut();
+      setMenuOpen(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -47,6 +63,36 @@ export default function AuthButton({ className = "" }: AuthButtonProps) {
       user.user_metadata?.name ??
       user.email?.split("@")[0] ??
       "나";
+    const initial = name.trim().charAt(0).toUpperCase() || "나";
+
+    if (compact) {
+      return (
+        <div ref={rootRef} className={`relative ${className}`}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-surface/90 text-xs font-semibold text-foreground shadow-sm ring-1 ring-foreground/10"
+            aria-label={`${name} 계정 메뉴`}
+            aria-expanded={menuOpen}
+          >
+            {initial}
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-50 mt-2 w-40 overflow-hidden rounded-2xl bg-white py-1 shadow-lg ring-1 ring-black/10">
+              <p className="truncate px-3 py-2 text-xs font-medium text-foreground">{name}</p>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2 text-left text-xs text-muted transition hover:bg-foreground/5 hover:text-foreground disabled:opacity-50"
+              >
+                로그아웃
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
 
     return (
       <div className={`flex items-center gap-2 ${className}`}>
@@ -62,6 +108,19 @@ export default function AuthButton({ className = "" }: AuthButtonProps) {
           로그아웃
         </button>
       </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={handleSignIn}
+        disabled={isSubmitting}
+        className={`rounded-full bg-surface px-3 py-2 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10 transition hover:shadow-md active:scale-95 disabled:opacity-50 ${className}`}
+      >
+        {isSubmitting ? "…" : "로그인"}
+      </button>
     );
   }
 

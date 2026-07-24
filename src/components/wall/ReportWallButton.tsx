@@ -6,9 +6,10 @@ import { useAuth } from "@/hooks/useAuth";
 
 interface ReportWallButtonProps {
   wallId: string;
+  variant?: "chip" | "menu";
 }
 
-export default function ReportWallButton({ wallId }: ReportWallButtonProps) {
+export default function ReportWallButton({ wallId, variant = "chip" }: ReportWallButtonProps) {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [body, setBody] = useState("");
@@ -53,7 +54,11 @@ export default function ReportWallButton({ wallId }: ReportWallButtonProps) {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-full bg-white/90 px-3 py-2 text-[11px] text-muted shadow-sm ring-1 ring-black/6 backdrop-blur-sm"
+        className={
+          variant === "menu"
+            ? "w-full rounded-xl px-2 py-2 text-left text-xs font-medium text-muted transition hover:bg-foreground/5 hover:text-foreground"
+            : "rounded-full bg-white/90 px-3 py-2 text-[11px] text-muted shadow-sm ring-1 ring-black/6 backdrop-blur-sm"
+        }
       >
         신고
       </button>

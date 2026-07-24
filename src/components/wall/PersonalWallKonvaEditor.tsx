@@ -5,9 +5,8 @@ import Link from "next/link";
 import KonvaWallStageClient from "@/components/wall/konva";
 import Toolbar from "@/components/wall/Toolbar";
 import LayerPanel from "@/components/wall/LayerPanel";
+import EditorToolDock, { HomeIcon, MenuIcon } from "@/components/wall/EditorToolDock";
 import AuthButton from "@/components/auth/AuthButton";
-import FriendsPanel from "@/components/social/FriendsPanel";
-import SharedWallsPanel from "@/components/social/SharedWallsPanel";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { WallThemeId } from "@/types/wall";
 import { useAuth } from "@/hooks/useAuth";
@@ -65,8 +64,6 @@ export default function PersonalWallKonvaEditor() {
   const [isSharing, setIsSharing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
-  const [isFriendsOpen, setIsFriendsOpen] = useState(false);
-  const [isSharedOpen, setIsSharedOpen] = useState(false);
   const [mode, setMode] = useState<EditorMode>("select");
   const [drawColor, setDrawColor] = useState<string>(DRAW_COLORS[0]);
   const [highlighterMaxLength, setHighlighterMaxLength] = useState<number>(
@@ -684,7 +681,7 @@ export default function PersonalWallKonvaEditor() {
         onClick={() => setIsMenuOpen(true)}
         className="absolute left-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-white text-neutral-900 shadow-md ring-1 ring-black/8 sm:left-5"
         style={{ top: "max(1rem, env(safe-area-inset-top))" }}
-        aria-label="메뉴 열기"
+        aria-label="꾸미기 메뉴 열기"
       >
         <MenuIcon />
       </button>
@@ -699,10 +696,14 @@ export default function PersonalWallKonvaEditor() {
       </Link>
 
       <div
-        className="absolute right-4 z-30 flex flex-col items-end gap-2 sm:right-5"
+        className="absolute right-4 z-30 flex items-center gap-2 sm:right-5"
         style={{ top: "max(1rem, env(safe-area-inset-top))" }}
       >
-        <AuthButton />
+        {autoSaved && !saveMessage && (
+          <div className="pointer-events-none hidden rounded-full bg-white/90 px-3 py-1.5 text-xs text-muted shadow-sm sm:block">
+            {user ? "클라우드 자동 저장됨" : "자동 저장됨"}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => setIsLayerPanelOpen(true)}
@@ -710,35 +711,24 @@ export default function PersonalWallKonvaEditor() {
         >
           레이어
         </button>
-        {user && (
-          <>
-            <button
-              type="button"
-              onClick={() => setIsSharedOpen(true)}
-              className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8"
-            >
-              공동
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsFriendsOpen(true)}
-              className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8"
-            >
-              친구
-            </button>
-          </>
-        )}
-        {autoSaved && !saveMessage && (
-          <div className="pointer-events-none rounded-full bg-white/90 px-3 py-1.5 text-xs text-muted shadow-sm">
-            {user ? "클라우드 자동 저장됨" : "자동 저장됨"}
-          </div>
-        )}
+        <AuthButton compact />
       </div>
+
+      <EditorToolDock
+        mode={mode}
+        onModeChange={handleModeChange}
+        onPhotoUpload={handlePhotoUpload}
+        onOpenDecorate={() => setIsMenuOpen(true)}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+      />
 
       {saveMessage && (
         <div
           className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background shadow-lg"
-          style={{ bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+          style={{ bottom: "max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))" }}
         >
           {saveMessage}
         </div>
@@ -810,35 +800,7 @@ export default function PersonalWallKonvaEditor() {
         onClear={handleClear}
       />
 
-      <FriendsPanel isOpen={isFriendsOpen} onClose={() => setIsFriendsOpen(false)} />
-      <SharedWallsPanel isOpen={isSharedOpen} onClose={() => setIsSharedOpen(false)} />
       <LayerPanel isOpen={isLayerPanelOpen} onClose={() => setIsLayerPanelOpen(false)} />
     </div>
-  );
-}
-
-function MenuIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path
-        d="M3 5h12M3 9h12M3 13h8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function HomeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1h-5v-6H10v6H5a1 1 0 01-1-1v-9.5z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
