@@ -147,12 +147,12 @@ export default function WallStickerNode({
       onMouseDown={(e) => {
         e.cancelBubble = true;
         handleContextPointerDown(e);
-        beginInteraction(e.evt.shiftKey);
+        if (!readOnly) beginInteraction(e.evt.shiftKey);
       }}
       onTouchStart={(e) => {
         e.cancelBubble = true;
         handleContextPointerDown(e);
-        beginInteraction(false);
+        if (!readOnly) beginInteraction(false);
       }}
       onMouseMove={handleContextPointerMove}
       onTouchMove={handleContextPointerMove}

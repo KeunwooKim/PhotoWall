@@ -19,7 +19,7 @@ import {
 } from "@/lib/wall-scene/highlighter";
 import { commitHighlighterLine } from "@/lib/wall-scene/add-path";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
-import { peerHighlightLayout, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
+import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
 import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
@@ -129,12 +129,37 @@ export default function KonvaWallStage({
 
   const primaryId = primarySelectedId(selectedIds);
 
+  const peerLockedIds = useMemo(
+    () => peerLockedObjectIds(peers, currentUserId),
+    [peers, currentUserId],
+  );
+
+  const peerHighlightsByObjectId = useMemo(
+    () => peerSelectionsByObjectId(peers, currentUserId),
+    [peers, currentUserId],
+  );
+
+  useEffect(() => {
+    if (peerLockedIds.size === 0) return;
+    const { selectedIds: current, setSelectedIds } = useWallSceneStore.getState();
+    const next = current.filter((id) => !peerLockedIds.has(id));
+    if (next.length !== current.length) {
+      setSelectedIds(next);
+      onPresenceSelection?.(next.length > 0 ? next : null);
+    }
+  }, [peerLockedIds, onPresenceSelection]);
+
   const transformableSelectedIds = useMemo(() => {
     const selected = new Set(selectedIds);
     return document.objects
-      .filter((object) => selected.has(object.id) && isTransformableObject(object))
+      .filter(
+        (object) =>
+          selected.has(object.id) &&
+          isTransformableObject(object) &&
+          !peerLockedIds.has(object.id),
+      )
       .map((object) => object.id);
-  }, [document.objects, selectedIds]);
+  }, [document.objects, selectedIds, peerLockedIds]);
 
   const setManipulating = useCallback(
     (active: boolean, objectId?: string) => {
@@ -279,17 +304,19 @@ export default function KonvaWallStage({
   const renderSceneObject = useCallback(
     (object: WallSceneObject) => {
       const select = (additive = false) => {
+        if (peerLockedIds.has(object.id)) return;
         handleObjectSelect(object.id, additive);
       };
 
       const isSelected = selectedIds.includes(object.id);
+      const objectReadOnly = readOnly || editorMode === "draw" || peerLockedIds.has(object.id);
 
       if (object.type === "photo") {
         return (
           <WallPhotoNode
             key={object.id}
             object={object}
-            readOnly={readOnly || editorMode === "draw"}
+            readOnly={objectReadOnly}
             resolvePhotoSrc={resolvePhotoSrc}
             onSelect={select}
             onInteractionStart={() => broadcastSelection()}
@@ -305,7 +332,7 @@ export default function KonvaWallStage({
           <WallStickerNode
             key={object.id}
             object={object}
-            readOnly={readOnly || editorMode === "draw"}
+            readOnly={objectReadOnly}
             onSelect={select}
             onInteractionStart={() => broadcastSelection()}
             onManipulationChange={setManipulating}
@@ -319,7 +346,7 @@ export default function KonvaWallStage({
           <WallEmojiNode
             key={object.id}
             object={object}
-            readOnly={readOnly || editorMode === "draw"}
+            readOnly={objectReadOnly}
             onSelect={select}
             onInteractionStart={() => broadcastSelection()}
             onManipulationChange={setManipulating}
@@ -333,7 +360,7 @@ export default function KonvaWallStage({
           <WallTapeNode
             key={object.id}
             object={object}
-            readOnly={readOnly || editorMode === "draw"}
+            readOnly={objectReadOnly}
             onSelect={select}
             onInteractionStart={() => broadcastSelection()}
             onManipulationChange={setManipulating}
@@ -347,7 +374,7 @@ export default function KonvaWallStage({
           <WallPathNode
             key={object.id}
             object={object}
-            readOnly={readOnly || editorMode === "draw"}
+            readOnly={objectReadOnly}
             selected={isSelected}
             onSelect={select}
             onInteractionStart={() => broadcastSelection()}
@@ -363,6 +390,7 @@ export default function KonvaWallStage({
       readOnly,
       editorMode,
       selectedIds,
+      peerLockedIds,
       resolvePhotoSrc,
       onObjectPatch,
       setManipulating,
@@ -370,11 +398,6 @@ export default function KonvaWallStage({
       handleObjectSelect,
       broadcastSelection,
     ],
-  );
-
-  const peerHighlightsByObjectId = useMemo(
-    () => peerSelectionsByObjectId(peers, currentUserId),
-    [peers, currentUserId],
   );
 
   const commitTransformSelection = useCallback(() => {
@@ -744,6 +767,8 @@ export default function KonvaWallStage({
                     peers={highlights}
                     width={layout.width}
                     height={layout.height}
+                    scaleX={layout.scaleX}
+                    scaleY={layout.scaleY}
                   />
                 </Group>
               );

@@ -136,6 +136,23 @@ export function dedupePresencePeers(peers: WallPresenceState[]): WallPresenceSta
   return [...byUserId.values()];
 }
 
+/** Objects currently selected by other peers — treat as soft-locked for local edit. */
+export function peerLockedObjectIds(
+  peers: WallPresenceState[],
+  currentUserId?: string,
+): Set<string> {
+  const locked = new Set<string>();
+
+  for (const peer of dedupePresencePeers(peers)) {
+    if (currentUserId && peer.userId === currentUserId) continue;
+    for (const objectId of peerSelectedObjectIds(peer)) {
+      locked.add(objectId);
+    }
+  }
+
+  return locked;
+}
+
 /** Peers (excluding self) grouped by the object they are selecting / moving. */
 export function peerSelectionsByObjectId(
   peers: WallPresenceState[],
