@@ -5,8 +5,9 @@ import Link from "next/link";
 import type { WallThemeId } from "@/types/wall";
 import type { EditorMode } from "./editor-types";
 import { WALL_THEMES } from "@/lib/wall-themes";
-import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
+import { PEN_STYLES, type PenStyleId } from "@/lib/wall-scene/pen";
 import StickerPicker from "./StickerPicker";
+import PenStrokeWidthControl from "./PenStrokeWidthControl";
 
 interface ToolbarProps {
   isOpen: boolean;
@@ -17,13 +18,14 @@ interface ToolbarProps {
   drawColors: string[];
   highlighterMaxLength: number;
   highlighterLengthPresets: readonly number[];
+  penStyleId: PenStyleId;
+  penStrokeWidth: number;
   hasSelection: boolean;
   selectionCount?: number;
   canUndo: boolean;
   canRedo: boolean;
   onThemeChange: (id: WallThemeId) => void;
   onPhotoUpload: (file: File) => void;
-  onAddTape: (color: string) => void;
   onAddSticker: (stickerId: string) => void;
   onShare: () => void;
   onExport: () => void;
@@ -34,6 +36,8 @@ interface ToolbarProps {
   onModeChange: (mode: EditorMode) => void;
   onDrawColorChange: (color: string) => void;
   onHighlighterMaxLengthChange: (length: number) => void;
+  onPenStyleIdChange: (id: PenStyleId) => void;
+  onPenStrokeWidthChange: (width: number) => void;
   onUndo: () => void;
   onRedo: () => void;
   onSelectAll: () => void;
@@ -79,13 +83,14 @@ export default function Toolbar({
   drawColors,
   highlighterMaxLength,
   highlighterLengthPresets,
+  penStyleId,
+  penStrokeWidth,
   hasSelection,
   selectionCount = 0,
   canUndo,
   canRedo,
   onThemeChange,
   onPhotoUpload,
-  onAddTape,
   onAddSticker,
   onShare,
   onExport,
@@ -96,6 +101,8 @@ export default function Toolbar({
   onModeChange,
   onDrawColorChange,
   onHighlighterMaxLengthChange,
+  onPenStyleIdChange,
+  onPenStrokeWidthChange,
   onUndo,
   onRedo,
   onSelectAll,
@@ -245,22 +252,6 @@ export default function Toolbar({
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">마스킹 테이프</h3>
-            <div className="flex flex-wrap gap-2">
-              {TAPE_COLORS.map((tape) => (
-                <button
-                  key={tape.id}
-                  type="button"
-                  title={tape.label}
-                  onClick={() => onAddTape(tape.color)}
-                  className="h-9 w-16 rounded-md opacity-80 ring-1 ring-black/10 transition hover:scale-105 hover:opacity-100 active:scale-95"
-                  style={{ background: tape.color }}
-                />
-              ))}
-            </div>
-          </section>
-
-          <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted">스티커</h3>
             <StickerPicker onSelect={onAddSticker} />
           </section>
@@ -299,9 +290,9 @@ export default function Toolbar({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">도구</p>
 
           <section className="space-y-3">
-            {mode === "draw" && (
+            {mode === "pen" && (
               <div className="space-y-2 rounded-xl bg-foreground/3 p-3">
-                <p className="text-[11px] text-muted">형광펜 색상</p>
+                <p className="text-[11px] text-muted">펜 색상</p>
                 <div className="flex flex-wrap gap-2">
                   {drawColors.map((color) => (
                     <button
@@ -312,7 +303,60 @@ export default function Toolbar({
                         drawColor === color ? "ring-foreground" : "ring-transparent"
                       }`}
                       style={{ background: color }}
-                      aria-label={`형광펜 색상 ${color}`}
+                      aria-label={`펜 색상 ${color}`}
+                    />
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted">펜 종류</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {PEN_STYLES.map((style) => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      onClick={() => onPenStyleIdChange(style.id)}
+                      className={`rounded-lg px-2.5 py-2 text-left transition active:scale-95 ${
+                        penStyleId === style.id
+                          ? "bg-foreground text-background"
+                          : "bg-foreground/6 text-foreground hover:bg-foreground/10"
+                      }`}
+                    >
+                      <span className="block text-xs font-medium">{style.label}</span>
+                      <span
+                        className={`mt-0.5 block text-[10px] ${
+                          penStyleId === style.id ? "text-background/70" : "text-muted"
+                        }`}
+                      >
+                        {style.hint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted">크기 (px)</p>
+                <PenStrokeWidthControl
+                  styleId={penStyleId}
+                  value={penStrokeWidth}
+                  onChange={onPenStrokeWidthChange}
+                />
+                <p className="text-[11px] leading-relaxed text-muted">
+                  하단 독에서 펜을 켠 뒤, 벽에서 드래그해 자유롭게 그려요.
+                </p>
+              </div>
+            )}
+
+            {mode === "tape" && (
+              <div className="space-y-2 rounded-xl bg-foreground/3 p-3">
+                <p className="text-[11px] text-muted">마스킹 테이프 색상</p>
+                <div className="flex flex-wrap gap-2">
+                  {drawColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => onDrawColorChange(color)}
+                      className={`h-8 w-8 rounded-full ring-2 transition active:scale-95 ${
+                        drawColor === color ? "ring-foreground" : "ring-transparent"
+                      }`}
+                      style={{ background: color }}
+                      aria-label={`테이프 색상 ${color}`}
                     />
                   ))}
                 </div>
@@ -334,7 +378,16 @@ export default function Toolbar({
                   ))}
                 </div>
                 <p className="text-[11px] leading-relaxed text-muted">
-                  하단 독에서 펜을 켠 뒤, 벽에서 드래그해 직선 형광펜을 그려요.
+                  하단 독에서 테이프를 켠 뒤, 벽에서 드래그해 직선으로 붙여요.
+                </p>
+              </div>
+            )}
+
+            {mode === "text" && (
+              <div className="space-y-2 rounded-xl bg-foreground/3 p-3">
+                <p className="text-[11px] leading-relaxed text-muted">
+                  벽을 탭하면 텍스트 상자가 생겨요. 선택 후 하단에서 글꼴·크기·색을 바꾸고, 모서리로
+                  기울일 수 있어요.
                 </p>
               </div>
             )}
@@ -342,7 +395,8 @@ export default function Toolbar({
             {mode === "select" && !hasSelection && (
               <div className="space-y-3">
                 <p className="text-[11px] text-muted">
-                  선택·펜·실행취소는 하단 도구 바에서 바로 쓸 수 있어요. 물체를 길게 누르면 더 많은 편집 메뉴가 열려요.
+                  선택·펜·테이프·텍스트·실행취소는 하단 도구 바에서 바로 쓸 수 있어요. 물체를 길게
+                  누르면 더 많은 편집 메뉴가 열려요.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <ToolButton onClick={onSelectAll}>전체 선택</ToolButton>

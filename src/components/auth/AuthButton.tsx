@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import AuthConsentDialog from "@/components/auth/AuthConsentDialog";
+import { hasValidLegalConsent } from "@/lib/legal/meta";
 
 interface AuthButtonProps {
   className?: string;
@@ -13,6 +15,7 @@ export default function AuthButton({ className = "", compact = false }: AuthButt
   const { user, isLoading, isConfigured, signInWithGoogle, signOut } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,13 +31,22 @@ export default function AuthButton({ className = "", compact = false }: AuthButt
 
   if (!isConfigured) return null;
 
-  const handleSignIn = async () => {
+  const startGoogleSignIn = async () => {
     setIsSubmitting(true);
     try {
       await signInWithGoogle();
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSignInClick = () => {
+    // 약관 동의 없이는 Google 로그인(가입) 불가
+    if (hasValidLegalConsent()) {
+      void startGoogleSignIn();
+      return;
+    }
+    setConsentOpen(true);
   };
 
   const handleSignOut = async () => {
@@ -111,29 +123,38 @@ export default function AuthButton({ className = "", compact = false }: AuthButt
     );
   }
 
-  if (compact) {
-    return (
-      <button
-        type="button"
-        onClick={handleSignIn}
-        disabled={isSubmitting}
-        className={`rounded-full bg-surface px-3 py-2 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10 transition hover:shadow-md active:scale-95 disabled:opacity-50 ${className}`}
-      >
-        {isSubmitting ? "…" : "로그인"}
-      </button>
-    );
-  }
-
   return (
-    <button
-      type="button"
-      onClick={handleSignIn}
-      disabled={isSubmitting}
-      className={`flex items-center gap-2 rounded-full bg-surface px-3 py-2 text-xs font-medium text-foreground shadow-md ring-1 ring-foreground/10 transition hover:shadow-lg active:scale-95 disabled:opacity-50 sm:px-4 ${className}`}
-    >
-      <GoogleIcon />
-      {isSubmitting ? "연결 중..." : "Google 로그인"}
-    </button>
+    <>
+      {compact ? (
+        <button
+          type="button"
+          onClick={handleSignInClick}
+          disabled={isSubmitting}
+          className={`rounded-full bg-surface px-3 py-2 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10 transition hover:shadow-md active:scale-95 disabled:opacity-50 ${className}`}
+        >
+          {isSubmitting ? "…" : "로그인"}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={handleSignInClick}
+          disabled={isSubmitting}
+          className={`flex items-center gap-2 rounded-full bg-surface px-3 py-2 text-xs font-medium text-foreground shadow-md ring-1 ring-foreground/10 transition hover:shadow-lg active:scale-95 disabled:opacity-50 sm:px-4 ${className}`}
+        >
+          <GoogleIcon />
+          {isSubmitting ? "연결 중..." : "Google 로그인"}
+        </button>
+      )}
+
+      <AuthConsentDialog
+        open={consentOpen}
+        onClose={() => setConsentOpen(false)}
+        onConfirm={() => {
+          setConsentOpen(false);
+          void startGoogleSignIn();
+        }}
+      />
+    </>
   );
 }
 

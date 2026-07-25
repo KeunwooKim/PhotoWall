@@ -63,10 +63,10 @@ export default function HomePage() {
 
           <section className="home-hero-enter home-hero-enter-delay-2 mt-8 space-y-3">
             <Link
-              href="/wall/edit"
+              href="/walls"
               className="flex w-full items-center justify-center rounded-2xl bg-foreground px-6 py-4 text-sm font-semibold text-background transition active:scale-[0.98]"
             >
-              내 벽 꾸미기
+              벽 꾸미기
             </Link>
             {user ? (
               <Link

@@ -3,7 +3,14 @@ import type { WallBounds } from "@/lib/wall-bounds";
 /** Normalized wall scene (v2) — replaces Fabric canvas_json blob */
 export const WALL_SCENE_VERSION = 2 as const;
 
-export type WallSceneObjectType = "photo" | "emoji" | "svg" | "tape" | "path" | "sticker";
+export type WallSceneObjectType =
+  | "photo"
+  | "emoji"
+  | "svg"
+  | "tape"
+  | "path"
+  | "sticker"
+  | "text";
 
 export interface WallSceneMeta {
   version: typeof WALL_SCENE_VERSION;
@@ -41,6 +48,16 @@ export interface WallSceneEmoji extends WallSceneObjectBase {
   fontSize: number;
 }
 
+export interface WallSceneText extends WallSceneObjectBase {
+  type: "text";
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  fill: string;
+  /** Layout width for wrapping */
+  width: number;
+}
+
 export interface WallSceneSvg extends WallSceneObjectBase {
   type: "svg";
   svg: string;
@@ -67,11 +84,16 @@ export interface WallScenePath extends WallSceneObjectBase {
   points: number[];
   stroke: string;
   strokeWidth: number;
+  /** pen = freehand ink, tape = straight masking strip (legacy highlighter) */
+  tool?: "pen" | "tape";
+  /** Freehand pen variant — drives opacity / cap / tension when rendering */
+  penStyle?: "fine" | "ink" | "marker" | "brush";
 }
 
 export type WallSceneObject =
   | WallScenePhoto
   | WallSceneEmoji
+  | WallSceneText
   | WallSceneSvg
   | WallSceneSticker
   | WallSceneTape

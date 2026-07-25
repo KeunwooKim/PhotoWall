@@ -86,11 +86,23 @@ function fabricObjectToScene(obj: FabricObjectJson, zIndex: number): WallSceneOb
   }
 
   if ((obj.type === "Text" || obj.type === "IText" || obj.type === "FabricText") && obj.text) {
+    const isLikelyEmoji = [...obj.text].length <= 2 && /\p{Extended_Pictographic}/u.test(obj.text);
+    if (isLikelyEmoji) {
+      return {
+        ...base,
+        type: "emoji",
+        text: obj.text,
+        fontSize: obj.fontSize ?? 48,
+      };
+    }
     return {
       ...base,
-      type: "emoji",
+      type: "text",
       text: obj.text,
-      fontSize: obj.fontSize ?? 48,
+      fontSize: obj.fontSize ?? 36,
+      fontFamily: "Noto Sans KR, sans-serif",
+      fill: typeof obj.fill === "string" ? obj.fill : "#171717",
+      width: obj.width ?? 220,
     };
   }
 

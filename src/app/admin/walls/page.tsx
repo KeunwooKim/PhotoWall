@@ -13,13 +13,14 @@ interface AdminWall {
   isHidden: boolean;
   createdAt: string;
   updatedAt: string;
+  previewPath?: string | null;
+  objectCount?: number;
 }
 
-interface WallComment {
-  id: string;
-  author_name: string;
-  body: string;
-  created_at: string;
+interface WallDetail {
+  previewPath: string | null;
+  previewUrl: string | null;
+  objectCount: number;
 }
 
 interface WallGuestbook {
@@ -33,7 +34,7 @@ export default function AdminWallsPage() {
   const [query, setQuery] = useState("");
   const [walls, setWalls] = useState<AdminWall[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [comments, setComments] = useState<WallComment[]>([]);
+  const [detail, setDetail] = useState<WallDetail | null>(null);
   const [guestbook, setGuestbook] = useState<WallGuestbook[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -60,15 +61,20 @@ export default function AdminWallsPage() {
 
   const loadDetail = useCallback(async (id: string) => {
     setSelectedId(id);
+    setDetail(null);
     try {
       const res = await authFetch(`/api/admin/walls/${id}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setComments(data.comments ?? []);
       setGuestbook(data.guestbook ?? []);
+      setDetail({
+        previewPath: data.wall?.previewPath ?? null,
+        previewUrl: data.wall?.previewUrl ?? null,
+        objectCount: data.wall?.objectCount ?? 0,
+      });
     } catch {
-      setComments([]);
       setGuestbook([]);
+      setDetail(null);
     }
   }, []);
 
@@ -100,18 +106,14 @@ export default function AdminWallsPage() {
       const data = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) throw new Error(data?.error ?? "삭제에 실패했어요");
       setWalls((prev) => prev.filter((w) => w.id !== id));
-      if (selectedId === id) setSelectedId(null);
+      if (selectedId === id) {
+        setSelectedId(null);
+        setDetail(null);
+      }
       setMessage("벽을 삭제했어요");
       setTimeout(() => setMessage(null), 2500);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "삭제에 실패했어요");
-    }
-  };
-
-  const deleteComment = async (id: string) => {
-    const res = await authFetch(`/api/admin/comments/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      setComments((prev) => prev.filter((c) => c.id !== id));
     }
   };
 
@@ -151,6 +153,7 @@ export default function AdminWallsPage() {
           ["shared", "공동"],
           ["orphan", "owner 없음"],
           ["hidden", "숨김"],
+          ["empty", "빈 벽"],
         ].map(([value, label]) => (
           <button
             key={value}
@@ -184,6 +187,11 @@ export default function AdminWallsPage() {
                       {wall.title || wall.id.slice(0, 8)}
                       {wall.isHidden && (
                         <span className="ml-2 text-xs text-red-600">숨김</span>
+                      )}
+                      {typeof wall.objectCount === "number" && (
+                        <span className="ml-2 text-xs text-muted">
+                          객체 {wall.objectCount}
+                        </span>
                       )}
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
@@ -222,29 +230,34 @@ export default function AdminWallsPage() {
 
         <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
           {!selectedId ? (
-            <p className="text-sm text-muted">벽을 선택하면 댓글·방명록을 볼 수 있어요</p>
+            <p className="text-sm text-muted">벽을 선택하면 미리보기와 방명록을 볼 수 있어요</p>
           ) : (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold">댓글</h3>
-              {comments.length === 0 ? (
-                <p className="text-xs text-muted">댓글 없음</p>
-              ) : (
-                <ul className="space-y-2">
-                  {comments.map((c) => (
-                    <li key={c.id} className="rounded-xl bg-background p-3 text-sm">
-                      <p className="font-medium">{c.author_name}</p>
-                      <p className="mt-1">{c.body}</p>
-                      <button
-                        type="button"
-                        onClick={() => void deleteComment(c.id)}
-                        className="mt-2 text-xs text-red-600 underline"
-                      >
-                        삭제
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold">미리보기</h3>
+                {detail?.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={detail.previewUrl}
+                    alt="벽 미리보기"
+                    className="max-h-48 w-full rounded-xl object-contain bg-background"
+                  />
+                ) : (
+                  <div className="rounded-xl bg-background p-3 text-xs text-muted">
+                    <p>미리보기 없음</p>
+                    <Link
+                      href={`/wall/${selectedId}`}
+                      target="_blank"
+                      className="mt-1 inline-block text-accent-dark underline"
+                    >
+                      공개 뷰어에서 열기
+                    </Link>
+                  </div>
+                )}
+                {detail && (
+                  <p className="text-xs text-muted">객체 수: {detail.objectCount}</p>
+                )}
+              </div>
 
               <h3 className="text-sm font-semibold">방명록</h3>
               {guestbook.length === 0 ? (
@@ -252,7 +265,10 @@ export default function AdminWallsPage() {
               ) : (
                 <ul className="space-y-2">
                   {guestbook.map((g) => (
-                    <li key={g.id} className="flex items-center justify-between rounded-xl bg-background p-3 text-sm">
+                    <li
+                      key={g.id}
+                      className="flex items-center justify-between rounded-xl bg-background p-3 text-sm"
+                    >
                       <span>{g.author_name}</span>
                       <button
                         type="button"

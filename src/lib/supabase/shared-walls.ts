@@ -2,10 +2,26 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SharedWall, SharedWallMember, WallMemberInvite, WallMemberRole } from "@/types/shared-wall";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { PublishedWall } from "@/types/wall";
+import { getUserPlan } from "@/lib/auth/user-plan";
+import { getWallQuota } from "@/lib/wall-quotas";
 import { checkWallAccess } from "./wall-access";
 import { getUserWallRole } from "./wall-role";
 
 export { getUserWallRole, canEditWall } from "./wall-role";
+
+export async function countOwnedSharedWalls(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("walls")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_id", userId)
+    .eq("is_shared", true);
+
+  if (error) return 0;
+  return count ?? 0;
+}
 
 export async function createSharedWall(
   supabase: SupabaseClient,
@@ -13,6 +29,13 @@ export async function createSharedWall(
   title: string,
 ): Promise<{ wall: SharedWall | null; error?: string }> {
   const trimmedTitle = title.trim() || "우리 인생네컷";
+
+  const plan = await getUserPlan(userId, supabase);
+  const quota = getWallQuota(plan);
+  const ownedCount = await countOwnedSharedWalls(supabase, userId);
+  if (ownedCount >= quota.maxOwnedSharedWalls) {
+    return { wall: null, error: "shared_wall_limit" };
+  }
 
   const { data: rpcData, error: rpcError } = await supabase.rpc("create_shared_wall", {
     p_title: trimmedTitle,

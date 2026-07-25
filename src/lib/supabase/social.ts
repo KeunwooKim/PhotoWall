@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServer } from "@/lib/supabase/walls";
 import { appendGuestbookPhoto } from "@/lib/guestbook";
-import type { WallComment, WallInvite, WallLikesSummary } from "@/types/social";
+import type { WallInvite, WallLikesSummary } from "@/types/social";
 
 function generateInviteCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -13,13 +13,11 @@ function generateInviteCode(): string {
 }
 
 export async function getWallLikes(
+  supabase: SupabaseClient,
   wallId: string,
   visitorId: string,
   userId?: string | null,
 ): Promise<WallLikesSummary | null> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return null;
-
   const { count, error } = await supabase
     .from("wall_likes")
     .select("*", { count: "exact", head: true })
@@ -77,60 +75,7 @@ export async function toggleWallLike(
     if (error) return null;
   }
 
-  return getWallLikes(wallId, userId, userId);
-}
-
-export async function getWallComments(wallId: string): Promise<WallComment[]> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return [];
-
-  const { data, error } = await supabase
-    .from("wall_comments")
-    .select("id, wall_id, author_name, body, created_at")
-    .eq("wall_id", wallId)
-    .order("created_at", { ascending: true });
-
-  if (error || !data) return [];
-
-  return data.map((row) => ({
-    id: row.id,
-    wallId: row.wall_id,
-    authorName: row.author_name,
-    body: row.body,
-    createdAt: row.created_at,
-  }));
-}
-
-export async function addWallComment(
-  supabase: SupabaseClient,
-  wallId: string,
-  authorName: string,
-  body: string,
-  userId: string,
-): Promise<WallComment | null> {
-  const trimmed = body.trim();
-  if (!trimmed) return null;
-
-  const { data, error } = await supabase
-    .from("wall_comments")
-    .insert({
-      wall_id: wallId,
-      author_name: authorName.trim() || "익명",
-      body: trimmed.slice(0, 500),
-      user_id: userId,
-    })
-    .select("id, wall_id, author_name, body, created_at")
-    .single();
-
-  if (error || !data) return null;
-
-  return {
-    id: data.id,
-    wallId: data.wall_id,
-    authorName: data.author_name,
-    body: data.body,
-    createdAt: data.created_at,
-  };
+  return getWallLikes(supabase, wallId, userId, userId);
 }
 
 export async function addGuestbookPhoto(
@@ -207,18 +152,25 @@ export async function getInviteByCode(code: string): Promise<WallInvite | null> 
   const supabase = getSupabaseServer();
   if (!supabase) return null;
 
-  const { data, error } = await supabase
-    .from("wall_invites")
-    .select("id, wall_id, code, created_at")
-    .eq("code", code.toUpperCase())
-    .single();
+  const { data, error } = await supabase.rpc("get_wall_invite_by_code", {
+    p_code: code.toUpperCase(),
+  });
 
-  if (error || !data) return null;
+  if (error || !data || typeof data !== "object") return null;
+
+  const row = data as {
+    id?: string;
+    wall_id?: string;
+    code?: string;
+    created_at?: string;
+  };
+
+  if (!row.id || !row.wall_id || !row.code || !row.created_at) return null;
 
   return {
-    id: data.id,
-    wallId: data.wall_id,
-    code: data.code,
-    createdAt: data.created_at,
+    id: row.id,
+    wallId: row.wall_id,
+    code: row.code,
+    createdAt: row.created_at,
   };
 }

@@ -44,4 +44,6 @@ export interface PublishedWall {
   themeId: WallThemeId;
   canvasJson: object;
   updatedAt: string;
+  /** Storage path in wall-photos for fast read-only preview */
+  previewPath?: string | null;
 }

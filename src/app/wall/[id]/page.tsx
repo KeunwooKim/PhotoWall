@@ -90,6 +90,7 @@ export default async function WallPage({ params }: WallPageProps) {
       readOnly
       wallId={wall.id}
       canGuestbook={access.canGuestbook}
+      previewPath={wall.previewPath}
     />
   );
 }

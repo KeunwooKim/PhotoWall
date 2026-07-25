@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "/", label: "홈", icon: HomeIcon },
-  { href: "/wall/edit", label: "벽꾸미기", icon: WallIcon },
+  { href: "/walls", label: "벽꾸미기", icon: WallIcon },
   { href: "/profile", label: "내정보", icon: UserIcon },
   { href: "/settings", label: "설정", icon: SettingsIcon },
 ];
@@ -58,8 +58,10 @@ export default function AppShell({ children, hideNav = false, tone = "default" }
               const active =
                 href === "/"
                   ? pathname === "/"
-                  : href === "/wall/edit"
-                    ? pathname === "/wall/edit" || pathname.startsWith("/shared/")
+                  : href === "/walls"
+                    ? pathname === "/walls" ||
+                      pathname === "/wall/edit" ||
+                      pathname.startsWith("/shared/")
                     : pathname === href || pathname.startsWith(`${href}/`);
 
               return (

@@ -34,6 +34,10 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { restrictedResponse } = await import("@/lib/auth/account-restrict");
+  const blocked = await restrictedResponse(routeClient.supabase, user.id);
+  if (blocked) return routeClient.applyCookies(blocked);
+
   let authorName = (formData.get("authorName") as string | null) ?? "익명";
   const profile = await ensureProfile(routeClient.supabase, user);
   if (profile?.displayName) authorName = profile.displayName;

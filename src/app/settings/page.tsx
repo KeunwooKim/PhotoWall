@@ -194,6 +194,26 @@ export default function SettingsPage() {
           </section>
         )}
 
+        <section className="space-y-3">
+          <h2 className="text-xs font-medium tracking-wide text-muted">약관</h2>
+          <div className="overflow-hidden rounded-2xl bg-foreground/[0.03]">
+            <Link
+              href="/legal/terms"
+              className="flex items-center justify-between border-b border-foreground/6 px-4 py-4 transition active:bg-foreground/[0.04]"
+            >
+              <p className="text-sm font-semibold">이용약관</p>
+              <Chevron />
+            </Link>
+            <Link
+              href="/legal/privacy"
+              className="flex items-center justify-between px-4 py-4 transition active:bg-foreground/[0.04]"
+            >
+              <p className="text-sm font-semibold">개인정보처리방침</p>
+              <Chevron />
+            </Link>
+          </div>
+        </section>
+
         <p className="pb-2 text-center text-[11px] text-muted">PhotoWall · 0.1.0 · Konva</p>
       </div>
 
@@ -203,5 +223,13 @@ export default function SettingsPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden className="shrink-0 text-muted">
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

@@ -3,6 +3,8 @@ import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { resolveSharedWallEditAccess } from "@/lib/supabase/shared-walls";
 import { saveSharedWallToDb } from "@/lib/supabase/walls";
 import { resolveWallThemeId } from "@/lib/wall-themes";
+import { getUserPlan } from "@/lib/auth/user-plan";
+import { checkSceneQuota, sceneQuotaMessage } from "@/lib/wall-quotas";
 
 export async function GET(
   request: NextRequest,
@@ -59,6 +61,23 @@ export async function PATCH(
   const body = (await request.json()) as { themeId?: string; canvasJson?: object };
   if (!body.themeId || !body.canvasJson) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  }
+
+  const { data: wallMeta } = await supabase
+    .from("walls")
+    .select("owner_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  const plan = await getUserPlan(wallMeta?.owner_id ?? user.id, supabase);
+  const violation = checkSceneQuota(body.canvasJson, plan);
+  if (violation) {
+    return applyCookies(
+      NextResponse.json(
+        { error: violation, message: sceneQuotaMessage(violation) },
+        { status: 413 },
+      ),
+    );
   }
 
   const themeId = resolveWallThemeId(body.themeId ?? "");

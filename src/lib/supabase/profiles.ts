@@ -17,6 +17,8 @@ function mapProfile(row: {
   avatar_url: string | null;
   friend_code: string;
   allow_wall_visits?: boolean;
+  legal_consented_at?: string | null;
+  legal_version?: string | null;
 }): Omit<Profile, "wallId"> {
   return {
     id: row.id,
@@ -24,8 +26,13 @@ function mapProfile(row: {
     avatarUrl: row.avatar_url,
     friendCode: row.friend_code,
     allowWallVisits: row.allow_wall_visits ?? false,
+    legalConsentedAt: row.legal_consented_at ?? null,
+    legalVersion: row.legal_version ?? null,
   };
 }
+
+const PROFILE_SELECT =
+  "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version";
 
 export async function ensureProfile(
   supabase: SupabaseClient,
@@ -33,7 +40,7 @@ export async function ensureProfile(
 ): Promise<Profile | null> {
   const { data: existing } = await supabase
     .from("profiles")
-    .select("id, display_name, avatar_url, friend_code, allow_wall_visits")
+    .select(PROFILE_SELECT)
     .eq("id", user.id)
     .maybeSingle();
 
@@ -58,7 +65,7 @@ export async function ensureProfile(
         avatar_url: (meta.avatar_url as string) ?? null,
         friend_code: generateFriendCode(),
       })
-      .select("id, display_name, avatar_url, friend_code, allow_wall_visits")
+      .select(PROFILE_SELECT)
       .single();
 
     if (!error && data) {
@@ -70,13 +77,49 @@ export async function ensureProfile(
   return null;
 }
 
+export async function saveLegalConsent(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { consentedAt: string; version: string },
+): Promise<Profile | null> {
+  await ensureProfile(supabase, { id: userId });
+
+  // Keep the earliest consent time for this version; refresh version if newer policy
+  const { data: current } = await supabase
+    .from("profiles")
+    .select("legal_consented_at, legal_version")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const sameVersion = current?.legal_version === input.version;
+  const consentedAt =
+    sameVersion && current?.legal_consented_at
+      ? current.legal_consented_at
+      : input.consentedAt;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({
+      legal_consented_at: consentedAt,
+      legal_version: input.version,
+    })
+    .eq("id", userId)
+    .select(PROFILE_SELECT)
+    .single();
+
+  if (error || !data) return null;
+
+  const wallId = await fetchPersonalWallIdForOwner(supabase, userId);
+  return { ...mapProfile(data), wallId };
+}
+
 export async function getProfileByFriendCode(
   supabase: SupabaseClient,
   friendCode: string,
 ): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, display_name, avatar_url, friend_code, allow_wall_visits")
+    .select(PROFILE_SELECT)
     .eq("friend_code", friendCode.toUpperCase())
     .maybeSingle();
 

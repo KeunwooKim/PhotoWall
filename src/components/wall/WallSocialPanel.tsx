@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WallComment, WallLikesSummary } from "@/types/social";
+import type { WallLikesSummary } from "@/types/social";
 import { getVisitorId } from "@/lib/visitor-id";
 import { authFetch } from "@/lib/auth/api-fetch";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,7 +10,9 @@ interface WallSocialPanelProps {
   wallId: string;
   canGuestbook?: boolean;
   enableLikes?: boolean;
-  enableComments?: boolean;
+  /** When true, guestbook opens interactive Konva first instead of uploading immediately */
+  previewMode?: boolean;
+  onEnterInteractive?: () => void;
   onGuestbookAdded?: (canvasJson: object) => void;
 }
 
@@ -18,15 +20,13 @@ export default function WallSocialPanel({
   wallId,
   canGuestbook = false,
   enableLikes = true,
-  enableComments = true,
+  previewMode = false,
+  onEnterInteractive,
   onGuestbookAdded,
 }: WallSocialPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [likes, setLikes] = useState<WallLikesSummary | null>(null);
-  const [comments, setComments] = useState<WallComment[]>([]);
   const [authorName, setAuthorName] = useState("");
-  const [commentBody, setCommentBody] = useState("");
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isSubmittingGuestbook, setIsSubmittingGuestbook] = useState(false);
   const [socialAvailable, setSocialAvailable] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -51,44 +51,26 @@ export default function WallSocialPanel({
   }, [user]);
 
   const loadSocial = useCallback(async () => {
+    if (!enableLikes) {
+      setSocialAvailable(canGuestbook);
+      return;
+    }
+
     try {
-      const requests: Promise<Response>[] = [];
-      if (enableLikes) {
-        requests.push(authFetch(`/api/walls/${wallId}/likes?visitorId=${visitorId}`));
-      }
-      if (enableComments) {
-        requests.push(fetch(`/api/walls/${wallId}/comments`));
-      }
-
-      if (requests.length === 0) {
+      const likesRes = await authFetch(`/api/walls/${wallId}/likes?visitorId=${visitorId}`);
+      if (likesRes.status === 503) {
         setSocialAvailable(false);
         return;
       }
-
-      const responses = await Promise.all(requests);
-      let likesRes: Response | null = null;
-      let commentsRes: Response | null = null;
-      let idx = 0;
-      if (enableLikes) likesRes = responses[idx++];
-      if (enableComments) commentsRes = responses[idx++];
-
-      if (
-        (likesRes && likesRes.status === 503) ||
-        (commentsRes && commentsRes.status === 503)
-      ) {
-        setSocialAvailable(false);
-        return;
-      }
-
-      if (likesRes?.ok) setLikes((await likesRes.json()) as WallLikesSummary);
-      if (commentsRes?.ok) setComments((await commentsRes.json()) as WallComment[]);
+      if (likesRes.ok) setLikes((await likesRes.json()) as WallLikesSummary);
+      setSocialAvailable(true);
     } catch {
       setSocialAvailable(false);
     }
-  }, [wallId, visitorId, enableLikes, enableComments]);
+  }, [wallId, visitorId, enableLikes, canGuestbook]);
 
   useEffect(() => {
-    loadSocial();
+    void loadSocial();
   }, [loadSocial]);
 
   const handleToggleLike = async () => {
@@ -107,34 +89,6 @@ export default function WallSocialPanel({
       if (res.ok) setLikes((await res.json()) as WallLikesSummary);
     } catch {
       showMessage("좋아요에 실패했어요");
-    }
-  };
-
-  const handleSubmitComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!enableComments) return;
-    if (!user) {
-      showMessage("댓글을 남기려면 로그인이 필요해요");
-      return;
-    }
-    if (!commentBody.trim() || isSubmittingComment) return;
-
-    setIsSubmittingComment(true);
-    try {
-      const res = await authFetch(`/api/walls/${wallId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ authorName: authorName || "익명", body: commentBody }),
-      });
-      if (!res.ok) throw new Error();
-      const comment = (await res.json()) as WallComment;
-      setComments((prev) => [...prev, comment]);
-      setCommentBody("");
-      showMessage("응원 댓글을 남겼어요");
-    } catch {
-      showMessage("댓글 등록에 실패했어요");
-    } finally {
-      setIsSubmittingComment(false);
     }
   };
 
@@ -171,19 +125,10 @@ export default function WallSocialPanel({
   };
 
   if (!socialAvailable) return null;
-
-  if (!enableLikes && !enableComments && !canGuestbook) {
-    return null;
-  }
+  if (!enableLikes && !canGuestbook) return null;
 
   const panelLabel =
-    enableLikes && (enableComments || canGuestbook)
-      ? "응원 & 방명록"
-      : enableLikes
-        ? "응원하기"
-        : canGuestbook
-          ? "방명록"
-          : "응원 댓글";
+    enableLikes && canGuestbook ? "응원 & 방명록" : enableLikes ? "응원하기" : "방명록";
 
   return (
     <>
@@ -240,71 +185,47 @@ export default function WallSocialPanel({
                 <section className="space-y-2">
                   <h3 className="text-xs font-medium uppercase tracking-wide text-muted">방명록 사진</h3>
                   <p className="text-xs text-muted">내 네컷사진을 벽에 슬쩍 붙여둘 수 있어요</p>
-                  <input
-                    ref={photoInputRef}
-                    type="text"
-                    value={authorName}
-                    onChange={(e) => setAuthorName(e.target.value)}
-                    placeholder="닉네임 (선택)"
-                    className="w-full rounded-xl border border-foreground/10 px-3 py-2 text-sm outline-none focus:border-foreground/25"
-                  />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    id="guestbook-photo"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleGuestbookPhoto(file);
-                      e.target.value = "";
-                    }}
-                  />
-                  <label
-                    htmlFor="guestbook-photo"
-                    className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-foreground/15 px-4 py-3 text-sm font-medium transition hover:border-foreground/25 ${
-                      isSubmittingGuestbook ? "opacity-50" : ""
-                    }`}
-                  >
-                    {isSubmittingGuestbook ? "붙이는 중..." : "사진 선택해서 붙이기"}
-                  </label>
-                </section>
-              ) : !enableLikes && enableComments ? (
-                <p className="text-xs text-muted">이 벽에는 방명록 사진을 붙일 수 없어요.</p>
-              ) : null}
-
-              {enableComments && (
-              <section className="space-y-3">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted">응원 댓글</h3>
-                <div className="max-h-40 space-y-2 overflow-y-auto">
-                  {comments.length === 0 && (
-                    <p className="text-xs text-muted">첫 응원 댓글을 남겨보세요</p>
+                  {previewMode ? (
+                    <button
+                      type="button"
+                      onClick={() => onEnterInteractive?.()}
+                      className="flex w-full items-center justify-center rounded-xl border border-dashed border-foreground/15 px-4 py-3 text-sm font-medium transition hover:border-foreground/25"
+                    >
+                      방명록 남기려면 벽 불러오기
+                    </button>
+                  ) : (
+                    <>
+                      <input
+                        ref={photoInputRef}
+                        type="text"
+                        value={authorName}
+                        onChange={(e) => setAuthorName(e.target.value)}
+                        placeholder="닉네임 (선택)"
+                        className="w-full rounded-xl border border-foreground/10 px-3 py-2 text-sm outline-none focus:border-foreground/25"
+                      />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        id="guestbook-photo"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleGuestbookPhoto(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <label
+                        htmlFor="guestbook-photo"
+                        className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-foreground/15 px-4 py-3 text-sm font-medium transition hover:border-foreground/25 ${
+                          isSubmittingGuestbook ? "opacity-50" : ""
+                        }`}
+                      >
+                        {isSubmittingGuestbook ? "붙이는 중..." : "사진 선택해서 붙이기"}
+                      </label>
+                    </>
                   )}
-                  {comments.map((comment) => (
-                    <div key={comment.id} className="rounded-xl bg-foreground/5 px-3 py-2">
-                      <p className="text-xs font-medium">{comment.authorName}</p>
-                      <p className="mt-0.5 text-sm">{comment.body}</p>
-                    </div>
-                  ))}
-                </div>
-                <form onSubmit={handleSubmitComment} className="space-y-2">
-                  <input
-                    type="text"
-                    value={commentBody}
-                    onChange={(e) => setCommentBody(e.target.value)}
-                    placeholder="응원 메시지를 남겨주세요"
-                    maxLength={500}
-                    className="w-full rounded-xl border border-foreground/10 px-3 py-2 text-sm outline-none focus:border-foreground/25"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!commentBody.trim() || isSubmittingComment}
-                    className="w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-background disabled:opacity-50"
-                  >
-                    {isSubmittingComment ? "등록 중..." : "댓글 남기기"}
-                  </button>
-                </form>
-              </section>
-              )}
+                </section>
+              ) : null}
             </div>
           </aside>
         </>

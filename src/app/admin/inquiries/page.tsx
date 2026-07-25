@@ -11,24 +11,36 @@ import {
   type InquiryStatus,
 } from "@/types/inquiry";
 
+type CategoryFilter = "all" | "abuse" | "other";
+
 function InquiriesContent() {
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("id");
+  const initialCategory = (searchParams.get("category") as CategoryFilter | null) ?? "all";
+  const initialStatus = searchParams.get("status") ?? "all";
 
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(
+    ["all", "open", "in_progress", "resolved"].includes(initialStatus) ? initialStatus : "all",
+  );
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(
+    initialCategory === "abuse" || initialCategory === "other" ? initialCategory : "all",
+  );
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [selected, setSelected] = useState<Inquiry | null>(null);
   const [adminNote, setAdminNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hidingWall, setHidingWall] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await authFetch(
-        `/api/admin/inquiries${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`,
-      );
+      const params = new URLSearchParams();
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (categoryFilter !== "all") params.set("category", categoryFilter);
+      const qs = params.toString();
+      const res = await authFetch(`/api/admin/inquiries${qs ? `?${qs}` : ""}`);
       if (!res.ok) throw new Error();
       const data = (await res.json()) as Inquiry[];
       setInquiries(data);
@@ -37,7 +49,7 @@ function InquiriesContent() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, categoryFilter]);
 
   const loadDetail = useCallback(async (id: string) => {
     try {
@@ -62,7 +74,19 @@ function InquiriesContent() {
   const handleSelect = (inquiry: Inquiry) => {
     setSelected(inquiry);
     setAdminNote(inquiry.adminNote ?? "");
-    window.history.replaceState(null, "", `/admin/inquiries?id=${inquiry.id}`);
+    const params = new URLSearchParams();
+    params.set("id", inquiry.id);
+    if (categoryFilter !== "all") params.set("category", categoryFilter);
+    window.history.replaceState(null, "", `/admin/inquiries?${params}`);
+  };
+
+  const handleCategoryChange = (next: CategoryFilter) => {
+    setCategoryFilter(next);
+    const params = new URLSearchParams();
+    if (selectedId) params.set("id", selectedId);
+    if (next !== "all") params.set("category", next);
+    const qs = params.toString();
+    window.history.replaceState(null, "", `/admin/inquiries${qs ? `?${qs}` : ""}`);
   };
 
   const handleUpdate = async (status?: InquiryStatus) => {
@@ -90,12 +114,54 @@ function InquiriesContent() {
     }
   };
 
+  const handleHideWall = async () => {
+    if (!selected?.relatedWallId) return;
+    setHidingWall(true);
+    try {
+      const res = await authFetch(`/api/admin/walls/${selected.relatedWallId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isHidden: true }),
+      });
+      if (!res.ok) throw new Error();
+      setMessage("벽을 숨겼어요");
+      setTimeout(() => setMessage(null), 2000);
+    } catch {
+      setMessage("벽 숨김에 실패했어요");
+    } finally {
+      setHidingWall(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="space-y-1">
         <h2 className="text-xl font-bold">문의·신고</h2>
         <p className="text-sm text-muted">유저 문의와 신고를 처리해요</p>
       </section>
+
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["all", "전체"],
+            ["abuse", "신고"],
+            ["other", "문의"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => handleCategoryChange(value)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+              categoryFilter === value
+                ? "bg-foreground text-background"
+                : "bg-foreground/5 text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <div className="flex flex-wrap gap-2">
         {(["all", "open", "in_progress", "resolved"] as const).map((s) => (
@@ -109,7 +175,7 @@ function InquiriesContent() {
                 : "bg-foreground/5 text-foreground"
             }`}
           >
-            {s === "all" ? "전체" : INQUIRY_STATUS_LABELS[s]}
+            {s === "all" ? "상태 전체" : INQUIRY_STATUS_LABELS[s]}
           </button>
         ))}
       </div>
@@ -119,7 +185,7 @@ function InquiriesContent() {
           {loading ? (
             <p className="p-4 text-sm text-muted">불러오는 중...</p>
           ) : inquiries.length === 0 ? (
-            <p className="p-4 text-sm text-muted">문의가 없어요</p>
+            <p className="p-4 text-sm text-muted">항목이 없어요</p>
           ) : (
             <ul className="divide-y divide-foreground/8 max-h-[480px] overflow-y-auto">
               {inquiries.map((item) => (
@@ -145,7 +211,7 @@ function InquiriesContent() {
 
         <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
           {!selected ? (
-            <p className="text-sm text-muted">왼쪽에서 문의를 선택하세요</p>
+            <p className="text-sm text-muted">왼쪽에서 항목을 선택하세요</p>
           ) : (
             <div className="space-y-4">
               <div>
@@ -164,7 +230,7 @@ function InquiriesContent() {
                   {new Date(selected.createdAt).toLocaleString("ko-KR")}
                 </div>
                 {selected.relatedWallId && (
-                  <div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <span>관련 벽: </span>
                     <Link
                       href={`/wall/${selected.relatedWallId}`}
@@ -173,6 +239,20 @@ function InquiriesContent() {
                     >
                       {selected.relatedWallId.slice(0, 8)}…
                     </Link>
+                    <Link
+                      href={`/admin/walls?q=${selected.relatedWallId}`}
+                      className="font-medium text-accent-dark underline"
+                    >
+                      관리
+                    </Link>
+                    <button
+                      type="button"
+                      disabled={hidingWall}
+                      onClick={() => void handleHideWall()}
+                      className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700 disabled:opacity-50"
+                    >
+                      {hidingWall ? "숨기는 중…" : "벽 숨김"}
+                    </button>
                   </div>
                 )}
               </dl>
