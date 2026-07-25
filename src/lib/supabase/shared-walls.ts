@@ -290,6 +290,32 @@ export async function getSharedWallMembers(
   });
 }
 
+export async function removeSharedWallMember(
+  supabase: SupabaseClient,
+  wallId: string,
+  actorId: string,
+  targetUserId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const actorRole = await getUserWallRole(supabase, wallId, actorId);
+  if (!actorRole) return { ok: false, error: "forbidden" };
+
+  const targetRole = await getUserWallRole(supabase, wallId, targetUserId);
+  if (!targetRole) return { ok: false, error: "not_member" };
+  if (targetRole === "owner") return { ok: false, error: "cannot_remove_owner" };
+
+  if (actorId !== targetUserId && actorRole !== "owner") {
+    return { ok: false, error: "forbidden" };
+  }
+
+  const { error } = await supabase
+    .from("wall_members")
+    .delete()
+    .eq("wall_id", wallId)
+    .eq("user_id", targetUserId);
+
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 export async function fetchSharedWallForEdit(
   supabase: SupabaseClient,
   wallId: string,

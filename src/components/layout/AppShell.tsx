@@ -13,26 +13,40 @@ const NAV_ITEMS = [
 interface AppShellProps {
   children: React.ReactNode;
   hideNav?: boolean;
+  /** Lighter chrome for branded home landing */
+  tone?: "default" | "home";
 }
 
-export default function AppShell({ children, hideNav = false }: AppShellProps) {
+export default function AppShell({ children, hideNav = false, tone = "default" }: AppShellProps) {
   const pathname = usePathname();
+  const isHome = tone === "home";
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-50 border-b border-foreground/8 bg-surface/90 backdrop-blur-md">
+      <header
+        className={`sticky top-0 z-50 border-b backdrop-blur-md ${
+          isHome
+            ? "border-transparent bg-white/40 dark:bg-black/30"
+            : "border-foreground/8 bg-surface/90"
+        }`}
+      >
         <div
           className="mx-auto flex h-14 max-w-lg items-center justify-between px-5"
           style={{ paddingTop: "env(safe-area-inset-top)" }}
         >
-          <Link href="/" className="text-base font-bold tracking-tight">
+          <Link
+            href="/"
+            className={`tracking-tight ${isHome ? "text-sm font-semibold text-foreground/50" : "text-base font-bold"}`}
+          >
             PhotoWall
           </Link>
-          <span className="text-xs text-muted">디지털 포토월</span>
+          {!isHome && <span className="text-xs text-muted">디지털 포토월</span>}
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-lg flex-1 px-5 py-6">{children}</main>
+      <main className={`mx-auto w-full max-w-lg flex-1 ${isHome ? "px-5 py-0" : "px-5 py-6"}`}>
+        {children}
+      </main>
 
       {!hideNav && (
         <nav
