@@ -1,21 +1,7 @@
+import { captureWallElementPreview } from "@/lib/storage/wall-preview";
+
 export async function exportWallAsImage(element: HTMLElement): Promise<Blob> {
-  const { default: html2canvas } = await import("html2canvas");
-
-  const canvas = await html2canvas(element, {
-    useCORS: true,
-    allowTaint: true,
-    scale: 2,
-    backgroundColor: null,
-    logging: false,
-  });
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("이미지 생성 실패"))),
-      "image/png",
-      1,
-    );
-  });
+  return captureWallElementPreview(element);
 }
 
 export async function downloadWallImage(element: HTMLElement, filename = "photowall.png") {
@@ -30,7 +16,7 @@ export async function downloadWallImage(element: HTMLElement, filename = "photow
 
 export async function shareWallImage(element: HTMLElement) {
   const blob = await exportWallAsImage(element);
-  const file = new File([blob], "photowall.png", { type: "image/png" });
+  const file = new File([blob], "photowall.jpg", { type: "image/jpeg" });
 
   if (navigator.share && navigator.canShare?.({ files: [file] })) {
     await navigator.share({
@@ -41,5 +27,5 @@ export async function shareWallImage(element: HTMLElement) {
     return;
   }
 
-  await downloadWallImage(element);
+  await downloadWallImage(element, "photowall.jpg");
 }

@@ -19,21 +19,27 @@ export async function fetchWallFromDb(
 
   const { data, error } = await supabase
     .from("walls")
-    .select("id, theme_id, canvas_json, updated_at")
+    .select("id, theme_id, canvas_json, updated_at, preview_path")
     .eq("id", id)
     .eq("is_hidden", false)
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    // preview_path 마이그레이션 전 fallback
+    if (error?.message?.includes("preview_path")) {
+      const legacy = await supabase
+        .from("walls")
+        .select("id, theme_id, canvas_json, updated_at")
+        .eq("id", id)
+        .eq("is_hidden", false)
+        .single();
+      if (legacy.error || !legacy.data) return null;
+      return mapRow(legacy.data);
+    }
+    return null;
+  }
 
-  const themeId = resolveWallThemeId(data.theme_id);
-
-  return {
-    id: data.id,
-    themeId,
-    canvasJson: data.canvas_json,
-    updatedAt: data.updated_at,
-  };
+  return mapRow(data);
 }
 
 /** 개인 벽만 조회 (공동 벽 제외) */
@@ -71,7 +77,7 @@ export async function fetchPersonalWallIdForOwner(
   return data?.id ?? null;
 }
 
-/** 개인 벽 저장 — is_shared=false 벽만 생성·수정 */
+/** 개인 벽 저장 — 소유자당 is_shared=false 벽 하나만 upsert */
 export async function savePersonalWallToDb(
   wall: {
     id?: string;
@@ -91,47 +97,68 @@ export async function savePersonalWallToDb(
     updated_at: new Date().toISOString(),
   };
 
+  const updateById = async (id: string): Promise<PublishedWall | null> => {
+    const { data, error } = await supabase
+      .from("walls")
+      .update(payload)
+      .eq("id", id)
+      .eq("owner_id", wall.ownerId!)
+      .eq("is_shared", false)
+      .select("id, theme_id, canvas_json, updated_at")
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return mapRow(data);
+  };
+
+  // 1) Client id가 내 개인 벽이면 그 행을 갱신
   if (wall.id) {
-    const { data: existing } = await supabase
+    const { data: byId } = await supabase
       .from("walls")
       .select("id, is_shared, owner_id")
       .eq("id", wall.id)
       .maybeSingle();
 
-    if (existing?.is_shared) {
-      return null;
+    if (byId?.is_shared) return null;
+
+    if (byId && byId.owner_id === wall.ownerId) {
+      const updated = await updateById(byId.id);
+      if (updated) return updated;
     }
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from("walls")
-        .update(payload)
-        .eq("id", wall.id)
-        .eq("is_shared", false)
-        .select("id, theme_id, canvas_json, updated_at")
-        .single();
-
-      if (!error && data) return mapRow(data);
-    }
-
-    const { data: inserted, error: insertError } = await supabase
-      .from("walls")
-      .insert(payload)
-      .select("id, theme_id, canvas_json, updated_at")
-      .single();
-
-    if (!insertError && inserted) return mapRow(inserted);
-    return null;
   }
 
-  const { data, error } = await supabase
+  // 2) 이미 개인 벽이 있으면(가장 최근) 그 벽을 갱신 — 중복 INSERT 방지
+  const { data: existingPersonal } = await supabase
     .from("walls")
-    .insert(payload)
+    .select("id")
+    .eq("owner_id", wall.ownerId)
+    .eq("is_shared", false)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPersonal) {
+    return updateById(existingPersonal.id);
+  }
+
+  // 3) 첫 개인 벽만 INSERT (가능하면 클라이언트가 준 id 유지)
+  const insertRow =
+    wall.id && isWallUuid(wall.id) ? { ...payload, id: wall.id } : payload;
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("walls")
+    .insert(insertRow)
     .select("id, theme_id, canvas_json, updated_at")
     .single();
 
-  if (error || !data) return null;
-  return mapRow(data);
+  if (insertError || !inserted) return null;
+  return mapRow(inserted);
+}
+
+function isWallUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    id,
+  );
 }
 
 /** 공동 벽 저장 — wall_members 권한 있는 is_shared=true 벽만 수정 */
@@ -178,11 +205,13 @@ function mapRow(data: {
   theme_id: string;
   canvas_json: object;
   updated_at: string;
+  preview_path?: string | null;
 }): PublishedWall {
   return {
     id: data.id,
     themeId: resolveWallThemeId(data.theme_id),
     canvasJson: data.canvas_json,
     updatedAt: data.updated_at,
+    previewPath: data.preview_path ?? null,
   };
 }

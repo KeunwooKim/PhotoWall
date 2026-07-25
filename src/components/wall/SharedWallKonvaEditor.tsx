@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import KonvaWallStageClient from "@/components/wall/konva";
 import Toolbar from "@/components/wall/Toolbar";
 import LayerPanel from "@/components/wall/LayerPanel";
-import EditorToolDock, { BackIcon, MenuIcon } from "@/components/wall/EditorToolDock";
+import EditorToolDock, { HomeIcon, MenuIcon } from "@/components/wall/EditorToolDock";
 import type { WallThemeId } from "@/types/wall";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import AuthButton from "@/components/auth/AuthButton";
@@ -18,14 +18,19 @@ import {
 } from "@/lib/storage/resolve-wall-photos";
 import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
-import { addTapeToWallScene } from "@/lib/wall-scene/add-tape";
+import {
+  countSelectedQuotaObjects,
+  getClipboardQuotaObjectCount,
+} from "@/lib/wall-scene/clipboard-objects";
 import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { debounce } from "@/lib/debounce";
+import { useWallPreviewFlush } from "@/hooks/useWallPreviewFlush";
 import { createWallInvite } from "@/lib/wall-invite";
 import { shareWallImage } from "@/lib/wall-export";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { EditorMode } from "@/components/wall/editor-types";
+import type Konva from "konva";
 import {
   bringObjectForward,
   bringObjectsToFront,
@@ -38,13 +43,24 @@ import { useWallTransformActions } from "@/hooks/useWallTransformActions";
 import { useWallEditorContextMenu } from "@/hooks/useWallEditorContextMenu";
 import type { WallContextMenuActions } from "@/lib/wall-scene/build-context-menu-sections";
 import WallContextMenu from "@/components/wall/WallContextMenu";
+import TextStyleBar from "@/components/wall/TextStyleBar";
+import WallQuotaHint from "@/components/wall/WallQuotaHint";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
+import { HIGHLIGHTER_LENGTH_PRESETS } from "@/lib/wall-scene/highlighter";
 import {
-  HIGHLIGHTER_COLORS,
-  HIGHLIGHTER_LENGTH_PRESETS,
-} from "@/lib/wall-scene/highlighter";
+  DEFAULT_PEN_STYLE_ID,
+  PEN_COLORS,
+  clampPenStrokeWidth,
+  createDefaultPenWidthByStyle,
+  type PenStyleId,
+  type PenWidthByStyle,
+} from "@/lib/wall-scene/pen";
+import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
+import { wallTextFontVariables } from "@/lib/fonts/wall-text-fonts";
 
-const DRAW_COLORS = [...HIGHLIGHTER_COLORS];
+const PEN_DRAW_COLORS = [...PEN_COLORS];
+const TAPE_DRAW_COLORS = TAPE_COLORS.map((t) => t.color);
 
 interface SharedWallKonvaEditorProps {
   sharedId: string;
@@ -65,12 +81,23 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const [isSharing, setIsSharing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [mode, setMode] = useState<EditorMode>("select");
-  const [drawColor, setDrawColor] = useState<string>(DRAW_COLORS[0]);
+  const [penColor, setPenColor] = useState<string>(PEN_DRAW_COLORS[0]);
+  const [tapeColor, setTapeColor] = useState<string>(TAPE_DRAW_COLORS[0]);
+  const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE_ID);
+  const [penWidthByStyle, setPenWidthByStyle] = useState<PenWidthByStyle>(createDefaultPenWidthByStyle);
   const [highlighterMaxLength, setHighlighterMaxLength] = useState<number>(
     HIGHLIGHTER_LENGTH_PRESETS[1],
   );
+  const penStrokeWidth = penWidthByStyle[penStyleId];
+  const setPenStrokeWidth = (width: number) => {
+    setPenWidthByStyle((prev) => ({
+      ...prev,
+      [penStyleId]: clampPenStrokeWidth(penStyleId, width),
+    }));
+  };
 
   const wallStageRef = useRef<HTMLDivElement>(null);
+  const konvaStageRef = useRef<Konva.Stage | null>(null);
 
   const themeIdRef = useRef(themeId);
   themeIdRef.current = themeId;
@@ -86,6 +113,11 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const toggleShowGrid = useWallSceneStore((s) => s.toggleShowGrid);
   const toggleSnapToGrid = useWallSceneStore((s) => s.toggleSnapToGrid);
   const primaryId = primarySelectedId(selectedIds);
+  const selectedTextObject = useMemo(() => {
+    if (selectedIds.length !== 1) return null;
+    const obj = sceneObjects.find((o) => o.id === selectedIds[0]);
+    return obj?.type === "text" ? obj : null;
+  }, [selectedIds, sceneObjects]);
   const wallBounds = useWallSceneStore((s) => s.document.meta.wallBounds);
   const canUndo = useWallSceneStore((s) => s.historyPast.length > 0);
   const canRedo = useWallSceneStore((s) => s.historyFuture.length > 0);
@@ -110,6 +142,20 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     setTimeout(() => setSaveMessage(null), 2000);
   }, []);
 
+  const wallPlan = useClientWallPlan();
+  const { usage: sceneUsage, guardAdd, limitMessage } = useGuardWallObjectAdd(wallPlan);
+
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  const { markPreviewDirty, flushPreview } = useWallPreviewFlush({
+    getWallId: () => sharedId,
+    getThemeId: () => themeIdRef.current,
+    wallStageRef,
+    konvaStageRef,
+    isEnabled: () => !!userRef.current,
+  });
+
   const autoSave = useMemo(
     () =>
       debounce((json: object, fingerprint: string) => {
@@ -118,9 +164,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           lastSavedFingerprintRef.current = fingerprint;
           setAutoSaved(true);
           setTimeout(() => setAutoSaved(false), 1500);
+          markPreviewDirty();
         });
       }, 800),
-    [sharedId, user],
+    [sharedId, user, markPreviewDirty],
   );
 
   const broadcastPresence = useCallback(
@@ -220,21 +267,42 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     [autoSave],
   );
 
+  useEffect(() => {
+    const flush = () => {
+      autoSave.flush();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [autoSave]);
+
   const handlePhotoUpload = useCallback(
     async (file: File) => {
       if (!user) return;
+      if (!guardAdd(1)) {
+        showToast(limitMessage);
+        return;
+      }
       try {
         await addPhotoToWallScene(file, {
           userId: user.id,
           wallId: sharedId,
           wallWidth: wallBounds.width,
           wallHeight: wallBounds.height,
+          plan: wallPlan,
         });
-      } catch {
-        showToast("사진을 붙이지 못했어요");
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
       }
     },
-    [user, sharedId, wallBounds.width, wallBounds.height, showToast],
+    [user, sharedId, wallBounds.width, wallBounds.height, showToast, guardAdd, limitMessage, wallPlan],
   );
 
   const handleDelete = useCallback(() => {
@@ -245,7 +313,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   const handleModeChange = useCallback((next: EditorMode) => {
     setMode(next);
-    if (next === "draw") {
+    if (next === "pen" || next === "tape" || next === "text") {
       useWallSceneStore.getState().clearSelection();
     }
   }, []);
@@ -340,10 +408,15 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }, [flipVertical, showToast]);
 
   const handleDuplicate = useCallback(() => {
+    const n = countSelectedQuotaObjects();
+    if (n > 0 && !guardAdd(n)) {
+      showToast(limitMessage);
+      return;
+    }
     if (!duplicateSelection()) {
       showToast("복제할 항목이 없어요");
     }
-  }, [duplicateSelection, showToast]);
+  }, [duplicateSelection, showToast, guardAdd, limitMessage]);
 
   const handleCopy = useCallback(() => {
     if (!copySelection()) {
@@ -358,10 +431,15 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }, [cutSelection, showToast]);
 
   const handlePaste = useCallback(() => {
+    const n = getClipboardQuotaObjectCount();
+    if (n > 0 && !guardAdd(n)) {
+      showToast(limitMessage);
+      return;
+    }
     if (!pasteSelection()) {
       showToast("붙여넣을 항목이 없어요");
     }
-  }, [pasteSelection, showToast]);
+  }, [pasteSelection, showToast, guardAdd, limitMessage]);
 
   const handleGroup = useCallback(() => {
     if (!groupSelection()) {
@@ -439,23 +517,17 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   const handleAddSticker = useCallback(
     (stickerId: string) => {
+      if (!guardAdd(1)) {
+        showToast(limitMessage);
+        return;
+      }
       const added = addStickerToWallScene(stickerId, {
         wallWidth: wallBounds.width,
         wallHeight: wallBounds.height,
       });
       if (!added) showToast("스티커를 붙이지 못했어요");
     },
-    [wallBounds.width, wallBounds.height, showToast],
-  );
-
-  const handleAddTape = useCallback(
-    (color: string) => {
-      addTapeToWallScene(color, {
-        wallWidth: wallBounds.width,
-        wallHeight: wallBounds.height,
-      });
-    },
-    [wallBounds.width, wallBounds.height],
+    [wallBounds.width, wallBounds.height, showToast, guardAdd, limitMessage],
   );
 
   const handleThemeChange = useCallback(
@@ -463,21 +535,23 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       setThemeId(next);
       themeIdRef.current = next;
       const doc = useWallSceneStore.getState().document;
+      markPreviewDirty();
       void saveSharedWallToCloud(sharedId, next, serializeWallScene(doc));
     },
-    [sharedId],
+    [sharedId, markPreviewDirty],
   );
 
   const handleShare = useCallback(async () => {
     setIsSharing(true);
     try {
+      await flushPreview({ force: true });
       const url = `${window.location.origin}/wall/${sharedId}`;
       await navigator.clipboard.writeText(url);
       showToast("멤버 전용 링크가 복사됐어요 · 로그인한 멤버만 볼 수 있어요");
     } finally {
       setIsSharing(false);
     }
-  }, [sharedId, showToast]);
+  }, [sharedId, showToast, flushPreview]);
 
   const handleExport = useCallback(async () => {
     const stage = wallStageRef.current;
@@ -501,14 +575,16 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     useWallSceneStore.getState().reset();
     broadcastClear();
     const json = serializeWallScene(useWallSceneStore.getState().document);
+    markPreviewDirty();
     void saveSharedWallToCloud(sharedId, themeIdRef.current, json);
     setLoadedCanvasJson(json);
     showToast("벽을 비웠어요");
-  }, [sharedId, broadcastClear, showToast]);
+  }, [sharedId, broadcastClear, showToast, markPreviewDirty]);
 
   const handleInvite = useCallback(async () => {
     setIsInviting(true);
     try {
+      await flushPreview({ force: true });
       const { url } = await createWallInvite(sharedId);
       await navigator.clipboard.writeText(url);
       showToast("공동 벽 초대 링크가 복사됐어요");
@@ -517,7 +593,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     } finally {
       setIsInviting(false);
     }
-  }, [sharedId, showToast]);
+  }, [sharedId, showToast, flushPreview]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -639,11 +715,11 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         <button
           type="button"
           onClick={() => {
-            window.location.href = "/wall/edit";
+            window.location.href = "/walls";
           }}
           className="mt-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-medium text-background"
         >
-          내 벽으로
+          벽 목록으로
         </button>
       </div>
     );
@@ -657,11 +733,11 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         <button
           type="button"
           onClick={() => {
-            window.location.href = "/wall/edit";
+            window.location.href = "/walls";
           }}
           className="mt-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-medium text-background"
         >
-          내 벽으로
+          벽 목록으로
         </button>
       </div>
     );
@@ -676,7 +752,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }
 
   return (
-    <div className="relative h-[100dvh] w-screen overflow-hidden bg-white">
+    <div className={`relative h-[100dvh] w-screen overflow-hidden bg-white ${wallTextFontVariables}`}>
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-50 px-3"
         style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
@@ -701,9 +777,15 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onObjectPatch={broadcastObjectPatch}
         onReady={handleReady}
         wallStageRef={wallStageRef}
+        konvaStageRef={konvaStageRef}
         editorMode={mode}
-        drawColor={drawColor}
+        drawColor={mode === "pen" ? penColor : tapeColor}
         highlighterMaxLength={highlighterMaxLength}
+        penStyleId={penStyleId}
+        penStrokeWidth={penStrokeWidth}
+        onGuardQuotaAdd={guardAdd}
+        onQuotaBlocked={() => showToast(limitMessage)}
+        onRequestSelectMode={() => setMode("select")}
         onContextMenuRequest={handleContextMenuRequest}
       />
 
@@ -714,24 +796,24 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onClose={closeContextMenu}
       />
 
-      <Link
-        href="/wall/edit"
-        className="absolute left-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-white text-neutral-900 shadow-md ring-1 ring-black/8 sm:left-5"
-        style={{ top: "max(1rem, env(safe-area-inset-top))" }}
-        aria-label="내 벽으로"
-      >
-        <BackIcon />
-      </Link>
-
       <button
         type="button"
         onClick={() => setIsMenuOpen(true)}
-        className="absolute left-[4.5rem] z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-neutral-900 shadow-sm ring-1 ring-black/8 sm:left-[5.5rem]"
+        className="absolute left-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-neutral-900 shadow-sm ring-1 ring-black/8 sm:left-5"
         style={{ top: "max(1.25rem, env(safe-area-inset-top))" }}
         aria-label="꾸미기 메뉴 열기"
       >
         <MenuIcon />
       </button>
+
+      <Link
+        href="/walls"
+        className="absolute left-[4.5rem] z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-neutral-500 shadow-sm ring-1 ring-black/8 sm:left-[5.5rem]"
+        style={{ top: "max(1.25rem, env(safe-area-inset-top))" }}
+        aria-label="벽 목록으로"
+      >
+        <HomeIcon />
+      </Link>
 
       <div
         className="absolute left-1/2 z-30 max-w-[40vw] -translate-x-1/2 truncate rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-neutral-800 shadow-sm ring-1 ring-black/8"
@@ -753,6 +835,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         className="absolute right-4 z-30 flex items-center gap-2 sm:right-5"
         style={{ top: "max(1rem, env(safe-area-inset-top))" }}
       >
+        <WallQuotaHint usage={sceneUsage} plan={wallPlan} />
         {autoSaved && !saveMessage && (
           <div className="pointer-events-none hidden rounded-full bg-white/90 px-3 py-1.5 text-xs text-muted shadow-sm sm:block">
             공동 벽 자동 저장됨
@@ -768,6 +851,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         <AuthButton compact />
       </div>
 
+      {selectedTextObject && mode === "select" && (
+        <TextStyleBar object={selectedTextObject} />
+      )}
+
       <EditorToolDock
         mode={mode}
         onModeChange={handleModeChange}
@@ -777,6 +864,16 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onRedo={redo}
         canUndo={canUndo}
         canRedo={canRedo}
+        penColor={penColor}
+        penStyleId={penStyleId}
+        penStrokeWidth={penStrokeWidth}
+        tapeColor={tapeColor}
+        tapeMaxLength={highlighterMaxLength}
+        onPenColorChange={setPenColor}
+        onPenStyleIdChange={setPenStyleId}
+        onPenStrokeWidthChange={setPenStrokeWidth}
+        onTapeColorChange={setTapeColor}
+        onTapeMaxLengthChange={setHighlighterMaxLength}
       />
 
       {saveMessage && (
@@ -799,17 +896,18 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onClose={() => setIsMenuOpen(false)}
         themeId={themeId}
         mode={mode}
-        drawColor={drawColor}
-        drawColors={DRAW_COLORS}
+        drawColor={mode === "pen" ? penColor : tapeColor}
+        drawColors={mode === "pen" ? PEN_DRAW_COLORS : TAPE_DRAW_COLORS}
         highlighterMaxLength={highlighterMaxLength}
         highlighterLengthPresets={HIGHLIGHTER_LENGTH_PRESETS}
+        penStyleId={penStyleId}
+        penStrokeWidth={penStrokeWidth}
         hasSelection={selectedIds.length > 0}
         selectionCount={selectedIds.length}
         canUndo={canUndo}
         canRedo={canRedo}
         onThemeChange={handleThemeChange}
         onPhotoUpload={handlePhotoUpload}
-        onAddTape={handleAddTape}
         onAddSticker={handleAddSticker}
         onShare={handleShare}
         onExport={handleExport}
@@ -818,8 +916,13 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         isExporting={isExporting}
         isInviting={isInviting}
         onModeChange={handleModeChange}
-        onDrawColorChange={setDrawColor}
+        onDrawColorChange={(color) => {
+          if (mode === "pen") setPenColor(color);
+          else setTapeColor(color);
+        }}
         onHighlighterMaxLengthChange={setHighlighterMaxLength}
+        onPenStyleIdChange={setPenStyleId}
+        onPenStrokeWidthChange={setPenStrokeWidth}
         onUndo={undo}
         onRedo={redo}
         onSelectAll={handleSelectAll}

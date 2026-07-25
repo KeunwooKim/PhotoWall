@@ -1,3 +1,4 @@
+import { countQuotaObjects } from "@/lib/wall-quotas";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 
@@ -18,6 +19,15 @@ function cloneForPaste(object: WallSceneObject, zIndex: number, offset: number):
   clone.zIndex = zIndex;
   delete clone.groupId;
   return clone;
+}
+
+export function countSelectedQuotaObjects(): number {
+  const { selectedIds, document } = useWallSceneStore.getState();
+  if (selectedIds.length === 0) return 0;
+  const selected = selectedIds
+    .map((id) => document.objects.find((object) => object.id === id))
+    .filter((object): object is WallSceneObject => object != null);
+  return countQuotaObjects(selected);
 }
 
 /** Copy selected objects to the in-memory clipboard. */
@@ -78,4 +88,10 @@ export function pasteClipboardObjects(): string[] {
 
 export function hasClipboardContent(): boolean {
   return clipboard != null && clipboard.length > 0;
+}
+
+/** How many clipboard items count toward the scene object quota. */
+export function getClipboardQuotaObjectCount(): number {
+  if (!clipboard || clipboard.length === 0) return 0;
+  return countQuotaObjects(clipboard);
 }

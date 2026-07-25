@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute, adminDbErrorResponse } from "@/lib/admin/require-admin-route";
+import { countWallSceneObjects } from "@/lib/admin/wall-canvas-inspect";
+import { createWallPhotoSignedUrls } from "@/lib/storage/signed-urls-server";
 
 export async function GET(
   request: NextRequest,
@@ -13,30 +15,36 @@ export async function GET(
 
   let wallRes = await admin
     .from("walls")
-    .select("id, theme_id, owner_id, title, is_shared, is_hidden, created_at, updated_at")
+    .select(
+      "id, theme_id, owner_id, title, is_shared, is_hidden, created_at, updated_at, canvas_json, preview_path",
+    )
     .eq("id", id)
     .single();
 
-  if (wallRes.error?.message?.includes("is_hidden")) {
+  if (
+    wallRes.error?.message?.includes("preview_path") ||
+    wallRes.error?.message?.includes("canvas_json")
+  ) {
     wallRes = await admin
       .from("walls")
-      .select("id, theme_id, owner_id, title, is_shared, created_at, updated_at")
+      .select("id, theme_id, owner_id, title, is_shared, is_hidden, created_at, updated_at")
       .eq("id", id)
       .single();
   }
 
-  const [commentsRes, guestbookRes] = await Promise.all([
-    admin
-      .from("wall_comments")
-      .select("id, author_name, body, created_at")
-      .eq("wall_id", id)
-      .order("created_at", { ascending: false }),
-    admin
-      .from("wall_guestbook")
-      .select("id, author_name, created_at")
-      .eq("wall_id", id)
-      .order("created_at", { ascending: false }),
-  ]);
+  if (wallRes.error?.message?.includes("is_hidden")) {
+    wallRes = await admin
+      .from("walls")
+      .select("id, theme_id, owner_id, title, is_shared, created_at, updated_at, canvas_json")
+      .eq("id", id)
+      .single();
+  }
+
+  const guestbookRes = await admin
+    .from("wall_guestbook")
+    .select("id, author_name, created_at")
+    .eq("wall_id", id)
+    .order("created_at", { ascending: false });
 
   if (wallRes.error || !wallRes.data) {
     return applyCookies(NextResponse.json({ error: "Not found" }, { status: 404 }));
@@ -51,7 +59,16 @@ export async function GET(
     is_hidden?: boolean;
     created_at: string;
     updated_at: string;
+    canvas_json?: unknown;
+    preview_path?: string | null;
   };
+
+  const previewPath = row.preview_path ?? null;
+  let previewUrl: string | null = null;
+  if (previewPath) {
+    const signed = await createWallPhotoSignedUrls([previewPath]);
+    previewUrl = signed[previewPath] ?? null;
+  }
 
   return applyCookies(
     NextResponse.json({
@@ -64,8 +81,10 @@ export async function GET(
         isHidden: row.is_hidden ?? false,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        previewPath,
+        previewUrl,
+        objectCount: countWallSceneObjects(row.canvas_json),
       },
-      comments: commentsRes.data ?? [],
       guestbook: guestbookRes.data ?? [],
     }),
   );

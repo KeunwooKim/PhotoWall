@@ -10,6 +10,9 @@ interface AdminUser {
   friendCode: string;
   createdAt: string;
   wallCount: number;
+  restrictedAt: string | null;
+  legalConsentedAt: string | null;
+  legalVersion: string | null;
 }
 
 interface OrphanWall {
@@ -25,6 +28,8 @@ export default function AdminUsersPage() {
   const [orphanWalls, setOrphanWalls] = useState<OrphanWall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -59,11 +64,46 @@ export default function AdminUsersPage() {
     void loadOrphans();
   }, [loadUsers, loadOrphans]);
 
+  const toggleRestrict = async (user: AdminUser) => {
+    const nextRestricted = !user.restrictedAt;
+    if (
+      nextRestricted &&
+      !confirm(`${user.displayName} 계정의 공유·응원·방명록을 제한할까요?`)
+    ) {
+      return;
+    }
+
+    setActingId(user.id);
+    try {
+      const res = await authFetch(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restricted: nextRestricted,
+          reason: nextRestricted ? "관리자 제한" : undefined,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = (await res.json()) as { restrictedAt: string | null };
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === user.id ? { ...u, restrictedAt: updated.restrictedAt } : u,
+        ),
+      );
+      setMessage(nextRestricted ? "계정을 제한했어요" : "제한을 해제했어요");
+      setTimeout(() => setMessage(null), 2000);
+    } catch {
+      setMessage("처리에 실패했어요");
+    } finally {
+      setActingId(null);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <section className="space-y-1">
         <h2 className="text-xl font-bold">유저</h2>
-        <p className="text-sm text-muted">가입자 검색 및 레거시 벽 확인</p>
+        <p className="text-sm text-muted">가입자 검색 · 계정 제한 · 레거시 벽</p>
       </section>
 
       <div className="flex gap-3">
@@ -92,15 +132,43 @@ export default function AdminUsersPage() {
         ) : (
           <ul className="divide-y divide-foreground/8">
             {users.map((user) => (
-              <li key={user.id} className="flex items-center justify-between gap-4 px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">{user.displayName}</p>
+              <li key={user.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    {user.displayName}
+                    {user.restrictedAt && (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                        제한중
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-muted">
                     @{user.friendCode} · 벽 {user.wallCount}개 ·{" "}
                     {new Date(user.createdAt).toLocaleDateString("ko-KR")}
+                    {user.legalConsentedAt
+                      ? ` · 약관 ${user.legalVersion ?? "동의"}`
+                      : " · 약관 미동의"}
                   </p>
                 </div>
-                <span className="font-mono text-[11px] text-muted">{user.id.slice(0, 8)}…</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={actingId === user.id}
+                    onClick={() => void toggleRestrict(user)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                      user.restrictedAt
+                        ? "bg-foreground/5 text-foreground"
+                        : "bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {actingId === user.id
+                      ? "처리 중…"
+                      : user.restrictedAt
+                        ? "제한 해제"
+                        : "제한"}
+                  </button>
+                  <span className="font-mono text-[11px] text-muted">{user.id.slice(0, 8)}…</span>
+                </div>
               </li>
             ))}
           </ul>
@@ -134,6 +202,12 @@ export default function AdminUsersPage() {
           </ul>
         )}
       </section>
+
+      {message && (
+        <p className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-background">
+          {message}
+        </p>
+      )}
     </div>
   );
 }

@@ -34,6 +34,13 @@ function flipDimensions(object: WallSceneObject): { width: number; height: numbe
     };
   }
 
+  if (object.type === "text") {
+    return {
+      width: object.width * scaleX,
+      height: object.fontSize * 1.4 * scaleY,
+    };
+  }
+
   return null;
 }
 

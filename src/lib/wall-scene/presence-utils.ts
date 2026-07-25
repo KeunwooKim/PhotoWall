@@ -40,6 +40,14 @@ export function peerHighlightLayout(object: WallSceneObject): PeerHighlightLayou
     return { ...base, width: size, height: size };
   }
 
+  if (object.type === "text") {
+    return {
+      ...base,
+      width: object.width,
+      height: object.fontSize * 1.4,
+    };
+  }
+
   if (object.type === "path" && isStraightHighlighterPath(object.points)) {
     const strokeWidth = object.strokeWidth || HIGHLIGHTER_STROKE_WIDTH;
     const line = linePointsToHighlighterRect(object.points, strokeWidth + 4);

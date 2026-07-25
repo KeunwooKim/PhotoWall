@@ -26,12 +26,12 @@ export async function GET(
     return routeClient.applyCookies(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
   }
 
-  const likes = await getWallLikes(id, visitorId, userId);
+  const likes = await getWallLikes(routeClient.supabase, id, visitorId, userId);
   if (!likes) {
-    return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load likes" }, { status: 500 });
   }
 
-  return routeClient?.applyCookies(NextResponse.json(likes)) ?? NextResponse.json(likes);
+  return routeClient.applyCookies(NextResponse.json(likes));
 }
 
 export async function POST(
@@ -53,6 +53,10 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { restrictedResponse } = await import("@/lib/auth/account-restrict");
+  const blocked = await restrictedResponse(routeClient.supabase, user.id);
+  if (blocked) return routeClient.applyCookies(blocked);
 
   const likes = await toggleWallLike(routeClient.supabase, id, user.id);
   if (!likes) {

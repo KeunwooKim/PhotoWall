@@ -3,6 +3,7 @@ import { Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import ThemeScript from "@/providers/ThemeScript";
+import SyncLegalConsent from "@/components/auth/SyncLegalConsent";
 
 const notoSansKr = Noto_Sans_KR({
   subsets: ["latin"],
@@ -33,7 +34,10 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body className={`${notoSansKr.variable} antialiased`}>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <SyncLegalConsent />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

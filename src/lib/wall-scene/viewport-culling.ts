@@ -25,6 +25,15 @@ function objectBounds(obj: WallSceneObject): ViewportRect {
     return { x: obj.x, y: obj.y, width: size, height: size };
   }
 
+  if (obj.type === "text") {
+    return {
+      x: obj.x,
+      y: obj.y,
+      width: obj.width * scaleX,
+      height: obj.fontSize * 1.4 * scaleY,
+    };
+  }
+
   if (obj.type === "path" && obj.points.length >= 2) {
     let minX = Infinity;
     let minY = Infinity;

@@ -6,16 +6,32 @@ import { authFetch } from "@/lib/auth/api-fetch";
 import { INQUIRY_CATEGORY_LABELS, INQUIRY_STATUS_LABELS } from "@/types/inquiry";
 import type { InquiryCategory, InquiryStatus } from "@/types/inquiry";
 
+interface PeriodStats {
+  users: number;
+  walls: number;
+  inquiries: number;
+}
+
+interface ConsentStats {
+  ok: number;
+  missing: number;
+  stale: number;
+  version: string;
+}
+
 interface Stats {
   users: number;
   walls: number;
   sharedWalls: number;
   orphanWalls: number;
   likes: number;
-  comments: number;
   guestbook: number;
   openInquiries: number;
+  openAbuseCount: number;
   hasServiceRole?: boolean;
+  today: PeriodStats;
+  last7Days: PeriodStats;
+  consent: ConsentStats;
   recentInquiries: {
     id: string;
     category: InquiryCategory;
@@ -67,15 +83,48 @@ export default function AdminDashboardPage() {
         <p className="text-sm text-muted">서비스 현황 요약</p>
       </section>
 
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold">오늘 / 최근 7일</h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatCard label="오늘 가입" value={stats.today.users} />
+          <StatCard label="오늘 새 벽" value={stats.today.walls} />
+          <StatCard label="오늘 문의·신고" value={stats.today.inquiries} />
+          <StatCard label="7일 가입" value={stats.last7Days.users} />
+          <StatCard label="7일 새 벽" value={stats.last7Days.walls} />
+          <StatCard label="7일 문의·신고" value={stats.last7Days.inquiries} />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">약관 동의 ({stats.consent.version})</h3>
+          <Link href="/admin/users" className="text-xs font-medium text-accent-dark">
+            유저 목록
+          </Link>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard label="동의 완료" value={stats.consent.ok} />
+          <StatCard label="미동의" value={stats.consent.missing} />
+          <StatCard label="구버전" value={stats.consent.stale} />
+        </div>
+      </section>
+
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="가입자" value={stats.users} />
         <StatCard label="벽" value={stats.walls} />
         <StatCard label="공동 벽" value={stats.sharedWalls} />
         <StatCard label="owner 없는 벽" value={stats.orphanWalls} />
         <StatCard label="좋아요" value={stats.likes} />
-        <StatCard label="댓글" value={stats.comments} />
         <StatCard label="방명록" value={stats.guestbook} />
         <StatCard label="미처리 문의" value={stats.openInquiries} />
+        <Link href="/admin/inquiries?category=abuse&status=open" className="block">
+          <div className="rounded-2xl border border-foreground/8 bg-surface p-4 transition hover:border-foreground/20">
+            <p className="text-xs text-muted">미처리 신고</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {(stats.openAbuseCount ?? 0).toLocaleString()}
+            </p>
+          </div>
+        </Link>
       </section>
 
       <section className="space-y-3">

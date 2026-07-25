@@ -2,7 +2,7 @@
 
 import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Group, Layer, Rect, Stage, Transformer } from "react-konva";
+import { Group, Layer, Line, Rect, Stage, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { WallThemeId } from "@/types/wall";
 import type { EditorMode } from "@/components/wall/editor-types";
@@ -17,7 +17,14 @@ import {
   type LineEndpoints,
   endpointsToPoints,
 } from "@/lib/wall-scene/highlighter";
-import { commitHighlighterLine } from "@/lib/wall-scene/add-path";
+import { commitPenStroke, commitTapeStroke } from "@/lib/wall-scene/add-path";
+import { addTextToWallScene } from "@/lib/wall-scene/add-text";
+import {
+  PEN_SAMPLE_DISTANCE,
+  getPenStyle,
+  resolvePenShadowBlur,
+  type PenStyleId,
+} from "@/lib/wall-scene/pen";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
 import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
@@ -34,6 +41,7 @@ import { useWallSceneStore } from "@/stores/wall-scene-store";
 import WallPhotoNode from "./WallPhotoNode";
 import WallStickerNode from "./WallStickerNode";
 import WallEmojiNode from "./WallEmojiNode";
+import WallTextNode from "./WallTextNode";
 import WallTapeNode from "./WallTapeNode";
 import WallPathNode from "./WallPathNode";
 import WallHighlighterRect from "./WallHighlighterRect";
@@ -44,6 +52,10 @@ import {
   WallContextMenuProvider,
   type WallContextMenuRequestFn,
 } from "./wall-context-menu-context";
+
+function isStrokeMode(mode: EditorMode) {
+  return mode === "pen" || mode === "tape";
+}
 
 export interface KonvaWallStageProps {
   themeId: WallThemeId;
@@ -61,9 +73,17 @@ export interface KonvaWallStageProps {
   onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onReady?: () => void;
   wallStageRef?: RefObject<HTMLDivElement | null>;
+  konvaStageRef?: RefObject<Konva.Stage | null>;
   editorMode?: EditorMode;
   drawColor?: string;
   highlighterMaxLength?: number;
+  penStyleId?: PenStyleId;
+  /** Absolute stroke width for the active brush (after size level). */
+  penStrokeWidth?: number;
+  /** Return false to block quota-counted adds (text). Pen/tape ignore this. */
+  onGuardQuotaAdd?: (count?: number) => boolean;
+  onQuotaBlocked?: () => void;
+  onRequestSelectMode?: () => void;
   onContextMenuRequest?: WallContextMenuRequestFn;
 }
 
@@ -83,9 +103,15 @@ export default function KonvaWallStage({
   onObjectPatch,
   onReady,
   wallStageRef,
+  konvaStageRef,
   editorMode = "select",
   drawColor = "#fff59d",
   highlighterMaxLength = 160,
+  penStyleId = "ink",
+  penStrokeWidth,
+  onGuardQuotaAdd,
+  onQuotaBlocked,
+  onRequestSelectMode,
   onContextMenuRequest,
 }: KonvaWallStageProps) {
   const theme = getWallTheme(themeId);
@@ -94,13 +120,18 @@ export default function KonvaWallStage({
   const nodeRegistry = useRef(new Map<string, Konva.Group>());
   const locallyDraggingIds = useRef(new Set<string>());
   const drawingRef = useRef<LineEndpoints | null>(null);
+  const freehandRef = useRef<number[] | null>(null);
   const editorModeRef = useRef(editorMode);
   const drawColorRef = useRef(drawColor);
   const highlighterMaxLengthRef = useRef(highlighterMaxLength);
+  const penStyleIdRef = useRef(penStyleId);
+  const penStrokeWidthRef = useRef(penStrokeWidth);
 
   editorModeRef.current = editorMode;
   drawColorRef.current = drawColor;
   highlighterMaxLengthRef.current = highlighterMaxLength;
+  penStyleIdRef.current = penStyleId;
+  penStrokeWidthRef.current = penStrokeWidth;
 
   const [draftPoints, setDraftPoints] = useState<number[] | null>(null);
 
@@ -309,7 +340,8 @@ export default function KonvaWallStage({
       };
 
       const isSelected = selectedIds.includes(object.id);
-      const objectReadOnly = readOnly || editorMode === "draw" || peerLockedIds.has(object.id);
+      const objectReadOnly =
+        readOnly || isStrokeMode(editorMode) || editorMode === "text" || peerLockedIds.has(object.id);
 
       if (object.type === "photo") {
         return (
@@ -355,6 +387,21 @@ export default function KonvaWallStage({
         );
       }
 
+      if (object.type === "text") {
+        return (
+          <WallTextNode
+            key={object.id}
+            object={object}
+            readOnly={objectReadOnly}
+            onSelect={select}
+            onInteractionStart={() => broadcastSelection()}
+            onManipulationChange={setManipulating}
+            onEditRequest={() => onRequestSelectMode?.()}
+            registerNode={registerNode}
+          />
+        );
+      }
+
       if (object.type === "tape") {
         return (
           <WallTapeNode
@@ -395,6 +442,7 @@ export default function KonvaWallStage({
       onObjectPatch,
       setManipulating,
       registerNode,
+      onRequestSelectMode,
       handleObjectSelect,
       broadcastSelection,
     ],
@@ -487,6 +535,21 @@ export default function KonvaWallStage({
   }, []);
 
   const updateDraftLine = useCallback((stage: Konva.Stage | null) => {
+    const mode = editorModeRef.current;
+
+    if (mode === "pen") {
+      const draft = freehandRef.current;
+      if (!stage || !draft) return;
+      const pos = getWallPointer(stage);
+      if (!pos) return;
+      const lastX = draft[draft.length - 2];
+      const lastY = draft[draft.length - 1];
+      if (Math.hypot(pos.x - lastX, pos.y - lastY) < PEN_SAMPLE_DISTANCE) return;
+      draft.push(pos.x, pos.y);
+      setDraftPoints([...draft]);
+      return;
+    }
+
     const draft = drawingRef.current;
     if (!stage || !draft) return;
 
@@ -503,6 +566,22 @@ export default function KonvaWallStage({
   }, [getWallPointer]);
 
   const finishDrawing = useCallback(() => {
+    const mode = editorModeRef.current;
+
+    if (mode === "pen") {
+      const draft = freehandRef.current;
+      freehandRef.current = null;
+      setDraftPoints(null);
+      if (!draft) return;
+      commitPenStroke(
+        draft,
+        drawColorRef.current,
+        penStyleIdRef.current,
+        penStrokeWidthRef.current,
+      );
+      return;
+    }
+
     const draft = drawingRef.current;
     drawingRef.current = null;
     setDraftPoints(null);
@@ -518,12 +597,12 @@ export default function KonvaWallStage({
     );
     if (!clamped) return;
 
-    commitHighlighterLine(clamped, drawColorRef.current);
+    commitTapeStroke(clamped, drawColorRef.current);
   }, []);
 
   const startDrawing = useCallback(
     (stage: Konva.Stage | null) => {
-      if (readOnly || editorModeRef.current !== "draw") return;
+      if (readOnly || !isStrokeMode(editorModeRef.current)) return;
 
       const pos = getWallPointer(stage);
       if (!pos) return;
@@ -531,11 +610,42 @@ export default function KonvaWallStage({
       clearSelection();
       broadcastSelection(null);
 
+      if (editorModeRef.current === "pen") {
+        freehandRef.current = [pos.x, pos.y];
+        drawingRef.current = null;
+        setDraftPoints([pos.x, pos.y, pos.x, pos.y]);
+        return;
+      }
+
+      freehandRef.current = null;
       const next: LineEndpoints = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
       drawingRef.current = next;
       setDraftPoints(endpointsToPoints(next));
     },
     [clearSelection, getWallPointer, broadcastSelection, readOnly],
+  );
+
+  const placeTextAtPointer = useCallback(
+    (stage: Konva.Stage | null) => {
+      if (readOnly || editorModeRef.current !== "text") return;
+      const pos = getWallPointer(stage);
+      if (!pos) return;
+      if (onGuardQuotaAdd && !onGuardQuotaAdd(1)) {
+        onQuotaBlocked?.();
+        return;
+      }
+      addTextToWallScene({ x: pos.x, y: pos.y });
+      broadcastSelection();
+      onRequestSelectMode?.();
+    },
+    [
+      broadcastSelection,
+      getWallPointer,
+      onGuardQuotaAdd,
+      onQuotaBlocked,
+      onRequestSelectMode,
+      readOnly,
+    ],
   );
 
   const finishMarquee = useCallback(
@@ -622,7 +732,7 @@ export default function KonvaWallStage({
 
   const handleStagePointerUp = useCallback(
     (stage: Konva.Stage | null) => {
-      if (drawingRef.current) {
+      if (drawingRef.current || freehandRef.current) {
         finishDrawing();
         return;
       }
@@ -635,8 +745,9 @@ export default function KonvaWallStage({
   );
 
   useEffect(() => {
-    if (editorMode !== "draw") {
+    if (!isStrokeMode(editorMode)) {
       drawingRef.current = null;
+      freehandRef.current = null;
       setDraftPoints(null);
     }
   }, [editorMode]);
@@ -665,6 +776,7 @@ export default function KonvaWallStage({
           }
         >
           <Stage
+            ref={konvaStageRef}
             width={wallBounds.width}
             height={wallBounds.height}
             onMouseDown={(e) => {
@@ -690,7 +802,7 @@ export default function KonvaWallStage({
               }
             }}
           >
-          <Layer listening={!readOnly && editorMode !== "draw"}>
+          <Layer listening={!readOnly && editorMode === "select"}>
             {visibleObjects.map((object) => renderSceneObject(object))}
             {marqueeRect && (
               <Rect
@@ -774,15 +886,37 @@ export default function KonvaWallStage({
               );
             })}
           </Layer>
-          {!readOnly && editorMode === "draw" && (
+          {!readOnly && isStrokeMode(editorMode) && (
             <Layer>
-              {draftPoints && draftPoints.length === 4 && (
+              {editorMode === "tape" && draftPoints && draftPoints.length === 4 && (
                 <WallHighlighterRect
                   points={draftPoints}
                   fill={drawColor}
                   opacity={HIGHLIGHTER_OPACITY}
                 />
               )}
+              {editorMode === "pen" && draftPoints && draftPoints.length >= 4 && (() => {
+                const style = getPenStyle(penStyleId);
+                const width = penStrokeWidth ?? style.strokeWidth;
+                const shadowBlur = resolvePenShadowBlur(style, width);
+                return (
+                  <Line
+                    points={draftPoints}
+                    stroke={drawColor}
+                    strokeWidth={width}
+                    opacity={style.opacity}
+                    tension={style.tension}
+                    lineCap={style.lineCap}
+                    lineJoin={style.lineJoin}
+                    shadowEnabled={shadowBlur > 0}
+                    shadowColor={drawColor}
+                    shadowBlur={shadowBlur}
+                    shadowOpacity={style.shadowOpacity ?? 0}
+                    shadowForStrokeEnabled={shadowBlur > 0}
+                    listening={false}
+                  />
+                );
+              })()}
               <Rect
                 width={wallBounds.width}
                 height={wallBounds.height}
@@ -799,6 +933,23 @@ export default function KonvaWallStage({
                 onTouchMove={(e) => updateDraftLine(e.target.getStage())}
                 onMouseUp={(e) => handleStagePointerUp(e.target.getStage())}
                 onTouchEnd={(e) => handleStagePointerUp(e.target.getStage())}
+              />
+            </Layer>
+          )}
+          {!readOnly && editorMode === "text" && (
+            <Layer>
+              <Rect
+                width={wallBounds.width}
+                height={wallBounds.height}
+                fill="rgba(0,0,0,0)"
+                onMouseDown={(e) => {
+                  e.cancelBubble = true;
+                  placeTextAtPointer(e.target.getStage());
+                }}
+                onTouchStart={(e) => {
+                  e.cancelBubble = true;
+                  placeTextAtPointer(e.target.getStage());
+                }}
               />
             </Layer>
           )}

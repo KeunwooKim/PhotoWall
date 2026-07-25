@@ -183,6 +183,16 @@ export function getSceneObjectExtents(obj: WallSceneObject): {
     return rotatedRectExtents(obj.x, obj.y, size, size, obj.rotation);
   }
 
+  if (obj.type === "text") {
+    return rotatedRectExtents(
+      obj.x,
+      obj.y,
+      obj.width * scaleX,
+      obj.fontSize * 1.4 * scaleY,
+      obj.rotation,
+    );
+  }
+
   if (obj.type === "path" && obj.points.length >= 2) {
     let minX = Infinity;
     let minY = Infinity;

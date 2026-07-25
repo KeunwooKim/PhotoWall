@@ -1,6 +1,15 @@
 "use client";
 
 import type { EditorMode } from "./editor-types";
+import {
+  DEFAULT_PEN_STYLE_ID,
+  PEN_COLORS,
+  PEN_STYLES,
+  type PenStyleId,
+} from "@/lib/wall-scene/pen";
+import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
+import { HIGHLIGHTER_LENGTH_PRESETS } from "@/lib/wall-scene/highlighter";
+import PenStrokeWidthControl from "./PenStrokeWidthControl";
 
 interface EditorToolDockProps {
   mode: EditorMode;
@@ -11,14 +20,24 @@ interface EditorToolDockProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  penColor?: string;
+  penStyleId?: PenStyleId;
+  penStrokeWidth?: number;
+  tapeColor?: string;
+  tapeMaxLength?: number;
+  onPenColorChange?: (color: string) => void;
+  onPenStyleIdChange?: (id: PenStyleId) => void;
+  onPenStrokeWidthChange?: (width: number) => void;
+  onTapeColorChange?: (color: string) => void;
+  onTapeMaxLengthChange?: (length: number) => void;
 }
 
 const dockBtn =
-  "flex h-11 min-w-11 items-center justify-center rounded-full px-3 text-xs font-medium transition active:scale-95";
+  "flex h-11 min-w-11 items-center justify-center rounded-full px-2.5 text-[11px] font-medium transition active:scale-95 sm:px-3 sm:text-xs";
 const dockBtnIdle = `${dockBtn} text-neutral-600 hover:bg-black/5`;
 const dockBtnActive = `${dockBtn} bg-neutral-900 text-white`;
 
-/** Persistent bottom tools — select / pen / photo / decorate + undo. */
+/** Persistent bottom tools — select / pen / tape / text / photo / decorate + undo. */
 export default function EditorToolDock({
   mode,
   onModeChange,
@@ -28,13 +47,115 @@ export default function EditorToolDock({
   onRedo,
   canUndo,
   canRedo,
+  penColor = PEN_COLORS[0],
+  penStyleId = DEFAULT_PEN_STYLE_ID,
+  penStrokeWidth = PEN_STYLES[1].strokeWidth,
+  tapeColor = TAPE_COLORS[0].color,
+  tapeMaxLength = HIGHLIGHTER_LENGTH_PRESETS[1],
+  onPenColorChange,
+  onPenStyleIdChange,
+  onPenStrokeWidthChange,
+  onTapeColorChange,
+  onTapeMaxLengthChange,
 }: EditorToolDockProps) {
+  const showPenPicker = mode === "pen";
+  const showTapePicker = mode === "tape";
+
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 z-30 flex justify-center px-3"
+      className="pointer-events-none absolute inset-x-0 z-30 flex flex-col items-center gap-2 px-2"
       style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
     >
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/95 p-1.5 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
+      {showPenPicker && (
+        <div className="pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
+          <p className="text-[11px] font-medium text-muted">펜 종류</p>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            {PEN_STYLES.map((style) => (
+              <button
+                key={style.id}
+                type="button"
+                onClick={() => onPenStyleIdChange?.(style.id)}
+                className={`rounded-xl px-2.5 py-2 text-left transition ${
+                  penStyleId === style.id
+                    ? "bg-foreground text-background"
+                    : "bg-foreground/6 hover:bg-foreground/10"
+                }`}
+              >
+                <span className="block text-[11px] font-medium">{style.label}</span>
+                <span
+                  className={`mt-0.5 block text-[10px] ${
+                    penStyleId === style.id ? "text-background/70" : "text-muted"
+                  }`}
+                >
+                  {style.hint}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] font-medium text-muted">크기</p>
+          <PenStrokeWidthControl
+            styleId={penStyleId}
+            value={penStrokeWidth}
+            onChange={(width) => onPenStrokeWidthChange?.(width)}
+            compact
+          />
+          <p className="text-[11px] font-medium text-muted">색상</p>
+          <div className="flex flex-wrap gap-2">
+            {PEN_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => onPenColorChange?.(color)}
+                className={`h-8 w-8 rounded-full ring-2 transition ${
+                  penColor === color ? "ring-foreground scale-110" : "ring-transparent"
+                }`}
+                style={{ background: color }}
+                aria-label={`펜 색 ${color}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showTapePicker && (
+        <div className="pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
+          <p className="text-[11px] font-medium text-muted">테이프 길이</p>
+          <div className="flex gap-1.5">
+            {HIGHLIGHTER_LENGTH_PRESETS.map((length) => (
+              <button
+                key={length}
+                type="button"
+                onClick={() => onTapeMaxLengthChange?.(length)}
+                className={`flex h-9 flex-1 items-center justify-center rounded-full text-[11px] font-medium transition ${
+                  tapeMaxLength === length
+                    ? "bg-foreground text-background"
+                    : "bg-foreground/6 hover:bg-foreground/10"
+                }`}
+              >
+                {length < 100 ? "짧게" : length < 200 ? "보통" : "길게"}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] font-medium text-muted">색상</p>
+          <div className="flex flex-wrap gap-2">
+            {TAPE_COLORS.map((tape) => (
+              <button
+                key={tape.id}
+                type="button"
+                title={tape.label}
+                onClick={() => onTapeColorChange?.(tape.color)}
+                className={`h-8 w-10 rounded-md ring-2 transition ${
+                  tapeColor === tape.color ? "ring-foreground scale-105" : "ring-black/10"
+                }`}
+                style={{ background: tape.color }}
+                aria-label={`테이프 ${tape.label}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="pointer-events-auto flex max-w-[100vw] items-center gap-0.5 overflow-x-auto rounded-full bg-white/95 p-1.5 shadow-lg ring-1 ring-black/8 backdrop-blur-sm sm:gap-1">
         <button
           type="button"
           onClick={() => onModeChange("select")}
@@ -45,11 +166,27 @@ export default function EditorToolDock({
         </button>
         <button
           type="button"
-          onClick={() => onModeChange("draw")}
-          className={mode === "draw" ? dockBtnActive : dockBtnIdle}
-          aria-pressed={mode === "draw"}
+          onClick={() => onModeChange(mode === "pen" ? "select" : "pen")}
+          className={mode === "pen" ? dockBtnActive : dockBtnIdle}
+          aria-pressed={mode === "pen"}
         >
           펜
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange(mode === "tape" ? "select" : "tape")}
+          className={mode === "tape" ? dockBtnActive : dockBtnIdle}
+          aria-pressed={mode === "tape"}
+        >
+          테이프
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange(mode === "text" ? "select" : "text")}
+          className={mode === "text" ? dockBtnActive : dockBtnIdle}
+          aria-pressed={mode === "text"}
+        >
+          텍스트
         </button>
 
         <label className={`${dockBtnIdle} cursor-pointer`}>
@@ -73,7 +210,7 @@ export default function EditorToolDock({
           꾸미기
         </button>
 
-        <span className="mx-0.5 h-5 w-px bg-black/10" aria-hidden />
+        <span className="mx-0.5 h-5 w-px shrink-0 bg-black/10" aria-hidden />
 
         <button
           type="button"

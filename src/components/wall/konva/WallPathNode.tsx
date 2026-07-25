@@ -18,6 +18,7 @@ import {
   isStraightHighlighterPath,
   linePointsToHighlighterRect,
 } from "@/lib/wall-scene/highlighter";
+import { getPenStyle, inferPenStyleId, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import WallHighlighterRect from "./WallHighlighterRect";
 import { useNodeContextTrigger } from "./useNodeContextTrigger";
 
@@ -71,9 +72,20 @@ export default function WallPathNode({
     [handleSelect, onInteractionStart],
   );
 
-  const isHighlighter = isStraightHighlighterPath(object.points);
-  const strokeWidth = isHighlighter ? object.strokeWidth || HIGHLIGHTER_STROKE_WIDTH : object.strokeWidth;
-  const opacity = object.opacity ?? (isHighlighter ? HIGHLIGHTER_OPACITY : 1);
+  const isHighlighter =
+    object.tool === "tape" ||
+    (object.tool !== "pen" && isStraightHighlighterPath(object.points));
+
+  const penStyle = !isHighlighter
+    ? getPenStyle(object.penStyle ?? inferPenStyleId(object.strokeWidth, object.opacity))
+    : null;
+  const strokeWidth = isHighlighter
+    ? object.strokeWidth || HIGHLIGHTER_STROKE_WIDTH
+    : object.strokeWidth;
+  const opacity = isHighlighter
+    ? (object.opacity ?? HIGHLIGHTER_OPACITY)
+    : (object.opacity ?? penStyle?.opacity ?? 1);
+  const penShadowBlur = penStyle ? resolvePenShadowBlur(penStyle, strokeWidth) : 0;
   const selectionLayout = isHighlighter ? linePointsToHighlighterRect(object.points, strokeWidth + 6) : null;
   const hitLayout = isHighlighter ? linePointsToHighlighterRect(object.points, strokeWidth + 28) : null;
 
@@ -143,7 +155,7 @@ export default function WallPathNode({
       x={object.x}
       y={object.y}
       draggable={isHighlighter && !readOnly}
-      listening={isHighlighter ? contextEnabled : false}
+      listening={contextEnabled}
       onContextMenu={isHighlighter ? handleContextMenu : undefined}
       onMouseDown={
         isHighlighter
@@ -200,9 +212,10 @@ export default function WallPathNode({
           stroke={object.stroke}
           strokeWidth={strokeWidth}
           opacity={opacity}
-          lineCap="butt"
-          lineJoin="miter"
-          hitStrokeWidth={Math.max(24, strokeWidth + 10)}
+          tension={penStyle?.tension ?? 0}
+          lineCap={penStyle?.lineCap ?? "round"}
+          lineJoin={penStyle?.lineJoin ?? "round"}
+          hitStrokeWidth={Math.max(28, strokeWidth + 14)}
           listening={contextEnabled}
           onContextMenu={handleContextMenu}
           onMouseDown={(e) => handlePointerDown(e, e.evt.shiftKey)}
@@ -211,7 +224,11 @@ export default function WallPathNode({
           onTouchMove={handleContextPointerMove}
           onMouseUp={handleContextPointerUp}
           onTouchEnd={handleContextPointerUp}
-          shadowForStrokeEnabled={false}
+          shadowEnabled={penShadowBlur > 0}
+          shadowColor={object.stroke}
+          shadowBlur={penShadowBlur}
+          shadowOpacity={penStyle?.shadowOpacity ?? 0}
+          shadowForStrokeEnabled={penShadowBlur > 0}
           perfectDrawEnabled={false}
         />
       )}
@@ -233,10 +250,11 @@ export default function WallPathNode({
         <Line
           points={object.points}
           stroke="#4a90d9"
-          strokeWidth={strokeWidth + 4}
-          opacity={0.35}
-          lineCap="butt"
-          lineJoin="miter"
+          strokeWidth={strokeWidth + 6}
+          opacity={0.3}
+          tension={penStyle?.tension ?? 0}
+          lineCap={penStyle?.lineCap ?? "round"}
+          lineJoin={penStyle?.lineJoin ?? "round"}
           listening={false}
           perfectDrawEnabled={false}
         />

@@ -36,11 +36,18 @@ export async function GET(request: NextRequest) {
 
   const { admin, applyCookies } = auth.ctx;
   const status = request.nextUrl.searchParams.get("status");
+  const category = request.nextUrl.searchParams.get("category");
 
   let query = admin.from("inquiries").select("*").order("created_at", { ascending: false });
 
   if (status && status !== "all") {
     query = query.eq("status", status);
+  }
+
+  if (category === "abuse") {
+    query = query.eq("category", "abuse");
+  } else if (category === "other") {
+    query = query.neq("category", "abuse");
   }
 
   const { data, error } = await query.limit(100);

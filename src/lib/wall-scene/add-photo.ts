@@ -5,6 +5,7 @@ import { resolveWallPhotoSrc } from "@/lib/storage/resolve-wall-photos";
 import { isWallPhotoRef } from "@/lib/storage/wall-photos";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
+import type { UserPlan } from "@/lib/wall-quotas";
 
 async function loadImageSize(src: string): Promise<{ width: number; height: number }> {
   const img = await loadHtmlImage(src);
@@ -19,9 +20,11 @@ export async function addPhotoToWallScene(
     wallWidth: number;
     wallHeight: number;
     position?: { x: number; y: number };
+    plan?: UserPlan;
   },
 ): Promise<void> {
-  const ref = await resolvePhotoUrl(file, options.userId);
+  const plan = options.plan ?? "free";
+  const ref = await resolvePhotoUrl(file, options.userId, plan);
 
   if (isWallPhotoRef(ref)) {
     cachePhotoDisplayUrl(ref, URL.createObjectURL(file));

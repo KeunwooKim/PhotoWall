@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createInvite } from "@/lib/supabase/social";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
+import { restrictedResponse } from "@/lib/auth/account-restrict";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as { wallId?: string };
@@ -18,6 +19,9 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await restrictedResponse(routeClient.supabase, user.id);
+  if (blocked) return routeClient.applyCookies(blocked);
 
   const invite = await createInvite(routeClient.supabase, body.wallId);
   if (!invite) {

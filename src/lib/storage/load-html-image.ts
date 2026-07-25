@@ -1,9 +1,24 @@
-/** Load an HTMLImageElement for canvas display (no crossOrigin — avoids CORS load failures). */
+/** Load an HTMLImageElement for canvas display.
+ * Prefer CORS mode for http(s) so Konva stage.toDataURL / preview export stays untainted.
+ * Fall back without crossOrigin if the server rejects CORS (image still displays, export may fail).
+ */
 const imageCache = new Map<string, HTMLImageElement>();
 const inflight = new Map<string, Promise<HTMLImageElement>>();
 
 export function getCachedHtmlImage(src: string): HTMLImageElement | null {
   return imageCache.get(src) ?? null;
+}
+
+function loadOnce(src: string, useCors: boolean): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    if (useCors) {
+      img.crossOrigin = "anonymous";
+    }
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src.slice(0, 64)}`));
+    img.src = src;
+  });
 }
 
 export function loadHtmlImage(src: string): Promise<HTMLImageElement> {
@@ -13,19 +28,20 @@ export function loadHtmlImage(src: string): Promise<HTMLImageElement> {
   const pending = inflight.get(src);
   if (pending) return pending;
 
-  const promise = new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => {
+  const needsCorsAttempt =
+    src.startsWith("http://") || src.startsWith("https://") || src.startsWith("//");
+
+  const promise = (async () => {
+    try {
+      const img = needsCorsAttempt
+        ? await loadOnce(src, true).catch(() => loadOnce(src, false))
+        : await loadOnce(src, false);
       imageCache.set(src, img);
+      return img;
+    } finally {
       inflight.delete(src);
-      resolve(img);
-    };
-    img.onerror = () => {
-      inflight.delete(src);
-      reject(new Error(`Failed to load image: ${src.slice(0, 64)}`));
-    };
-    img.src = src;
-  });
+    }
+  })();
 
   inflight.set(src, promise);
   return promise;

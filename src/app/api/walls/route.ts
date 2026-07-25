@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { savePersonalWallToDb } from "@/lib/supabase/walls";
 import { resolveWallThemeId } from "@/lib/wall-themes";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
+import { getUserPlan } from "@/lib/auth/user-plan";
+import { checkSceneQuota, sceneQuotaMessage } from "@/lib/wall-quotas";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +27,17 @@ export async function POST(request: NextRequest) {
 
     if (!body.themeId || !body.canvasJson) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
+
+    const plan = await getUserPlan(user.id, supabase);
+    const violation = checkSceneQuota(body.canvasJson, plan);
+    if (violation) {
+      return applyCookies(
+        NextResponse.json(
+          { error: violation, message: sceneQuotaMessage(violation) },
+          { status: 413 },
+        ),
+      );
     }
 
     const themeId = resolveWallThemeId(body.themeId ?? "");

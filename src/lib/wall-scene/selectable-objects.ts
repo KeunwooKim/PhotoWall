@@ -5,6 +5,7 @@ const SELECTABLE_TYPES = new Set<WallSceneObject["type"]>([
   "photo",
   "sticker",
   "emoji",
+  "text",
   "tape",
   "path",
 ]);
@@ -19,10 +20,12 @@ export function isCanvasSelectableObject(object: WallSceneObject): boolean {
 }
 
 export function isTransformableObject(object: WallSceneObject): boolean {
-  return object.type !== "path";
+  if (object.type !== "path") return true;
+  // Paths (pen / tape stroke): move only — no resize handles
+  return false;
 }
 
-/** 형광펜 직선 — 이동만 가능, 크기 조절 불가 */
+/** Straight masking-tape stroke — move only, no resize */
 export function isMovableHighlighterObject(object: WallSceneObject): boolean {
   return object.type === "path" && isStraightHighlighterPath(object.points);
 }

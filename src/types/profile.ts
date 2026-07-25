@@ -5,6 +5,9 @@ export interface Profile {
   friendCode: string;
   wallId: string | null;
   allowWallVisits: boolean;
+  /** ISO timestamp when terms/privacy were accepted */
+  legalConsentedAt: string | null;
+  legalVersion: string | null;
 }
 
 export interface Friend {

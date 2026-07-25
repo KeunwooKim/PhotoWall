@@ -22,6 +22,15 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
       if (object.type === "photo") return { ...base, src: object.src };
       if (object.type === "sticker") return { ...base, stickerId: object.stickerId };
       if (object.type === "emoji") return { ...base, text: object.text };
+      if (object.type === "text") {
+        return {
+          ...base,
+          text: object.text,
+          fontSize: object.fontSize,
+          fontFamily: object.fontFamily,
+          fill: object.fill,
+        };
+      }
       if (object.type === "tape") return { ...base, fill: object.fill };
       if (object.type === "path") {
         return {
@@ -29,6 +38,7 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
           stroke: object.stroke,
           strokeWidth: object.strokeWidth,
           opacity: object.opacity,
+          tool: object.tool ?? null,
         };
       }
       return base;

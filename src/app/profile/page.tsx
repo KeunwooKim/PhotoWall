@@ -5,7 +5,6 @@ import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
 import FriendsPanel from "@/components/social/FriendsPanel";
-import SharedWallsPanel from "@/components/social/SharedWallsPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
 import type { Profile } from "@/types/profile";
@@ -15,7 +14,6 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isFriendsOpen, setIsFriendsOpen] = useState(false);
-  const [isSharedOpen, setIsSharedOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const showMessage = useCallback((text: string) => {
@@ -145,12 +143,7 @@ export default function ProfilePage() {
         )}
 
         <section className="overflow-hidden rounded-2xl bg-foreground/[0.03]">
-          <MenuLink href="/wall/edit" title="내 벽 꾸미기" desc="개인 포토월 편집" />
-          <MenuButton
-            title="공동 벽"
-            desc="함께 모으는 인생네컷"
-            onClick={() => setIsSharedOpen(true)}
-          />
+          <MenuLink href="/walls" title="벽 꾸미기" desc="내 벽 · 공동 벽" />
           <MenuButton
             title="친구"
             desc="추가 · 벽 방문"
@@ -170,7 +163,6 @@ export default function ProfilePage() {
       </div>
 
       <FriendsPanel isOpen={isFriendsOpen} onClose={() => setIsFriendsOpen(false)} />
-      <SharedWallsPanel isOpen={isSharedOpen} onClose={() => setIsSharedOpen(false)} />
 
       {message && (
         <div className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background shadow-lg">
