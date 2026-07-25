@@ -119,7 +119,7 @@ export default function FriendsPanel({ isOpen, onClose }: FriendsPanelProps) {
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/20 transition-opacity duration-300 ${
+        className={`fixed inset-0 z-40 bg-black/25 transition-opacity duration-300 ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
@@ -129,16 +129,18 @@ export default function FriendsPanel({ isOpen, onClose }: FriendsPanelProps) {
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label="친구 목록"
-        className={`fixed right-0 top-0 z-50 flex h-full w-80 max-w-[85vw] flex-col bg-surface text-foreground shadow-2xl transition-transform duration-300 ease-out ${
-          isOpen ? "translate-x-0" : "translate-x-full"
+        aria-label="친구"
+        className={`fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col rounded-t-3xl bg-surface text-foreground shadow-2xl transition-transform duration-300 ease-out sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-h-none sm:w-[22rem] sm:max-w-[90vw] sm:rounded-none ${
+          isOpen ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-x-full sm:translate-y-0"
         }`}
-        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="flex items-center justify-between border-b border-foreground/8 px-5 py-4">
+        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-foreground/15 sm:hidden" />
+
+        <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-4 sm:pt-[max(1rem,env(safe-area-inset-top))]">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">친구</h2>
-            <p className="mt-0.5 text-xs text-muted">코드로 친구를 추가하고 벽을 방문해요</p>
+            <h2 className="text-lg font-bold tracking-tight">친구</h2>
+            <p className="mt-0.5 text-xs text-muted">코드로 연결하고 벽을 방문해요</p>
           </div>
           <button
             type="button"
@@ -146,101 +148,105 @@ export default function FriendsPanel({ isOpen, onClose }: FriendsPanelProps) {
             className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition hover:bg-foreground/5 hover:text-foreground"
             aria-label="닫기"
           >
-            ✕
+            <CloseIcon />
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
-          {profile && (
-            <section className="space-y-2 rounded-xl bg-foreground/5 p-4">
-              <h3 className="text-xs font-medium uppercase tracking-wide text-muted">내 친구 코드</h3>
+        <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 pb-6">
+          {profile?.friendCode && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-medium tracking-wide text-muted">내 코드</h3>
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-lg bg-background px-3 py-2 text-sm font-mono tracking-widest ring-1 ring-foreground/10">
+                <code className="flex-1 rounded-xl bg-foreground/[0.04] px-4 py-3 text-center font-mono text-sm tracking-[0.2em]">
                   {profile.friendCode}
                 </code>
                 <button
                   type="button"
                   onClick={handleCopyCode}
-                  className="rounded-lg bg-foreground px-3 py-2 text-xs font-medium text-background"
+                  className="rounded-xl bg-foreground px-4 py-3 text-xs font-medium text-background"
                 >
                   복사
                 </button>
               </div>
-              <p className="text-[11px] text-muted">친구에게 이 코드를 공유하면 서로 연결돼요</p>
             </section>
           )}
 
           <section className="space-y-2">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">친구 추가</h3>
+            <h3 className="text-xs font-medium tracking-wide text-muted">친구 추가</h3>
             <form onSubmit={handleAddFriend} className="flex gap-2">
               <input
                 type="text"
                 value={friendCode}
                 onChange={(e) => setFriendCode(e.target.value.toUpperCase())}
-                placeholder="친구 코드 입력"
+                placeholder="코드 입력"
                 maxLength={8}
-                className="flex-1 rounded-xl border border-foreground/10 px-3 py-2 text-sm uppercase tracking-widest outline-none focus:border-foreground/25"
+                className="flex-1 rounded-xl bg-foreground/[0.04] px-4 py-3 text-sm uppercase tracking-widest outline-none ring-1 ring-transparent focus:ring-foreground/15"
               />
               <button
                 type="submit"
                 disabled={!friendCode.trim() || isAdding}
-                className="rounded-xl bg-foreground px-4 py-2 text-xs font-medium text-background disabled:opacity-50"
+                className="rounded-xl bg-foreground px-4 py-3 text-xs font-medium text-background disabled:opacity-40"
               >
-                {isAdding ? "..." : "추가"}
+                {isAdding ? "…" : "추가"}
               </button>
             </form>
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">
-              친구 목록 {friends.length > 0 && `(${friends.length})`}
+            <h3 className="text-xs font-medium tracking-wide text-muted">
+              목록{friends.length > 0 ? ` · ${friends.length}` : ""}
             </h3>
-            {isLoading && <p className="text-xs text-muted">불러오는 중...</p>}
+            {isLoading && <p className="py-6 text-center text-xs text-muted">불러오는 중...</p>}
             {!isLoading && friends.length === 0 && (
-              <p className="text-xs text-muted">아직 친구가 없어요. 코드를 공유해 보세요</p>
+              <p className="rounded-2xl bg-foreground/[0.03] px-4 py-6 text-center text-xs text-muted">
+                아직 친구가 없어요
+              </p>
             )}
-            <ul className="space-y-2">
-              {friends.map((friend) => (
+            <ul className="overflow-hidden rounded-2xl bg-foreground/[0.03]">
+              {friends.map((friend, index) => (
                 <li
                   key={friend.id}
-                  className="flex items-center gap-3 rounded-xl border border-foreground/8 px-3 py-2.5"
+                  className={`flex items-center gap-3 px-4 py-3 ${
+                    index < friends.length - 1 ? "border-b border-foreground/6" : ""
+                  }`}
                 >
                   {friend.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={friend.avatarUrl}
                       alt=""
-                      className="h-9 w-9 rounded-full object-cover ring-1 ring-black/8"
+                      className="h-10 w-10 rounded-full object-cover"
                     />
                   ) : (
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground/6 text-sm">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">
                       {friend.displayName.charAt(0)}
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{friend.displayName}</p>
-                    <p className="text-[11px] text-muted">{friend.friendCode}</p>
+                    <p className="truncate text-sm font-semibold">{friend.displayName}</p>
+                    <p className="font-mono text-[11px] tracking-wider text-muted">{friend.friendCode}</p>
                   </div>
-                  <div className="flex shrink-0 gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
                     {friend.wallVisitable && friend.wallId ? (
                       <Link
                         href={`/wall/${friend.wallId}`}
                         onClick={onClose}
-                        className="rounded-lg bg-foreground/5 px-2.5 py-1.5 text-xs font-medium hover:bg-foreground/8"
+                        className="rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-medium text-background"
                       >
-                        벽 방문
+                        방문
                       </Link>
-                    ) : friend.wallId ? (
-                      <span className="rounded-lg px-2.5 py-1.5 text-[11px] text-muted">벽 비공개</span>
                     ) : (
-                      <span className="rounded-lg px-2.5 py-1.5 text-[11px] text-muted">벽 없음</span>
+                      <span className="px-1 text-[11px] text-muted">
+                        {friend.wallId ? "비공개" : "벽 없음"}
+                      </span>
                     )}
                     <button
                       type="button"
                       onClick={() => handleRemoveFriend(friend.id)}
-                      className="rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-red-50 hover:text-red-500"
+                      className="rounded-lg px-2 py-1.5 text-xs text-muted transition hover:bg-red-50 hover:text-red-500"
                       aria-label={`${friend.displayName} 삭제`}
                     >
-                      ✕
+                      삭제
                     </button>
                   </div>
                 </li>
@@ -259,5 +265,13 @@ export default function FriendsPanel({ isOpen, onClose }: FriendsPanelProps) {
         </div>
       )}
     </>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   );
 }

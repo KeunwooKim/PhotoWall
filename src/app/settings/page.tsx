@@ -11,19 +11,20 @@ import { authFetch } from "@/lib/auth/api-fetch";
 import type { Profile } from "@/types/profile";
 import type { ThemeMode } from "@/lib/settings-storage";
 
-const THEME_OPTIONS: { value: ThemeMode; label: string; desc: string }[] = [
-  { value: "light", label: "라이트", desc: "밝은 화면" },
-  { value: "dark", label: "다크", desc: "어두운 화면" },
-  { value: "system", label: "시스템", desc: "기기 설정 따름" },
+const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
+  { value: "light", label: "라이트" },
+  { value: "dark", label: "다크" },
+  { value: "system", label: "시스템" },
 ];
 
 export default function SettingsPage() {
   const { mode, setMode } = useTheme();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, signOut } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -67,89 +68,89 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
   return (
     <AppShell>
-      <div className="space-y-6">
-        <section className="space-y-1">
-          <h1 className="text-xl font-bold">설정</h1>
-          <p className="text-sm text-muted">앱 환경을 맞춰 보세요</p>
-        </section>
+      <div className="space-y-8">
+        <header className="space-y-1 pt-1">
+          <h1 className="text-2xl font-bold tracking-tight">설정</h1>
+          <p className="text-sm text-muted">화면과 프라이버시를 맞춰 보세요</p>
+        </header>
 
         <section className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">테마</h2>
-          <div className="grid gap-2">
-            {THEME_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setMode(option.value)}
-                className={`flex items-center justify-between rounded-2xl border p-4 text-left transition active:scale-[0.99] ${
-                  mode === option.value
-                    ? "border-accent-dark bg-accent/10"
-                    : "border-foreground/8 bg-surface hover:border-foreground/15"
-                }`}
-              >
-                <div>
-                  <p className="text-sm font-semibold">{option.label}</p>
-                  <p className="text-xs text-muted">{option.desc}</p>
-                </div>
-                {mode === option.value && (
-                  <span className="text-sm text-accent-dark">✓</span>
-                )}
-              </button>
-            ))}
+          <h2 className="text-xs font-medium tracking-wide text-muted">테마</h2>
+          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-foreground/[0.04] p-1">
+            {THEME_OPTIONS.map((option) => {
+              const active = mode === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setMode(option.value)}
+                  className={`rounded-xl px-2 py-2.5 text-xs font-medium transition active:scale-[0.98] ${
+                    active
+                      ? "bg-foreground text-background shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">개인정보</h2>
-          {!user && !isLoading && (
-            <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
-              <p className="text-sm text-muted">로그인하면 벽 방문 설정을 변경할 수 있어요</p>
-              <div className="mt-3">
-                <AuthButton />
-              </div>
+          <h2 className="text-xs font-medium tracking-wide text-muted">프라이버시</h2>
+          {!user && !isLoading ? (
+            <div className="space-y-3 rounded-2xl bg-foreground/[0.03] px-4 py-4">
+              <p className="text-sm text-muted">로그인하면 벽 방문 설정을 바꿀 수 있어요</p>
+              <AuthButton />
             </div>
-          )}
-          {user && (
-            <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold">친구 벽 방문 허용</p>
-                  <p className="mt-1 text-xs text-muted">
-                    켜야 친구가 내 개인 벽을 방문할 수 있어요. 기본값은 비공개예요.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={profile?.allowWallVisits ?? false}
-                  disabled={!profile || isSavingPrivacy}
-                  onClick={handleToggleWallVisits}
-                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-                    profile?.allowWallVisits ? "bg-accent-dark" : "bg-foreground/15"
-                  } disabled:opacity-50`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
-                      profile?.allowWallVisits ? "left-[22px]" : "left-0.5"
-                    }`}
-                  />
-                </button>
+          ) : (
+            <div className="flex items-start justify-between gap-4 rounded-2xl bg-foreground/[0.03] px-4 py-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">친구 벽 방문 허용</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted">
+                  켜야 친구가 내 개인 벽을 볼 수 있어요. 기본은 비공개예요.
+                </p>
               </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={profile?.allowWallVisits ?? false}
+                disabled={!profile || isSavingPrivacy}
+                onClick={handleToggleWallVisits}
+                className={`relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition ${
+                  profile?.allowWallVisits ? "bg-foreground" : "bg-foreground/15"
+                } disabled:opacity-50`}
+              >
+                <span
+                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
+                    profile?.allowWallVisits ? "left-[22px]" : "left-0.5"
+                  }`}
+                />
+              </button>
             </div>
           )}
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">문의</h2>
-          {!user && !isLoading && (
-            <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
-              <p className="text-sm text-muted">로그인하면 문의를 보낼 수 있어요</p>
-            </div>
-          )}
-          {user && (
-            <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
+          <h2 className="text-xs font-medium tracking-wide text-muted">문의</h2>
+          {!user && !isLoading ? (
+            <p className="rounded-2xl bg-foreground/[0.03] px-4 py-4 text-sm text-muted">
+              로그인하면 문의를 보낼 수 있어요
+            </p>
+          ) : (
+            <div className="rounded-2xl bg-foreground/[0.03] px-4 py-4">
               <InquiryForm />
             </div>
           )}
@@ -157,40 +158,43 @@ export default function SettingsPage() {
 
         {isAdmin && (
           <section className="space-y-3">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-muted">관리</h2>
+            <h2 className="text-xs font-medium tracking-wide text-muted">관리</h2>
             <Link
               href="/admin"
-              className="flex items-center justify-between rounded-2xl border border-foreground/8 bg-surface p-4 transition hover:border-accent-dark/40"
+              className="flex items-center justify-between rounded-2xl bg-foreground/[0.03] px-4 py-4 transition active:bg-foreground/[0.05]"
             >
               <div>
-                <p className="text-sm font-semibold">관리자 페이지</p>
-                <p className="mt-1 text-xs text-muted">문의·벽·유저 관리</p>
+                <p className="text-sm font-semibold">관리자</p>
+                <p className="mt-0.5 text-xs text-muted">문의 · 벽 · 유저 · 운영</p>
               </div>
-              <span className="text-sm text-accent-dark">→</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden className="text-muted">
+                <path
+                  d="M9 6l6 6-6 6"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </Link>
           </section>
         )}
 
-        <section className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">계정</h2>
-          <div className="rounded-2xl border border-foreground/8 bg-surface p-4">
-            <AuthButton />
-          </div>
-        </section>
+        {user && (
+          <section className="space-y-3">
+            <h2 className="text-xs font-medium tracking-wide text-muted">계정</h2>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={isSigningOut}
+              className="w-full rounded-2xl bg-foreground/[0.03] px-4 py-4 text-left text-sm font-medium transition hover:bg-foreground/[0.05] disabled:opacity-50"
+            >
+              {isSigningOut ? "로그아웃 중..." : "로그아웃"}
+            </button>
+          </section>
+        )}
 
-        <section className="rounded-2xl border border-foreground/8 bg-surface p-4">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-muted">정보</h2>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">버전</dt>
-              <dd>0.1.0 MVP</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">에디터</dt>
-              <dd>Konva</dd>
-            </div>
-          </dl>
-        </section>
+        <p className="pb-2 text-center text-[11px] text-muted">PhotoWall · 0.1.0 · Konva</p>
       </div>
 
       {message && (

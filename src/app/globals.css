@@ -41,3 +41,55 @@ body {
     linear-gradient(90deg, #d4d4d4 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
+@keyframes home-hero-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes home-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.home-hero-enter {
+  animation: home-hero-enter 0.7s ease-out both;
+}
+
+.home-hero-enter-delay {
+  animation-delay: 0.12s;
+}
+
+.home-hero-enter-delay-2 {
+  animation-delay: 0.24s;
+}
+
+.home-float {
+  animation: home-float 5s ease-in-out infinite;
+}
+
+.home-float-slow {
+  animation: home-float 7s ease-in-out infinite;
+  animation-delay: 0.8s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero-enter,
+  .home-hero-enter-delay,
+  .home-hero-enter-delay-2,
+  .home-float,
+  .home-float-slow {
+    animation: none;
+  }
+}
