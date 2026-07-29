@@ -110,7 +110,6 @@ export default function PersonalWallKonvaEditor() {
   const themeIdRef = useRef(themeId);
   const userRef = useRef(user);
   const syncedUserRef = useRef<string | null>(null);
-  const importedRef = useRef(false);
   const persistEnabledRef = useRef(false);
   const lastSavedFingerprintRef = useRef<string | null>(null);
   /** Skip destructive local reload when wallId only changes via cloud id adopt */
@@ -417,28 +416,31 @@ export default function PersonalWallKonvaEditor() {
   }, [user, isReady, authLoading, syncCloudWall]);
 
   useEffect(() => {
-    if (!isReady || importedRef.current) return;
+    if (!isReady) return;
 
     const pendingImports = consumePendingImports();
     const pendingScans = consumePendingScans();
     const pending = [...pendingImports, ...pendingScans];
     if (pending.length === 0) return;
 
-    importedRef.current = true;
     void (async () => {
-      const bounds = useWallSceneStore.getState().document.meta.wallBounds;
-      for (const dataUrl of pending) {
-        await addPhotoDataUrlToWallScene(dataUrl, {
-          wallWidth: bounds.width,
-          wallHeight: bounds.height,
-        });
-      }
-      if (pendingScans.length > 0 && pendingImports.length === 0) {
-        showToast("스캔한 사진을 붙였어요");
-      } else if (pendingImports.length > 0 && pendingScans.length === 0) {
-        showToast("QR 네컷 사진을 붙였어요");
-      } else {
-        showToast("사진을 붙였어요");
+      try {
+        const bounds = useWallSceneStore.getState().document.meta.wallBounds;
+        for (const dataUrl of pending) {
+          await addPhotoDataUrlToWallScene(dataUrl, {
+            wallWidth: bounds.width,
+            wallHeight: bounds.height,
+          });
+        }
+        if (pendingScans.length > 0 && pendingImports.length === 0) {
+          showToast("스캔한 사진을 붙였어요");
+        } else if (pendingImports.length > 0 && pendingScans.length === 0) {
+          showToast("QR 네컷 사진을 붙였어요");
+        } else {
+          showToast("사진을 붙였어요");
+        }
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
       }
     })();
   }, [isReady, showToast]);

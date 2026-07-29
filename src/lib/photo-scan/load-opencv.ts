@@ -6,26 +6,39 @@ declare global {
   }
 }
 
+/** Prefer classic opencv.js build — @techstark ESM often hangs as a bare script on iOS Safari. */
 const OPENCV_CDNS = [
-  "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0/dist/opencv.js",
   "https://docs.opencv.org/4.8.0/opencv.js",
+  "https://cdn.jsdelivr.net/npm/opencv.js@1.2.1/opencv.js",
 ];
-const LOAD_TIMEOUT_MS = 25_000;
+const LOAD_TIMEOUT_MS = 10_000;
 
 let loadPromise: Promise<any> | null = null;
 
-function waitForCvReady(): Promise<any> {
+async function waitForCvReady(): Promise<any> {
+  let cv = window.cv;
+
+  // Some builds expose `cv` as a Promise
+  if (cv && typeof cv.then === "function") {
+    cv = await cv;
+    window.cv = cv;
+  }
+
+  if (!cv) throw new Error("OpenCV failed to load");
+  if (cv.Mat) return cv;
+
   return new Promise((resolve, reject) => {
-    const cv = window.cv;
-    if (!cv) {
-      reject(new Error("OpenCV failed to load"));
-      return;
-    }
-    if (cv.Mat) {
+    const timer = setTimeout(() => reject(new Error("OpenCV runtime timeout")), 8_000);
+    const prev = cv.onRuntimeInitialized;
+    cv.onRuntimeInitialized = () => {
+      clearTimeout(timer);
+      try {
+        prev?.();
+      } catch {
+        // ignore
+      }
       resolve(cv);
-      return;
-    }
-    cv.onRuntimeInitialized = () => resolve(cv);
+    };
   });
 }
 
@@ -38,6 +51,7 @@ function loadScript(src: string): Promise<void> {
       existing.addEventListener("error", () => reject(new Error("OpenCV script failed")), {
         once: true,
       });
+      // Script may already be loaded
       if (window.cv) resolve();
     });
   }

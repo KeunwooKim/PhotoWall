@@ -227,10 +227,14 @@ export default function PhotoScanClient() {
       try {
         await loadOpenCv();
         if (!cancelled) setDetectStatus("on");
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setDetectStatus("failed");
           setAutoDetectOn(false);
+          setDetectDebug({
+            ...EMPTY_DEBUG,
+            error: err instanceof Error ? err.message : "OpenCV load failed",
+          });
         }
       }
     })();
@@ -347,6 +351,7 @@ export default function PhotoScanClient() {
   const applyScan = useCallback(async () => {
     if (!capturedUrl || !reviewQuad) return;
     setPhase("processing");
+    setErrorMessage(null);
     try {
       const img = new Image();
       await new Promise<void>((resolve, reject) => {
@@ -354,12 +359,21 @@ export default function PhotoScanClient() {
         img.onerror = () => reject(new Error("image load failed"));
         img.src = capturedUrl;
       });
-      const warped = warpPerspective(img, reviewQuad);
-      savePendingScans([canvasToJpegDataUrl(warped, 0.92)]);
+      // Keep output modest for iPhone memory / handoff reliability
+      const warped = warpPerspective(img, reviewQuad, 1200);
+      const dataUrl = canvasToJpegDataUrl(warped, 0.82);
+      if (!dataUrl.startsWith("data:image")) {
+        throw new Error("encode failed");
+      }
+      savePendingScans([dataUrl]);
       router.replace("/wall/edit");
-    } catch {
+    } catch (err) {
       setPhase("review");
-      setErrorMessage("평탄화에 실패했어요. 모서리를 다시 맞춰 보세요");
+      setErrorMessage(
+        err instanceof Error && /quota|storage/i.test(err.message)
+          ? "저장 공간이 부족해요. 다시 촬영해 주세요"
+          : "평탄화에 실패했어요. 모서리를 다시 맞춰 보세요",
+      );
     }
   }, [capturedUrl, reviewQuad, router]);
 
@@ -502,9 +516,11 @@ export default function PhotoScanClient() {
                   >
                     {detectStatus === "loading"
                       ? "감지 준비…"
-                      : autoDetectOn
-                        ? "자동감지 ON"
-                        : "자동감지 OFF"}
+                      : detectStatus === "failed"
+                        ? "감지 불가"
+                        : autoDetectOn
+                          ? "자동감지 ON"
+                          : "자동감지 OFF"}
                   </button>
                   <button
                     type="button"
