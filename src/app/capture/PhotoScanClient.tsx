@@ -7,45 +7,22 @@ import { detectDocumentQuad, quadSimilarity } from "@/lib/photo-scan/detect-quad
 import { isOpenCvReady, loadOpenCv } from "@/lib/photo-scan/load-opencv";
 import {
   canvasToJpegDataUrl,
-  defaultInsetQuad,
   warpPerspective,
 } from "@/lib/photo-scan/perspective";
 import { savePendingScans } from "@/lib/photo-scan/scan-session";
 import type { Point2, QuadPoints } from "@/lib/photo-scan/types";
+import {
+  defaultPhotoQuad,
+  drawVideoToCanvas,
+  scaleQuad,
+  waitForVideoFrame,
+} from "@/lib/photo-scan/video-frame";
 
 type Phase = "loading" | "camera" | "review" | "processing" | "error";
 type ScanEngineState = "idle" | "loading" | "ready" | "failed";
 
 const STABLE_MS = 700;
-const DETECT_INTERVAL_MS = 120;
-
-function drawVideoFrame(
-  video: HTMLVideoElement,
-  canvas: HTMLCanvasElement,
-  maxSide = 960,
-) {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!vw || !vh) return false;
-  const scale = Math.min(1, maxSide / Math.max(vw, vh));
-  const w = Math.round(vw * scale);
-  const h = Math.round(vh * scale);
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return false;
-  ctx.drawImage(video, 0, 0, w, h);
-  return true;
-}
-
-function scaleQuad(quad: QuadPoints, sx: number, sy: number): QuadPoints {
-  return [
-    { x: quad[0].x * sx, y: quad[0].y * sy },
-    { x: quad[1].x * sx, y: quad[1].y * sy },
-    { x: quad[2].x * sx, y: quad[2].y * sy },
-    { x: quad[3].x * sx, y: quad[3].y * sy },
-  ];
-}
+const DETECT_INTERVAL_MS = 200;
 
 export default function PhotoScanClient() {
   const router = useRouter();
@@ -64,6 +41,8 @@ export default function PhotoScanClient() {
   const [reviewQuad, setReviewQuad] = useState<QuadPoints | null>(null);
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
 
   const stableSinceRef = useRef<number | null>(null);
   const lastQuadRef = useRef<QuadPoints | null>(null);
@@ -74,11 +53,13 @@ export default function PhotoScanClient() {
     streamRef.current = null;
     const video = videoRef.current;
     if (video) video.srcObject = null;
+    setVideoReady(false);
   }, []);
 
   const startCamera = useCallback(async () => {
     setErrorMessage(null);
     setPhase("loading");
+    setVideoReady(false);
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("unsupported");
@@ -96,17 +77,24 @@ export default function PhotoScanClient() {
       if (!video) throw new Error("video missing");
       video.srcObject = stream;
       video.setAttribute("playsinline", "true");
+      video.muted = true;
       await video.play();
+      const ready = await waitForVideoFrame(video);
+      if (!ready) throw new Error("video not ready");
+      setVideoReady(true);
       setPhase("camera");
     } catch (err) {
       setPhase("error");
       const name = err instanceof Error ? err.name : "";
+      const message = err instanceof Error ? err.message : "";
       setErrorMessage(
         name === "NotAllowedError"
           ? "카메라 권한이 필요해요. 브라우저 설정에서 허용해 주세요"
           : name === "NotFoundError"
             ? "카메라를 찾을 수 없어요"
-            : "카메라를 열 수 없어요. HTTPS 환경에서 다시 시도해 주세요",
+            : message === "video not ready"
+              ? "카메라 화면을 준비하지 못했어요. 다시 시도해 주세요"
+              : "카메라를 열 수 없어요. HTTPS 환경에서 다시 시도해 주세요",
       );
     }
   }, []);
@@ -142,42 +130,54 @@ export default function PhotoScanClient() {
     async (detectQuad: QuadPoints | null) => {
       if (capturingRef.current) return;
       const video = videoRef.current;
-      if (!video || !video.videoWidth) return;
+      if (!video) {
+        setErrorMessage("카메라를 찾을 수 없어요");
+        return;
+      }
 
       capturingRef.current = true;
+      setIsCapturing(true);
+      setErrorMessage(null);
+
       try {
+        const ready = await waitForVideoFrame(video);
+        if (!ready) {
+          setErrorMessage("카메라가 아직 준비되지 않았어요. 잠시 후 다시 눌러 주세요");
+          return;
+        }
+
         const full = document.createElement("canvas");
-        full.width = video.videoWidth;
-        full.height = video.videoHeight;
-        const ctx = full.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(video, 0, 0);
+        const fullSize = drawVideoToCanvas(video, full);
+        if (!fullSize) {
+          setErrorMessage("촬영에 실패했어요. 다시 시도해 주세요");
+          return;
+        }
 
         const detectCanvas = detectCanvasRef.current;
         let quad: QuadPoints;
         if (detectQuad && detectCanvas && detectCanvas.width > 0) {
-          const sx = full.width / detectCanvas.width;
-          const sy = full.height / detectCanvas.height;
+          const sx = fullSize.width / detectCanvas.width;
+          const sy = fullSize.height / detectCanvas.height;
           quad = scaleQuad(detectQuad, sx, sy);
         } else if (isOpenCvReady()) {
           try {
             const detected = await detectDocumentQuad(full);
-            quad = detected ?? defaultInsetQuad(full.width, full.height);
+            quad = detected ?? defaultPhotoQuad(fullSize.width, fullSize.height);
           } catch {
-            quad = defaultInsetQuad(full.width, full.height);
+            quad = defaultPhotoQuad(fullSize.width, fullSize.height);
           }
         } else {
-          quad = defaultInsetQuad(full.width, full.height);
+          quad = defaultPhotoQuad(fullSize.width, fullSize.height);
         }
 
-        const url = full.toDataURL("image/jpeg", 0.95);
-        setCapturedUrl(url);
-        setImageSize({ width: full.width, height: full.height });
+        setCapturedUrl(full.toDataURL("image/jpeg", 0.92));
+        setImageSize(fullSize);
         setReviewQuad(quad);
         stopCamera();
         setPhase("review");
       } finally {
         capturingRef.current = false;
+        setIsCapturing(false);
         stableSinceRef.current = null;
         setStableProgress(0);
       }
@@ -185,9 +185,8 @@ export default function PhotoScanClient() {
     [stopCamera],
   );
 
-  // Live detection loop — only when OpenCV is ready
   useEffect(() => {
-    if (phase !== "camera" || scanEngine !== "ready") return;
+    if (phase !== "camera" || scanEngine !== "ready" || !videoReady) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -195,7 +194,7 @@ export default function PhotoScanClient() {
     const tick = async () => {
       if (cancelled || capturingRef.current) return;
       const video = videoRef.current;
-      if (!video || video.readyState < 2) {
+      if (!video || video.readyState < 2 || video.videoWidth === 0) {
         timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
         return;
       }
@@ -204,7 +203,8 @@ export default function PhotoScanClient() {
         detectCanvasRef.current = document.createElement("canvas");
       }
       const canvas = detectCanvasRef.current;
-      if (!drawVideoFrame(video, canvas, 640)) {
+      const size = drawVideoToCanvas(video, canvas, 640);
+      if (!size) {
         timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
         return;
       }
@@ -215,45 +215,45 @@ export default function PhotoScanClient() {
 
         setLiveQuad(quad);
 
-          const overlay = overlayRef.current;
-          if (overlay && video) {
-            const rect = video.getBoundingClientRect();
-            const mediaW = canvas.width;
-            const mediaH = canvas.height;
-            const scale = Math.min(rect.width / mediaW, rect.height / mediaH);
-            const drawW = mediaW * scale;
-            const drawH = mediaH * scale;
-            const offsetX = (rect.width - drawW) / 2;
-            const offsetY = (rect.height - drawH) / 2;
+        const overlay = overlayRef.current;
+        if (overlay && video) {
+          const rect = video.getBoundingClientRect();
+          const mediaW = size.width;
+          const mediaH = size.height;
+          const scale = Math.min(rect.width / mediaW, rect.height / mediaH);
+          const drawW = mediaW * scale;
+          const drawH = mediaH * scale;
+          const offsetX = (rect.width - drawW) / 2;
+          const offsetY = (rect.height - drawH) / 2;
 
-            overlay.width = Math.round(rect.width * devicePixelRatio);
-            overlay.height = Math.round(rect.height * devicePixelRatio);
-            overlay.style.width = `${rect.width}px`;
-            overlay.style.height = `${rect.height}px`;
-            const octx = overlay.getContext("2d");
-            if (octx) {
-              octx.setTransform(1, 0, 0, 1, 0, 0);
-              octx.clearRect(0, 0, overlay.width, overlay.height);
-              octx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-              if (quad) {
-                octx.beginPath();
-                octx.moveTo(offsetX + quad[0].x * scale, offsetY + quad[0].y * scale);
-                for (let i = 1; i < 4; i++) {
-                  octx.lineTo(offsetX + quad[i].x * scale, offsetY + quad[i].y * scale);
-                }
-                octx.closePath();
-                octx.strokeStyle = "#fff";
-                octx.lineWidth = 2.5;
-                octx.stroke();
-                octx.fillStyle = "rgba(255,255,255,0.12)";
-                octx.fill();
+          overlay.width = Math.round(rect.width * devicePixelRatio);
+          overlay.height = Math.round(rect.height * devicePixelRatio);
+          overlay.style.width = `${rect.width}px`;
+          overlay.style.height = `${rect.height}px`;
+          const octx = overlay.getContext("2d");
+          if (octx) {
+            octx.setTransform(1, 0, 0, 1, 0, 0);
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+            octx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+            if (quad) {
+              octx.beginPath();
+              octx.moveTo(offsetX + quad[0].x * scale, offsetY + quad[0].y * scale);
+              for (let i = 1; i < 4; i++) {
+                octx.lineTo(offsetX + quad[i].x * scale, offsetY + quad[i].y * scale);
               }
+              octx.closePath();
+              octx.strokeStyle = "#fff";
+              octx.lineWidth = 2.5;
+              octx.stroke();
+              octx.fillStyle = "rgba(255,255,255,0.12)";
+              octx.fill();
             }
           }
+        }
 
         const now = Date.now();
         const prev = lastQuadRef.current;
-        if (quad && prev && quadSimilarity(quad, prev) > 0.72) {
+        if (quad && prev && quadSimilarity(quad, prev) > 0.65) {
           if (stableSinceRef.current == null) stableSinceRef.current = now;
           const elapsed = now - stableSinceRef.current;
           setStableProgress(Math.min(1, elapsed / STABLE_MS));
@@ -268,7 +268,7 @@ export default function PhotoScanClient() {
         }
         lastQuadRef.current = quad;
       } catch {
-        // OpenCV not ready / transient — keep looping
+        // keep looping
       }
 
       timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
@@ -279,7 +279,7 @@ export default function PhotoScanClient() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [phase, scanEngine, captureAtQuad]);
+  }, [phase, scanEngine, videoReady, captureAtQuad]);
 
   const applyScan = useCallback(async () => {
     if (!capturedUrl || !reviewQuad) return;
@@ -397,17 +397,24 @@ export default function PhotoScanClient() {
 
           {phase === "camera" && (
             <div
-              className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4"
+              className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-3 px-4"
               style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
             >
+              {errorMessage && (
+                <p className="rounded-full bg-red-500/80 px-3 py-1.5 text-center text-xs text-white">
+                  {errorMessage}
+                </p>
+              )}
               <p className="rounded-full bg-black/50 px-3 py-1.5 text-center text-xs text-white/90 backdrop-blur-sm">
-                {scanEngine === "loading"
-                  ? "자동 감지 준비 중… 아래 셔터로 바로 촬영할 수 있어요"
-                  : scanEngine === "failed"
-                    ? "자동 감지를 사용할 수 없어요 — 셔터로 촬영해 주세요"
-                    : liveQuad
-                      ? "테두리가 잡히면 자동으로 촬영해요"
-                      : "인생네컷·사진을 프레임 안에 맞춰 주세요"}
+                {!videoReady
+                  ? "카메라 준비 중…"
+                  : scanEngine === "loading"
+                    ? "자동 감지 준비 중… 셔터로 바로 촬영할 수 있어요"
+                    : scanEngine === "failed"
+                      ? "자동 감지를 사용할 수 없어요 — 셔터로 촬영해 주세요"
+                      : liveQuad
+                        ? "테두리가 잡히면 자동으로 촬영해요"
+                        : "인생네컷·사진을 프레임 안에 맞춰 주세요"}
               </p>
               {stableProgress > 0 && (
                 <div className="h-1 w-40 overflow-hidden rounded-full bg-white/20">
@@ -419,8 +426,10 @@ export default function PhotoScanClient() {
               )}
               <button
                 type="button"
+                disabled={isCapturing || !videoReady}
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => void captureAtQuad(liveQuad)}
-                className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white/80 bg-white/20 active:scale-95"
+                className="flex h-16 w-16 touch-manipulation items-center justify-center rounded-full border-4 border-white/80 bg-white/20 active:scale-95 disabled:opacity-40"
                 aria-label="촬영"
               >
                 <span className="h-12 w-12 rounded-full bg-white" />
@@ -438,14 +447,13 @@ export default function PhotoScanClient() {
               className="relative mx-auto max-h-[70dvh] w-full max-w-lg"
               style={{
                 aspectRatio: `${imageSize.width} / ${imageSize.height}`,
-                width: `min(100%, calc(70dvh * ${imageSize.width / imageSize.height}))`,
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={capturedUrl}
                 alt="촬영본"
-                className="absolute inset-0 h-full w-full object-fill"
+                className="absolute inset-0 h-full w-full"
                 draggable={false}
               />
               <svg
@@ -468,7 +476,8 @@ export default function PhotoScanClient() {
                     fill="#fff"
                     stroke="#111"
                     strokeWidth={2}
-                    style={{ touchAction: "none", cursor: "grab" }}
+                    className="pointer-events-auto touch-manipulation"
+                    style={{ cursor: "grab" }}
                     onPointerDown={(e) => {
                       e.preventDefault();
                       (e.target as Element).setPointerCapture?.(e.pointerId);
