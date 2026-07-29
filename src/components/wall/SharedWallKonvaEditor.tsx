@@ -233,9 +233,11 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   useEffect(() => {
     return () => {
+      persistEnabledRef.current = false;
+      autoSave.cancel();
       useWallSceneStore.getState().reset();
     };
-  }, []);
+  }, [autoSave]);
 
   useEffect(() => {
     if (!user) return;
@@ -291,7 +293,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flush);
-      flush();
+      // 언마운트 시에는 flush 대신 cancel — reset()이 빈 scene을 만들기 때문
+      autoSave.cancel();
     };
   }, [autoSave]);
 

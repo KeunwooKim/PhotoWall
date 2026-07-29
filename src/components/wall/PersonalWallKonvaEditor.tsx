@@ -220,7 +220,7 @@ export default function PersonalWallKonvaEditor() {
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flush);
-      flush();
+      autoSave.cancel();
     };
   }, [autoSave]);
 
@@ -242,9 +242,11 @@ export default function PersonalWallKonvaEditor() {
 
   useEffect(() => {
     return () => {
+      persistEnabledRef.current = false;
+      autoSave.cancel();
       useWallSceneStore.getState().reset();
     };
-  }, []);
+  }, [autoSave]);
 
   useEffect(() => {
     if (suppressWallIdReloadRef.current) {
