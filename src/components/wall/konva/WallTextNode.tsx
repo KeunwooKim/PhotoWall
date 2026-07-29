@@ -155,6 +155,8 @@ export default function WallTextNode({
         text={object.text}
         fontSize={object.fontSize}
         fontFamily={object.fontFamily}
+        fontStyle={object.fontWeight === "bold" ? "bold" : "normal"}
+        align={object.textAlign ?? "left"}
         fill={object.fill}
         width={object.width}
         wrap="word"

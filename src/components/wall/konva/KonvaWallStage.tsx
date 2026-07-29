@@ -26,6 +26,7 @@ import {
   type PenStyleId,
 } from "@/lib/wall-scene/pen";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
+import { containerCenter } from "@/lib/wall-scene/viewport-zoom";
 import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
 import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
@@ -38,7 +39,10 @@ import {
   WallSceneObject,
 } from "@/types/wall-scene-v2";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
+import PhotoCropLayer from "./PhotoCropLayer";
 import WallPhotoNode from "./WallPhotoNode";
+import type { CropAspectPresetId } from "@/lib/wall-scene/photo-crop";
+import type { PhotoCropRect } from "@/types/wall-scene-v2";
 import WallStickerNode from "./WallStickerNode";
 import WallEmojiNode from "./WallEmojiNode";
 import WallTextNode from "./WallTextNode";
@@ -55,6 +59,16 @@ import {
 
 function isStrokeMode(mode: EditorMode) {
   return mode === "pen" || mode === "tape";
+}
+
+function clientPointFromEvent(evt: MouseEvent | TouchEvent): { x: number; y: number } | null {
+  if ("touches" in evt && evt.touches.length > 0) {
+    return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
+  }
+  if ("clientX" in evt) {
+    return { x: evt.clientX, y: evt.clientY };
+  }
+  return null;
 }
 
 export interface KonvaWallStageProps {
@@ -86,7 +100,15 @@ export interface KonvaWallStageProps {
   onRequestSelectMode?: () => void;
   /** Open text style editor (double-click / long-press / after place). */
   onEditText?: (objectId: string) => void;
+  onStartPhotoCrop?: (objectId: string) => void;
   onContextMenuRequest?: WallContextMenuRequestFn;
+  cropPhotoId?: string | null;
+  cropAspectPreset?: CropAspectPresetId;
+  onCropDraftChange?: (
+    crop: PhotoCropRect,
+    display: { x: number; y: number; width: number; height: number },
+  ) => void;
+  onCropNaturalSize?: (width: number, height: number) => void;
 }
 
 export default function KonvaWallStage({
@@ -115,7 +137,12 @@ export default function KonvaWallStage({
   onQuotaBlocked,
   onRequestSelectMode,
   onEditText,
+  onStartPhotoCrop,
   onContextMenuRequest,
+  cropPhotoId = null,
+  cropAspectPreset = "free",
+  onCropDraftChange,
+  onCropNaturalSize,
 }: KonvaWallStageProps) {
   const theme = getWallTheme(themeId);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -150,7 +177,7 @@ export default function KonvaWallStage({
   const setViewportScale = useWallSceneStore((s) => s.setViewportScale);
   const viewportScale = useWallSceneStore((s) => s.viewportScale);
   const userZoom = useWallSceneStore((s) => s.userZoom);
-  const setUserZoom = useWallSceneStore((s) => s.setUserZoom);
+  const setViewportZoomAtPoint = useWallSceneStore((s) => s.setViewportZoomAtPoint);
   const panX = useWallSceneStore((s) => s.panX);
   const panY = useWallSceneStore((s) => s.panY);
   const addPan = useWallSceneStore((s) => s.addPan);
@@ -194,11 +221,21 @@ export default function KonvaWallStage({
       .filter(
         (object) =>
           selected.has(object.id) &&
+          object.id !== cropPhotoId &&
           isTransformableObject(object) &&
           !peerLockedIds.has(object.id),
       )
       .map((object) => object.id);
-  }, [document.objects, selectedIds, peerLockedIds]);
+  }, [cropPhotoId, document.objects, selectedIds, peerLockedIds]);
+
+  const cropPhoto = useMemo(() => {
+    if (!cropPhotoId) return null;
+    const object = document.objects.find(
+      (item): item is Extract<WallSceneObject, { type: "photo" }> =>
+        item.id === cropPhotoId && item.type === "photo",
+    );
+    return object ?? null;
+  }, [cropPhotoId, document.objects]);
 
   const setManipulating = useCallback(
     (active: boolean, objectId?: string) => {
@@ -290,6 +327,15 @@ export default function KonvaWallStage({
   // ─── 핀치 줌 + 두 손가락 패닝 (모바일) ───────────────────────────────────
   const pinchDistRef = useRef<number | null>(null);
   const pinchMidpointRef = useRef<{ x: number; y: number } | null>(null);
+  const spaceHeldRef = useRef(false);
+  const containerPanRef = useRef<{ x: number; y: number } | null>(null);
+  const stagePanRef = useRef<{ x: number; y: number } | null>(null);
+
+  const getContainerCenter = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return { x: 0, y: 0 };
+    return containerCenter(el.getBoundingClientRect());
+  }, []);
 
   const handleTouchStartZoom = useCallback((e: TouchEvent) => {
     if (e.touches.length === 2) {
@@ -333,9 +379,16 @@ export default function KonvaWallStage({
       pinchDistRef.current = dist;
 
       const current = useWallSceneStore.getState().userZoom;
-      setUserZoom(current * ratio);
+      const center = getContainerCenter();
+      setViewportZoomAtPoint(
+        current * ratio,
+        midpoint.x,
+        midpoint.y,
+        center.x,
+        center.y,
+      );
     },
-    [addPan, setUserZoom],
+    [addPan, getContainerCenter, setViewportZoomAtPoint],
   );
 
   const handleTouchEndZoom = useCallback(() => {
@@ -343,7 +396,7 @@ export default function KonvaWallStage({
     pinchMidpointRef.current = null;
   }, []);
 
-  // ─── 휠 줌 (PC) ───────────────────────────────────────────────────────────
+  // ─── 휠 줌 (PC) — 커서 기준 ─────────────────────────────────────────────
   const handleWheel = useCallback(
     (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
@@ -352,10 +405,70 @@ export default function KonvaWallStage({
 
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       const current = useWallSceneStore.getState().userZoom;
-      setUserZoom(current * delta);
+      const center = getContainerCenter();
+      setViewportZoomAtPoint(
+        current * delta,
+        e.clientX,
+        e.clientY,
+        center.x,
+        center.y,
+      );
     },
-    [setUserZoom],
+    [getContainerCenter, setViewportZoomAtPoint],
   );
+
+  // ─── Space + 드래그 패닝 (PC) ─────────────────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      spaceHeldRef.current = true;
+      e.preventDefault();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      spaceHeldRef.current = false;
+      containerPanRef.current = null;
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || readOnly) return;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (!spaceHeldRef.current || isStrokeMode(editorModeRef.current)) return;
+      if (e.button !== 0) return;
+      containerPanRef.current = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!containerPanRef.current) return;
+      const dx = e.clientX - containerPanRef.current.x;
+      const dy = e.clientY - containerPanRef.current.y;
+      if (dx !== 0 || dy !== 0) addPan(dx, dy);
+      containerPanRef.current = { x: e.clientX, y: e.clientY };
+    };
+    const onMouseUp = () => {
+      containerPanRef.current = null;
+    };
+
+    el.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      el.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [addPan, readOnly]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -383,7 +496,8 @@ export default function KonvaWallStage({
     const tr = transformerRef.current;
     if (!tr) return;
 
-    const canTransform = editorMode === "select" && transformableSelectedIds.length > 0;
+    const canTransform =
+      editorMode === "select" && !cropPhotoId && transformableSelectedIds.length > 0;
     const nodes = canTransform
       ? transformableSelectedIds
           .map((id) => nodeRegistry.current.get(id))
@@ -392,7 +506,7 @@ export default function KonvaWallStage({
 
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
-  }, [transformableSelectedIds, editorMode]);
+  }, [transformableSelectedIds, editorMode, cropPhotoId]);
 
   const visibleObjects = useMemo(() => {
     const viewport = {
@@ -435,9 +549,15 @@ export default function KonvaWallStage({
 
       const isSelected = selectedIds.includes(object.id);
       const objectReadOnly =
-        readOnly || isStrokeMode(editorMode) || editorMode === "text" || peerLockedIds.has(object.id);
+        readOnly ||
+        isStrokeMode(editorMode) ||
+        editorMode === "text" ||
+        peerLockedIds.has(object.id) ||
+        object.id === cropPhotoId;
 
       if (object.type === "photo") {
+        if (object.id === cropPhotoId) return null;
+
         return (
           <WallPhotoNode
             key={object.id}
@@ -448,6 +568,10 @@ export default function KonvaWallStage({
             onInteractionStart={() => broadcastSelection()}
             onObjectPatch={onObjectPatch}
             onManipulationChange={setManipulating}
+            onCropRequest={(id) => {
+              onRequestSelectMode?.();
+              onStartPhotoCrop?.(id);
+            }}
             registerNode={registerNode}
           />
         );
@@ -535,12 +659,14 @@ export default function KonvaWallStage({
       editorMode,
       selectedIds,
       peerLockedIds,
+      cropPhotoId,
       resolvePhotoSrc,
       onObjectPatch,
       setManipulating,
       registerNode,
       onRequestSelectMode,
       onEditText,
+      onStartPhotoCrop,
       handleObjectSelect,
       broadcastSelection,
     ],
@@ -797,10 +923,22 @@ export default function KonvaWallStage({
   );
 
   const handleStagePointerDown = useCallback(
-    (stage: Konva.Stage | null, isStageTarget: boolean, shiftKey = false) => {
+    (
+      stage: Konva.Stage | null,
+      isStageTarget: boolean,
+      shiftKey: boolean,
+      nativeEvt: MouseEvent | TouchEvent,
+    ) => {
       reportPointer(stage);
 
       if (readOnly || editorModeRef.current !== "select" || !isStageTarget || !stage) return;
+
+      const zoom = useWallSceneStore.getState().userZoom;
+      const pt = clientPointFromEvent(nativeEvt);
+      if (!shiftKey && Math.abs(zoom - 1) > 0.01 && pt) {
+        stagePanRef.current = pt;
+        return;
+      }
 
       const pos = stage.getPointerPosition();
       if (!pos) return;
@@ -812,8 +950,19 @@ export default function KonvaWallStage({
   );
 
   const handleStagePointerMove = useCallback(
-    (stage: Konva.Stage | null) => {
+    (stage: Konva.Stage | null, nativeEvt?: MouseEvent | TouchEvent) => {
       reportPointer(stage);
+
+      if (stagePanRef.current && nativeEvt) {
+        const pt = clientPointFromEvent(nativeEvt);
+        if (pt) {
+          const dx = pt.x - stagePanRef.current.x;
+          const dy = pt.y - stagePanRef.current.y;
+          if (dx !== 0 || dy !== 0) addPan(dx, dy);
+          stagePanRef.current = pt;
+          return;
+        }
+      }
 
       const start = marqueeStartRef.current;
       if (!stage || !start) return;
@@ -827,11 +976,13 @@ export default function KonvaWallStage({
       const height = Math.abs(pos.y - start.y1);
       setMarqueeRect({ x, y, width, height });
     },
-    [reportPointer],
+    [addPan, reportPointer],
   );
 
   const handleStagePointerUp = useCallback(
     (stage: Konva.Stage | null) => {
+      stagePanRef.current = null;
+
       if (drawingRef.current || freehandRef.current) {
         finishDrawing();
         return;
@@ -881,14 +1032,14 @@ export default function KonvaWallStage({
             height={wallBounds.height}
             onMouseDown={(e) => {
               const stage = e.target.getStage();
-              handleStagePointerDown(stage, e.target === stage, e.evt.shiftKey);
+              handleStagePointerDown(stage, e.target === stage, e.evt.shiftKey, e.evt);
             }}
             onTouchStart={(e) => {
               const stage = e.target.getStage();
-              handleStagePointerDown(stage, e.target === stage, false);
+              handleStagePointerDown(stage, e.target === stage, false, e.evt);
             }}
-            onMouseMove={(e) => handleStagePointerMove(e.target.getStage())}
-            onTouchMove={(e) => handleStagePointerMove(e.target.getStage())}
+            onMouseMove={(e) => handleStagePointerMove(e.target.getStage(), e.evt)}
+            onTouchMove={(e) => handleStagePointerMove(e.target.getStage(), e.evt)}
             onMouseUp={(e) => handleStagePointerUp(e.target.getStage())}
             onTouchEnd={(e) => handleStagePointerUp(e.target.getStage())}
             onMouseLeave={(e) => handleStagePointerUp(e.target.getStage())}
@@ -904,6 +1055,15 @@ export default function KonvaWallStage({
           >
           <Layer listening={!readOnly && editorMode === "select"}>
             {visibleObjects.map((object) => renderSceneObject(object))}
+            {cropPhoto && onCropDraftChange && onCropNaturalSize && (
+              <PhotoCropLayer
+                photo={cropPhoto}
+                aspectPreset={cropAspectPreset}
+                resolvePhotoSrc={resolvePhotoSrc}
+                onDraftChange={onCropDraftChange}
+                onNaturalSize={onCropNaturalSize}
+              />
+            )}
             {marqueeRect && (
               <Rect
                 x={marqueeRect.x}
@@ -922,7 +1082,7 @@ export default function KonvaWallStage({
               wallWidth={wallBounds.width}
               wallHeight={wallBounds.height}
             />
-            {!readOnly && editorMode === "select" && (
+            {!readOnly && editorMode === "select" && !cropPhotoId && (
               <Transformer
                 ref={transformerRef}
                 rotateEnabled

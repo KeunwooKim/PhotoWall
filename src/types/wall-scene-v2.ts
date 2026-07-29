@@ -34,12 +34,22 @@ export interface WallSceneObjectBase {
   groupId?: string;
 }
 
+export interface PhotoCropRect {
+  /** Region in source image pixels */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface WallScenePhoto extends WallSceneObjectBase {
   type: "photo";
   /** wall-photo://path, https signed URL, or data: URL */
   src: string;
   width: number;
   height: number;
+  /** Visible region of the source image (defaults to full image) */
+  crop?: PhotoCropRect;
 }
 
 export interface WallSceneEmoji extends WallSceneObjectBase {
@@ -56,6 +66,8 @@ export interface WallSceneText extends WallSceneObjectBase {
   fill: string;
   /** Layout width for wrapping */
   width: number;
+  fontWeight?: "normal" | "bold";
+  textAlign?: "left" | "center" | "right";
 }
 
 export interface WallSceneSvg extends WallSceneObjectBase {

@@ -9,6 +9,7 @@ import {
 import type { WallSceneDocument, WallSceneObject } from "@/types/wall-scene-v2";
 import { mergeObjectPatch } from "@/lib/wall-scene/merge-object-patch";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
+import { clampUserZoom, panForZoomAtScreenPoint } from "@/lib/wall-scene/viewport-zoom";
 import { allSelectableIds, normalizeSelectedIds } from "@/lib/wall-scene/selection-utils";
 import { getGroupMemberIds } from "@/lib/wall-scene/group-objects";
 import { isCanvasSelectableObject } from "@/lib/wall-scene/selectable-objects";
@@ -53,6 +54,13 @@ export interface WallSceneStore {
   removeSelectedObjects: () => void;
   setViewportScale: (scale: number) => void;
   setUserZoom: (zoom: number) => void;
+  setViewportZoomAtPoint: (
+    newZoom: number,
+    screenX: number,
+    screenY: number,
+    containerCenterX: number,
+    containerCenterY: number,
+  ) => void;
   addPan: (dx: number, dy: number) => void;
   resetUserZoom: () => void;
   recordHistory: () => void;
@@ -239,7 +247,23 @@ export const useWallSceneStore = create<WallSceneStore>()(
     },
 
     setViewportScale: (scale) => set({ viewportScale: scale }),
-    setUserZoom: (zoom) => set({ userZoom: Math.max(0.5, Math.min(4, zoom)) }),
+    setUserZoom: (zoom) => set({ userZoom: clampUserZoom(zoom) }),
+    setViewportZoomAtPoint: (newZoom, screenX, screenY, containerCenterX, containerCenterY) =>
+      set((state) => {
+        const clamped = clampUserZoom(newZoom);
+        if (Math.abs(clamped - state.userZoom) < 0.0001) return state;
+        const nextPan = panForZoomAtScreenPoint(
+          state.panX,
+          state.panY,
+          state.userZoom,
+          clamped,
+          screenX,
+          screenY,
+          containerCenterX,
+          containerCenterY,
+        );
+        return { userZoom: clamped, ...nextPan };
+      }),
     addPan: (dx, dy) =>
       set((state) => ({ panX: state.panX + dx, panY: state.panY + dy })),
     resetUserZoom: () => set({ userZoom: 1, panX: 0, panY: 0 }),

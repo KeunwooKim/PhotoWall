@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { EditorMode } from "./editor-types";
 import {
   DEFAULT_PEN_STYLE_ID,
@@ -276,6 +277,10 @@ export default function EditorToolDock({
             }}
           />
         </label>
+
+        <Link href="/capture" className={dockBtnIdle}>
+          스캔
+        </Link>
 
         <button type="button" onClick={onOpenDecorate} className={dockBtnIdle}>
           꾸미기

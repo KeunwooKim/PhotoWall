@@ -46,6 +46,9 @@ import WallContextMenu from "@/components/wall/WallContextMenu";
 import TextStyleBar from "@/components/wall/TextStyleBar";
 import WallQuotaHint from "@/components/wall/WallQuotaHint";
 import ZoomResetButton from "@/components/wall/ZoomResetButton";
+import WallObjectInspector from "@/components/wall/WallObjectInspector";
+import PhotoCropToolbar from "@/components/wall/PhotoCropToolbar";
+import { usePhotoCrop } from "@/hooks/usePhotoCrop";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
@@ -123,6 +126,22 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }, [selectedIds, sceneObjects]);
   const editingTextObject =
     editingTextId && selectedTextObject?.id === editingTextId ? selectedTextObject : null;
+  const inspectorObject = useMemo(() => {
+    if (selectedIds.length !== 1 || editingTextId) return null;
+    return sceneObjects.find((o) => o.id === selectedIds[0]) ?? null;
+  }, [editingTextId, selectedIds, sceneObjects]);
+
+  const {
+    cropPhotoId,
+    cropAspectPreset,
+    setCropAspectPreset,
+    handleStartCrop,
+    handleCropApply,
+    handleCropCancel,
+    handleCropReset,
+    canResetCrop,
+    konvaCropProps,
+  } = usePhotoCrop(sceneObjects);
 
   useEffect(() => {
     if (!editingTextId) return;
@@ -803,7 +822,9 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onQuotaBlocked={() => showToast(limitMessage)}
         onRequestSelectMode={() => setMode("select")}
         onEditText={setEditingTextId}
+        onStartPhotoCrop={handleStartCrop}
         onContextMenuRequest={handleContextMenuRequest}
+        {...konvaCropProps}
       />
 
       <WallContextMenu
@@ -871,6 +892,30 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
       {editingTextObject && mode === "select" && (
         <TextStyleBar object={editingTextObject} onClose={() => setEditingTextId(null)} />
+      )}
+
+      {inspectorObject && mode === "select" && !editingTextObject && !cropPhotoId && (
+        <div
+          className="absolute left-3 z-30 sm:left-4"
+          style={{ bottom: "max(6rem, calc(env(safe-area-inset-bottom) + 5rem))" }}
+        >
+          <WallObjectInspector
+            object={inspectorObject}
+            onStartCrop={inspectorObject.type === "photo" ? handleStartCrop : undefined}
+          />
+        </div>
+      )}
+
+      {cropPhotoId && (
+        <PhotoCropToolbar
+          aspectPreset={cropAspectPreset}
+          onAspectChange={setCropAspectPreset}
+          onApply={handleCropApply}
+          onCancel={handleCropCancel}
+          onReset={handleCropReset}
+          canReset={canResetCrop}
+          showRecoveryHint={canResetCrop}
+        />
       )}
 
       <EditorToolDock
