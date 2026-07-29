@@ -81,6 +81,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const [isSharing, setIsSharing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [mode, setMode] = useState<EditorMode>("select");
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [penColor, setPenColor] = useState<string>(PEN_DRAW_COLORS[0]);
   const [tapeColor, setTapeColor] = useState<string>(TAPE_DRAW_COLORS[0]);
   const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE_ID);
@@ -118,6 +119,16 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     const obj = sceneObjects.find((o) => o.id === selectedIds[0]);
     return obj?.type === "text" ? obj : null;
   }, [selectedIds, sceneObjects]);
+  const editingTextObject =
+    editingTextId && selectedTextObject?.id === editingTextId ? selectedTextObject : null;
+
+  useEffect(() => {
+    if (!editingTextId) return;
+    if (selectedIds.length !== 1 || selectedIds[0] !== editingTextId) {
+      setEditingTextId(null);
+    }
+  }, [editingTextId, selectedIds]);
+
   const wallBounds = useWallSceneStore((s) => s.document.meta.wallBounds);
   const canUndo = useWallSceneStore((s) => s.historyPast.length > 0);
   const canRedo = useWallSceneStore((s) => s.historyFuture.length > 0);
@@ -460,6 +471,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       onPaste: handlePaste,
       onDuplicate: handleDuplicate,
       onDelete: handleDelete,
+      onEditText: () => {
+        const id = useWallSceneStore.getState().selectedIds[0];
+        if (id) setEditingTextId(id);
+      },
       onAlignLeft: handleAlignLeft,
       onAlignCenterH: handleAlignCenterH,
       onAlignRight: handleAlignRight,
@@ -786,6 +801,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onGuardQuotaAdd={guardAdd}
         onQuotaBlocked={() => showToast(limitMessage)}
         onRequestSelectMode={() => setMode("select")}
+        onEditText={setEditingTextId}
         onContextMenuRequest={handleContextMenuRequest}
       />
 
@@ -851,8 +867,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         <AuthButton compact />
       </div>
 
-      {selectedTextObject && mode === "select" && (
-        <TextStyleBar object={selectedTextObject} />
+      {editingTextObject && mode === "select" && (
+        <TextStyleBar object={editingTextObject} onClose={() => setEditingTextId(null)} />
       )}
 
       <EditorToolDock

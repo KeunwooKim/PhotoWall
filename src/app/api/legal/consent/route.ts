@@ -3,6 +3,45 @@ import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { saveLegalConsent } from "@/lib/supabase/profiles";
 import { LEGAL_VERSION } from "@/lib/legal/meta";
 
+export async function GET(request: NextRequest) {
+  const routeClient = createRouteClient(request);
+  if (!routeClient) {
+    return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  const { supabase, applyCookies } = routeClient;
+  const user = await getRouteUser(supabase, request);
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("legal_consented_at, legal_version")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    return applyCookies(
+      NextResponse.json({ error: error.message || "Failed to load consent" }, { status: 500 }),
+    );
+  }
+
+  const legalConsentedAt = (data?.legal_consented_at as string | null) ?? null;
+  const legalVersion = (data?.legal_version as string | null) ?? null;
+  const ok = Boolean(legalConsentedAt && legalVersion === LEGAL_VERSION);
+
+  return applyCookies(
+    NextResponse.json({
+      ok,
+      legalConsentedAt,
+      legalVersion,
+      requiredVersion: LEGAL_VERSION,
+    }),
+  );
+}
+
 export async function POST(request: NextRequest) {
   const routeClient = createRouteClient(request);
   if (!routeClient) {

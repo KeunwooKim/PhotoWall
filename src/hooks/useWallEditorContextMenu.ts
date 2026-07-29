@@ -68,6 +68,9 @@ export function useWallEditorContextMenu({
       canDistribute: selectedIds.length >= 3,
       canGroup: canGroupSelection(selectedIds),
       canUngroup: selectionHasGroup(selectedIds, sceneObjects),
+      canEditText:
+        selectedIds.length === 1 &&
+        sceneObjects.find((o) => o.id === selectedIds[0])?.type === "text",
       actions,
       onClose: close,
     });

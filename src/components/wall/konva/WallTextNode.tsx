@@ -63,14 +63,21 @@ export default function WallTextNode({
     [onSelect, onInteractionStart],
   );
 
-  const contextEnabled = !readOnly;
+  const requestEdit = useCallback(() => {
+    if (readOnly) return;
+    onSelect(false);
+    onInteractionStart?.();
+    onEditRequest?.(objectId);
+  }, [objectId, onEditRequest, onInteractionStart, onSelect, readOnly]);
+
+  // Long-press (touch) + right-click → context menu (same as other objects)
   const {
     handlePointerDown: handleContextPointerDown,
     handlePointerMove: handleContextPointerMove,
     handlePointerUp: handleContextPointerUp,
     handleContextMenu,
     cancelLongPress,
-  } = useNodeContextTrigger(objectId, contextEnabled);
+  } = useNodeContextTrigger(objectId, !readOnly);
 
   const handleDragStart = useCallback(() => {
     cancelLongPress();
@@ -79,7 +86,7 @@ export default function WallTextNode({
     setWallNodeDragging(objectId, true);
     onInteractionStart?.();
     onManipulationChange?.(true, objectId);
-  }, [onInteractionStart, onManipulationChange, objectId, cancelLongPress]);
+  }, [cancelLongPress, objectId, onInteractionStart, onManipulationChange]);
 
   const handleDragMove = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
@@ -118,11 +125,13 @@ export default function WallTextNode({
       draggable={!readOnly}
       listening
       onContextMenu={handleContextMenu}
-      onDblClick={() => {
-        if (!readOnly) onEditRequest?.(objectId);
+      onDblClick={(e) => {
+        e.cancelBubble = true;
+        requestEdit();
       }}
-      onDblTap={() => {
-        if (!readOnly) onEditRequest?.(objectId);
+      onDblTap={(e) => {
+        e.cancelBubble = true;
+        requestEdit();
       }}
       onMouseDown={(e) => {
         e.cancelBubble = true;

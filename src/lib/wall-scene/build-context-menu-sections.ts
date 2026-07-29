@@ -17,6 +17,7 @@ export interface WallContextMenuActions {
   onPaste: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onEditText?: () => void;
   onAlignLeft: () => void;
   onAlignCenterH: () => void;
   onAlignRight: () => void;
@@ -42,6 +43,8 @@ interface BuildSectionsOptions {
   canDistribute: boolean;
   canGroup: boolean;
   canUngroup: boolean;
+  /** Single selected text — show edit entry */
+  canEditText?: boolean;
   actions: WallContextMenuActions;
   onClose: () => void;
 }
@@ -59,6 +62,7 @@ export function buildWallContextMenuSections({
   canDistribute,
   canGroup,
   canUngroup,
+  canEditText = false,
   actions,
   onClose,
 }: BuildSectionsOptions): WallContextMenuSection[] {
@@ -81,23 +85,30 @@ export function buildWallContextMenuSections({
     });
   }
 
-  const sections: WallContextMenuSection[] = [
-    {
-      title: "클립보드",
-      items: [
-        { id: "copy", label: "복사", onClick: w(actions.onCopy) },
-        { id: "cut", label: "잘라내기", onClick: w(actions.onCut) },
-        { id: "paste", label: "붙여넣기", onClick: w(actions.onPaste) },
-        { id: "duplicate", label: "복제", onClick: w(actions.onDuplicate) },
-        {
-          id: "delete",
-          label: "삭제",
-          onClick: w(actions.onDelete),
-          destructive: true,
-        },
-      ],
-    },
-  ];
+  const sections: WallContextMenuSection[] = [];
+
+  if (canEditText && actions.onEditText) {
+    sections.push({
+      title: "텍스트",
+      items: [{ id: "edit-text", label: "텍스트 편집", onClick: w(actions.onEditText) }],
+    });
+  }
+
+  sections.push({
+    title: "클립보드",
+    items: [
+      { id: "copy", label: "복사", onClick: w(actions.onCopy) },
+      { id: "cut", label: "잘라내기", onClick: w(actions.onCut) },
+      { id: "paste", label: "붙여넣기", onClick: w(actions.onPaste) },
+      { id: "duplicate", label: "복제", onClick: w(actions.onDuplicate) },
+      {
+        id: "delete",
+        label: "삭제",
+        onClick: w(actions.onDelete),
+        destructive: true,
+      },
+    ],
+  });
 
   if (groupItems.length > 0) {
     sections.push({ title: "그룹", items: groupItems });
