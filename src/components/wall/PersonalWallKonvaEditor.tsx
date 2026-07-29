@@ -77,6 +77,7 @@ export default function PersonalWallKonvaEditor() {
   const [themeId, setThemeId] = useState<WallThemeId>(DEFAULT_WALL_THEME_ID);
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
@@ -388,7 +389,8 @@ export default function PersonalWallKonvaEditor() {
     syncedUserRef.current = user.id;
     cloudSyncDoneRef.current = false;
     persistEnabledRef.current = false;
-    void syncCloudWall();
+    setIsCloudSyncing(true);
+    void syncCloudWall().finally(() => setIsCloudSyncing(false));
   }, [user, isReady, authLoading, syncCloudWall]);
 
   useEffect(() => {
@@ -993,8 +995,11 @@ export default function PersonalWallKonvaEditor() {
         </div>
       )}
 
-      {!isReady && (
-        <WallLoadingOverlay mode="overlay" title="편집 화면 준비 중..." />
+      {(!isReady || isCloudSyncing) && (
+        <WallLoadingOverlay
+          mode="overlay"
+          title={isCloudSyncing ? "내 벽 불러오는 중..." : "편집 화면 준비 중..."}
+        />
       )}
 
       <Toolbar
