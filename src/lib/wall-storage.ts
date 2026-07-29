@@ -43,7 +43,16 @@ export function saveWall(themeId: WallThemeId, canvasJson: object): WallData {
     updatedAt: new Date().toISOString(),
   };
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (err) {
+    // iOS Safari ~5MB — data-URL photos often exceed this; keep in-memory scene
+    const quota =
+      err instanceof DOMException &&
+      (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED");
+    if (!quota) throw err;
+    console.warn("[photowall] localStorage quota exceeded — wall kept in memory only");
+  }
   return data;
 }
 

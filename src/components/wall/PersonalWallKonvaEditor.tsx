@@ -16,7 +16,7 @@ import { publishWall } from "@/lib/wall-share";
 import { shareWallImage } from "@/lib/wall-export";
 import { createWallInvite } from "@/lib/wall-invite";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
-import { consumePendingScans } from "@/lib/photo-scan/scan-session";
+import { consumePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import {
   prefetchWallScenePhotoUrls,
   resolveWallPhotoSrc,
@@ -419,22 +419,41 @@ export default function PersonalWallKonvaEditor() {
     if (!isReady) return;
 
     const pendingImports = consumePendingImports();
-    const pendingScans = consumePendingScans();
-    const pending = [...pendingImports, ...pendingScans];
-    if (pending.length === 0) return;
+    const pendingScanFiles = consumePendingScanFiles();
+    if (pendingImports.length === 0 && pendingScanFiles.length === 0) return;
 
     void (async () => {
       try {
         const bounds = useWallSceneStore.getState().document.meta.wallBounds;
-        for (const dataUrl of pending) {
+
+        for (const dataUrl of pendingImports) {
+          if (!guardAdd(1)) {
+            showToast(limitMessage);
+            break;
+          }
           await addPhotoDataUrlToWallScene(dataUrl, {
             wallWidth: bounds.width,
             wallHeight: bounds.height,
           });
         }
-        if (pendingScans.length > 0 && pendingImports.length === 0) {
+
+        for (const file of pendingScanFiles) {
+          if (!guardAdd(1)) {
+            showToast(limitMessage);
+            break;
+          }
+          await addPhotoToWallScene(file, {
+            userId: user?.id,
+            wallId,
+            wallWidth: bounds.width,
+            wallHeight: bounds.height,
+            plan: wallPlan,
+          });
+        }
+
+        if (pendingScanFiles.length > 0 && pendingImports.length === 0) {
           showToast("스캔한 사진을 붙였어요");
-        } else if (pendingImports.length > 0 && pendingScans.length === 0) {
+        } else if (pendingImports.length > 0 && pendingScanFiles.length === 0) {
           showToast("QR 네컷 사진을 붙였어요");
         } else {
           showToast("사진을 붙였어요");
@@ -443,7 +462,7 @@ export default function PersonalWallKonvaEditor() {
         showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
       }
     })();
-  }, [isReady, showToast]);
+  }, [isReady, showToast, guardAdd, limitMessage, user?.id, wallId, wallPlan]);
 
   const handlePhotoUpload = useCallback(
     async (file: File) => {

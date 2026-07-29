@@ -10,10 +10,10 @@ import {
 } from "@/lib/photo-scan/detect-quad";
 import { isOpenCvReady, loadOpenCv } from "@/lib/photo-scan/load-opencv";
 import {
-  canvasToJpegDataUrl,
+  canvasToJpegFile,
   warpPerspective,
 } from "@/lib/photo-scan/perspective";
-import { savePendingScans } from "@/lib/photo-scan/scan-session";
+import { savePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import type { Point2, QuadPoints } from "@/lib/photo-scan/types";
 import {
   defaultPhotoQuad,
@@ -359,13 +359,15 @@ export default function PhotoScanClient() {
         img.onerror = () => reject(new Error("image load failed"));
         img.src = capturedUrl;
       });
-      // Keep output modest for iPhone memory / handoff reliability
-      const warped = warpPerspective(img, reviewQuad, 1200);
-      const dataUrl = canvasToJpegDataUrl(warped, 0.82);
-      if (!dataUrl.startsWith("data:image")) {
-        throw new Error("encode failed");
+      // Keep under free photo limit & avoid bloating scene JSON when guest fallback uses data URL
+      const warped = warpPerspective(img, reviewQuad, 1400);
+      const file = await canvasToJpegFile(warped, 0.8);
+      if (file.size > 8 * 1024 * 1024) {
+        const smaller = await canvasToJpegFile(warpPerspective(img, reviewQuad, 1000), 0.7);
+        savePendingScanFiles([smaller]);
+      } else {
+        savePendingScanFiles([file]);
       }
-      savePendingScans([dataUrl]);
       router.replace("/wall/edit");
     } catch (err) {
       setPhase("review");
