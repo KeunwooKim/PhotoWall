@@ -6,31 +6,64 @@ declare global {
   }
 }
 
-const OPENCV_CDN = "https://docs.opencv.org/4.8.0/opencv.js";
+const OPENCV_CDNS = [
+  "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0/dist/opencv.js",
+  "https://docs.opencv.org/4.8.0/opencv.js",
+];
 const LOAD_TIMEOUT_MS = 25_000;
 
 let loadPromise: Promise<any> | null = null;
 
-function settleCv(
-  resolve: (cv: any) => void,
-  reject: (err: Error) => void,
-  onSettled: () => void,
-): void {
-  const cv = window.cv;
-  if (!cv) {
-    onSettled();
-    reject(new Error("OpenCV failed to load"));
-    return;
+function waitForCvReady(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const cv = window.cv;
+    if (!cv) {
+      reject(new Error("OpenCV failed to load"));
+      return;
+    }
+    if (cv.Mat) {
+      resolve(cv);
+      return;
+    }
+    cv.onRuntimeInitialized = () => resolve(cv);
+  });
+}
+
+function loadScript(src: string): Promise<void> {
+  const existing = document.querySelector<HTMLScriptElement>(`script[data-opencv-src="${src}"]`);
+  if (existing) {
+    if (window.cv?.Mat) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("OpenCV script failed")), {
+        once: true,
+      });
+      if (window.cv) resolve();
+    });
   }
-  if (cv.Mat) {
-    onSettled();
-    resolve(cv);
-    return;
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.dataset.opencv = "1";
+    script.dataset.opencvSrc = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("OpenCV script failed"));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadFromCdn(index: number): Promise<any> {
+  if (index >= OPENCV_CDNS.length) {
+    throw new Error("OpenCV script failed");
   }
-  cv.onRuntimeInitialized = () => {
-    onSettled();
-    resolve(cv);
-  };
+  try {
+    await loadScript(OPENCV_CDNS[index]);
+    return await waitForCvReady();
+  } catch {
+    return loadFromCdn(index + 1);
+  }
 }
 
 /** Load OpenCV.js from CDN once (heavy; never block camera startup on this). */
@@ -42,40 +75,21 @@ export function loadOpenCv(): Promise<any> {
   if (loadPromise) return loadPromise;
 
   loadPromise = new Promise((resolve, reject) => {
-    let settled = false;
-    const onSettled = () => {
-      settled = true;
-      clearTimeout(timer);
-    };
-
     const timer = setTimeout(() => {
-      if (settled) return;
       loadPromise = null;
-      onSettled();
       reject(new Error("OpenCV load timeout"));
     }, LOAD_TIMEOUT_MS);
 
-    const finish = () => settleCv(resolve, reject, onSettled);
-
-    const existing = document.querySelector<HTMLScriptElement>("script[data-opencv]");
-    if (existing) {
-      // load event may have already fired — do not wait on it exclusively
-      finish();
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = OPENCV_CDN;
-    script.async = true;
-    script.dataset.opencv = "1";
-    script.onload = finish;
-    script.onerror = () => {
-      if (settled) return;
-      loadPromise = null;
-      onSettled();
-      reject(new Error("OpenCV script failed"));
-    };
-    document.head.appendChild(script);
+    void loadFromCdn(0)
+      .then((cv) => {
+        clearTimeout(timer);
+        resolve(cv);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        loadPromise = null;
+        reject(err);
+      });
   });
 
   return loadPromise;
