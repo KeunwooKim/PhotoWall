@@ -203,6 +203,26 @@ export function canvasToJpegDataUrl(canvas: HTMLCanvasElement, quality = 0.92): 
   return canvas.toDataURL("image/jpeg", quality);
 }
 
+export function canvasToJpegFile(
+  canvas: HTMLCanvasElement,
+  quality = 0.82,
+  name = `scan-${Date.now()}.jpg`,
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("jpeg encode failed"));
+          return;
+        }
+        resolve(new File([blob], name, { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      quality,
+    );
+  });
+}
+
 /** Default inset quad covering most of the frame. */
 export function defaultInsetQuad(width: number, height: number, inset = 0.08): QuadPoints {
   const ix = width * inset;
