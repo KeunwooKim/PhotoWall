@@ -7,10 +7,33 @@ declare global {
 }
 
 const OPENCV_CDN = "https://docs.opencv.org/4.8.0/opencv.js";
+const LOAD_TIMEOUT_MS = 25_000;
 
 let loadPromise: Promise<any> | null = null;
 
-/** Load OpenCV.js from CDN once (heavy; call only on /capture). */
+function settleCv(
+  resolve: (cv: any) => void,
+  reject: (err: Error) => void,
+  onSettled: () => void,
+): void {
+  const cv = window.cv;
+  if (!cv) {
+    onSettled();
+    reject(new Error("OpenCV failed to load"));
+    return;
+  }
+  if (cv.Mat) {
+    onSettled();
+    resolve(cv);
+    return;
+  }
+  cv.onRuntimeInitialized = () => {
+    onSettled();
+    resolve(cv);
+  };
+}
+
+/** Load OpenCV.js from CDN once (heavy; never block camera startup on this). */
 export function loadOpenCv(): Promise<any> {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("OpenCV requires browser"));
@@ -19,23 +42,25 @@ export function loadOpenCv(): Promise<any> {
   if (loadPromise) return loadPromise;
 
   loadPromise = new Promise((resolve, reject) => {
-    const finish = () => {
-      const cv = window.cv;
-      if (!cv) {
-        reject(new Error("OpenCV failed to load"));
-        return;
-      }
-      if (cv.Mat) {
-        resolve(cv);
-        return;
-      }
-      cv.onRuntimeInitialized = () => resolve(cv);
+    let settled = false;
+    const onSettled = () => {
+      settled = true;
+      clearTimeout(timer);
     };
 
-    const existing = document.querySelector<HTMLScriptElement>(`script[data-opencv]`);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      loadPromise = null;
+      onSettled();
+      reject(new Error("OpenCV load timeout"));
+    }, LOAD_TIMEOUT_MS);
+
+    const finish = () => settleCv(resolve, reject, onSettled);
+
+    const existing = document.querySelector<HTMLScriptElement>("script[data-opencv]");
     if (existing) {
-      if (window.cv) finish();
-      else existing.addEventListener("load", finish);
+      // load event may have already fired — do not wait on it exclusively
+      finish();
       return;
     }
 
@@ -45,11 +70,17 @@ export function loadOpenCv(): Promise<any> {
     script.dataset.opencv = "1";
     script.onload = finish;
     script.onerror = () => {
+      if (settled) return;
       loadPromise = null;
+      onSettled();
       reject(new Error("OpenCV script failed"));
     };
     document.head.appendChild(script);
   });
 
   return loadPromise;
+}
+
+export function isOpenCvReady(): boolean {
+  return typeof window !== "undefined" && !!window.cv?.Mat;
 }
