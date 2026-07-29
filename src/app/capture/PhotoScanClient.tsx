@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { detectDocumentQuad, quadSimilarity } from "@/lib/photo-scan/detect-quad";
+import {
+  detectDocumentQuadWithDebug,
+  drawQuadPath,
+  quadSimilarity,
+  type DetectDebugInfo,
+} from "@/lib/photo-scan/detect-quad";
 import { isOpenCvReady, loadOpenCv } from "@/lib/photo-scan/load-opencv";
 import {
   canvasToJpegDataUrl,
@@ -18,11 +23,70 @@ import {
   waitForVideoFrame,
 } from "@/lib/photo-scan/video-frame";
 
+const EMPTY_DEBUG: DetectDebugInfo = {
+  ms: 0,
+  readMethod: "failed",
+  frameW: 0,
+  frameH: 0,
+  contourCount: 0,
+  candidateCount: 0,
+  edgeRatio: 0,
+  quadFound: false,
+  error: null,
+};
+
 type Phase = "loading" | "camera" | "review" | "processing" | "error";
 type ScanEngineState = "idle" | "loading" | "ready" | "failed";
 
 const STABLE_MS = 700;
-const DETECT_INTERVAL_MS = 200;
+const DETECT_INTERVAL_MS = 250;
+
+function paintDetectOverlay(
+  overlay: HTMLCanvasElement,
+  video: HTMLVideoElement,
+  frameSize: { width: number; height: number },
+  quad: QuadPoints | null,
+  progress: number,
+) {
+  const rect = video.getBoundingClientRect();
+  const mediaW = frameSize.width;
+  const mediaH = frameSize.height;
+  if (!mediaW || !mediaH || rect.width === 0) return;
+
+  const scale = Math.min(rect.width / mediaW, rect.height / mediaH);
+  const offsetX = (rect.width - mediaW * scale) / 2;
+  const offsetY = (rect.height - mediaH * scale) / 2;
+
+  overlay.width = Math.round(rect.width * devicePixelRatio);
+  overlay.height = Math.round(rect.height * devicePixelRatio);
+  overlay.style.width = `${rect.width}px`;
+  overlay.style.height = `${rect.height}px`;
+
+  const octx = overlay.getContext("2d");
+  if (!octx) return;
+
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  octx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+  const guide = defaultPhotoQuad(mediaW, mediaH);
+  drawQuadPath(octx, guide, offsetX, offsetY, scale);
+  octx.setLineDash([8, 6]);
+  octx.strokeStyle = "rgba(250,204,21,0.95)";
+  octx.lineWidth = 2;
+  octx.stroke();
+  octx.setLineDash([]);
+
+  if (quad) {
+    drawQuadPath(octx, quad, offsetX, offsetY, scale);
+    const locked = progress >= 0.85;
+    octx.strokeStyle = locked ? "#4ade80" : progress > 0 ? "#fb923c" : "#ffffff";
+    octx.lineWidth = 3;
+    octx.stroke();
+    octx.fillStyle = locked ? "rgba(74,222,128,0.22)" : "rgba(255,255,255,0.12)";
+    octx.fill();
+  }
+}
 
 export default function PhotoScanClient() {
   const router = useRouter();
@@ -30,10 +94,16 @@ export default function PhotoScanClient() {
   const detectCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const edgePreviewRef = useRef<HTMLCanvasElement>(null);
   const reviewWrapRef = useRef<HTMLDivElement>(null);
+  const frameSizeRef = useRef({ width: 0, height: 0 });
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [scanEngine, setScanEngine] = useState<ScanEngineState>("idle");
+  const [opencvError, setOpencvError] = useState<string | null>(null);
+  const [detectDebug, setDetectDebug] = useState<DetectDebugInfo>(EMPTY_DEBUG);
+  const [detectTick, setDetectTick] = useState(0);
+  const [rawVideoSize, setRawVideoSize] = useState({ w: 0, h: 0 });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [liveQuad, setLiveQuad] = useState<QuadPoints | null>(null);
   const [stableProgress, setStableProgress] = useState(0);
@@ -81,6 +151,7 @@ export default function PhotoScanClient() {
       await video.play();
       const ready = await waitForVideoFrame(video);
       if (!ready) throw new Error("video not ready");
+      setRawVideoSize({ w: video.videoWidth, h: video.videoHeight });
       setVideoReady(true);
       setPhase("camera");
     } catch (err) {
@@ -110,10 +181,16 @@ export default function PhotoScanClient() {
     setScanEngine("loading");
     void loadOpenCv()
       .then(() => {
-        if (!cancelled) setScanEngine("ready");
+        if (!cancelled) {
+          setScanEngine("ready");
+          setOpencvError(null);
+        }
       })
-      .catch(() => {
-        if (!cancelled) setScanEngine("failed");
+      .catch((err) => {
+        if (!cancelled) {
+          setScanEngine("failed");
+          setOpencvError(err instanceof Error ? err.message : "OpenCV load failed");
+        }
       });
 
     return () => {
@@ -161,7 +238,7 @@ export default function PhotoScanClient() {
           quad = scaleQuad(detectQuad, sx, sy);
         } else if (isOpenCvReady()) {
           try {
-            const detected = await detectDocumentQuad(full);
+            const { quad: detected } = await detectDocumentQuadWithDebug(full);
             quad = detected ?? defaultPhotoQuad(fullSize.width, fullSize.height);
           } catch {
             quad = defaultPhotoQuad(fullSize.width, fullSize.height);
@@ -184,6 +261,24 @@ export default function PhotoScanClient() {
     },
     [stopCamera],
   );
+
+  // Guide overlay while OpenCV is loading or failed
+  useEffect(() => {
+    if (phase !== "camera" || !videoReady || scanEngine === "ready") return;
+
+    const id = setInterval(() => {
+      const video = videoRef.current;
+      const overlay = overlayRef.current;
+      if (!video?.videoWidth || !overlay) return;
+      if (!detectCanvasRef.current) detectCanvasRef.current = document.createElement("canvas");
+      const size = drawVideoToCanvas(video, detectCanvasRef.current, 640);
+      if (!size) return;
+      frameSizeRef.current = size;
+      paintDetectOverlay(overlay, video, size, null, 0);
+    }, 300);
+
+    return () => clearInterval(id);
+  }, [phase, videoReady, scanEngine]);
 
   useEffect(() => {
     if (phase !== "camera" || scanEngine !== "ready" || !videoReady) return;
@@ -208,68 +303,38 @@ export default function PhotoScanClient() {
         timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
         return;
       }
+      frameSizeRef.current = size;
 
-      try {
-        const quad = await detectDocumentQuad(canvas);
-        if (cancelled) return;
+      const { quad, debug } = await detectDocumentQuadWithDebug(canvas, edgePreviewRef.current);
+      if (cancelled) return;
 
-        setLiveQuad(quad);
+      setDetectTick((n) => n + 1);
+      setDetectDebug(debug);
+      setLiveQuad(quad);
 
-        const overlay = overlayRef.current;
-        if (overlay && video) {
-          const rect = video.getBoundingClientRect();
-          const mediaW = size.width;
-          const mediaH = size.height;
-          const scale = Math.min(rect.width / mediaW, rect.height / mediaH);
-          const drawW = mediaW * scale;
-          const drawH = mediaH * scale;
-          const offsetX = (rect.width - drawW) / 2;
-          const offsetY = (rect.height - drawH) / 2;
-
-          overlay.width = Math.round(rect.width * devicePixelRatio);
-          overlay.height = Math.round(rect.height * devicePixelRatio);
-          overlay.style.width = `${rect.width}px`;
-          overlay.style.height = `${rect.height}px`;
-          const octx = overlay.getContext("2d");
-          if (octx) {
-            octx.setTransform(1, 0, 0, 1, 0, 0);
-            octx.clearRect(0, 0, overlay.width, overlay.height);
-            octx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-            if (quad) {
-              octx.beginPath();
-              octx.moveTo(offsetX + quad[0].x * scale, offsetY + quad[0].y * scale);
-              for (let i = 1; i < 4; i++) {
-                octx.lineTo(offsetX + quad[i].x * scale, offsetY + quad[i].y * scale);
-              }
-              octx.closePath();
-              octx.strokeStyle = "#fff";
-              octx.lineWidth = 2.5;
-              octx.stroke();
-              octx.fillStyle = "rgba(255,255,255,0.12)";
-              octx.fill();
-            }
-          }
-        }
-
-        const now = Date.now();
-        const prev = lastQuadRef.current;
-        if (quad && prev && quadSimilarity(quad, prev) > 0.65) {
-          if (stableSinceRef.current == null) stableSinceRef.current = now;
-          const elapsed = now - stableSinceRef.current;
-          setStableProgress(Math.min(1, elapsed / STABLE_MS));
-          if (elapsed >= STABLE_MS) {
-            lastQuadRef.current = quad;
-            await captureAtQuad(quad);
-            return;
-          }
-        } else {
-          stableSinceRef.current = quad ? now : null;
-          setStableProgress(quad ? 0.05 : 0);
-        }
-        lastQuadRef.current = quad;
-      } catch {
-        // keep looping
+      const overlay = overlayRef.current;
+      if (overlay) {
+        paintDetectOverlay(overlay, video, size, quad, stableSinceRef.current ? stableProgress : 0);
       }
+
+      const now = Date.now();
+      const prev = lastQuadRef.current;
+      if (quad && prev && quadSimilarity(quad, prev) > 0.65) {
+        if (stableSinceRef.current == null) stableSinceRef.current = now;
+        const elapsed = now - stableSinceRef.current;
+        const progress = Math.min(1, elapsed / STABLE_MS);
+        setStableProgress(progress);
+        if (overlay) paintDetectOverlay(overlay, video, size, quad, progress);
+        if (elapsed >= STABLE_MS) {
+          lastQuadRef.current = quad;
+          await captureAtQuad(quad);
+          return;
+        }
+      } else {
+        stableSinceRef.current = quad ? now : null;
+        setStableProgress(quad ? 0.05 : 0);
+      }
+      lastQuadRef.current = quad;
 
       timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
     };
@@ -396,6 +461,61 @@ export default function PhotoScanClient() {
           )}
 
           {phase === "camera" && (
+            <>
+              <div
+                className="pointer-events-none absolute inset-x-2 z-[25] rounded-xl bg-black/75 p-2.5 font-mono text-[10px] leading-relaxed text-white/90 backdrop-blur-sm"
+                style={{ top: "max(3.5rem, calc(env(safe-area-inset-top) + 2.75rem))" }}
+              >
+                <p>
+                  <span className="text-yellow-300">엔진</span>{" "}
+                  {scanEngine === "ready"
+                    ? "✓ 준비됨"
+                    : scanEngine === "loading"
+                      ? "⏳ 로드 중…"
+                      : `✗ 실패${opencvError ? `: ${opencvError}` : ""}`}
+                </p>
+                <p>
+                  <span className="text-yellow-300">카메라</span> {rawVideoSize.w}×{rawVideoSize.h}
+                  {rawVideoSize.w > rawVideoSize.h && typeof window !== "undefined" && window.innerHeight >= window.innerWidth
+                    ? " → 회전補正"
+                    : ""}
+                  {" · "}
+                  분석 {detectDebug.frameW}×{detectDebug.frameH}
+                </p>
+                <p>
+                  <span className="text-yellow-300">분석 #{detectTick}</span> {detectDebug.ms}ms
+                  {" · "}읽기:{detectDebug.readMethod}
+                  {" · "}윤곽:{detectDebug.contourCount}
+                  {" · "}후보:{detectDebug.candidateCount}
+                </p>
+                <p>
+                  <span className="text-yellow-300">엣지</span>{" "}
+                  {(detectDebug.edgeRatio * 100).toFixed(1)}%
+                  {" · "}
+                  <span className={detectDebug.quadFound ? "text-green-400" : "text-orange-300"}>
+                    {detectDebug.quadFound ? "사각형 감지됨" : "사각형 없음"}
+                  </span>
+                  {detectDebug.error ? (
+                    <span className="text-red-300"> · ⚠ {detectDebug.error}</span>
+                  ) : null}
+                </p>
+                <p className="text-white/60">
+                  노란 점선=가이드 · 흰/주황/초록=감지 · 우상단=엣지맵
+                </p>
+              </div>
+
+              <canvas
+                ref={edgePreviewRef}
+                className="pointer-events-none absolute right-3 z-[25] w-20 rounded border border-white/40 bg-black/80"
+                style={{ top: "max(9.5rem, calc(env(safe-area-inset-top) + 8.75rem))" }}
+              />
+              <p
+                className="pointer-events-none absolute right-3 z-[25] text-[9px] text-white/70"
+                style={{ top: "max(12.5rem, calc(env(safe-area-inset-top) + 11.75rem))" }}
+              >
+                엣지맵
+              </p>
+
             <div
               className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-3 px-4"
               style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
@@ -435,6 +555,7 @@ export default function PhotoScanClient() {
                 <span className="h-12 w-12 rounded-full bg-white" />
               </button>
             </div>
+            </>
           )}
         </div>
       )}
