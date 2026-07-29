@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   detectDocumentQuadWithDebug,
   drawQuadPath,
-  quadSimilarity,
   type DetectDebugInfo,
 } from "@/lib/photo-scan/detect-quad";
 import { isOpenCvReady, loadOpenCv } from "@/lib/photo-scan/load-opencv";
@@ -19,9 +18,10 @@ import type { Point2, QuadPoints } from "@/lib/photo-scan/types";
 import {
   defaultPhotoQuad,
   drawVideoToCanvas,
-  scaleQuad,
   waitForVideoFrame,
 } from "@/lib/photo-scan/video-frame";
+
+type Phase = "loading" | "camera" | "review" | "processing" | "error";
 
 const EMPTY_DEBUG: DetectDebugInfo = {
   ms: 0,
@@ -35,125 +35,151 @@ const EMPTY_DEBUG: DetectDebugInfo = {
   error: null,
 };
 
-type Phase = "loading" | "camera" | "review" | "processing" | "error";
-type ScanEngineState = "idle" | "loading" | "ready" | "failed";
-
-const STABLE_MS = 700;
-const DETECT_INTERVAL_MS = 250;
-
-function paintDetectOverlay(
-  overlay: HTMLCanvasElement,
-  video: HTMLVideoElement,
-  frameSize: { width: number; height: number },
-  quad: QuadPoints | null,
-  progress: number,
+/** Map object-cover video display rect → analysis canvas coordinates. */
+function coverMapping(
+  viewW: number,
+  viewH: number,
+  mediaW: number,
+  mediaH: number,
 ) {
-  const rect = video.getBoundingClientRect();
-  const mediaW = frameSize.width;
-  const mediaH = frameSize.height;
-  if (!mediaW || !mediaH || rect.width === 0) return;
+  const scale = Math.max(viewW / mediaW, viewH / mediaH);
+  const drawW = mediaW * scale;
+  const drawH = mediaH * scale;
+  const offsetX = (viewW - drawW) / 2;
+  const offsetY = (viewH - drawH) / 2;
+  return { scale, offsetX, offsetY, drawW, drawH };
+}
 
-  const scale = Math.min(rect.width / mediaW, rect.height / mediaH);
-  const offsetX = (rect.width - mediaW * scale) / 2;
-  const offsetY = (rect.height - mediaH * scale) / 2;
+function paintOverlay(
+  overlay: HTMLCanvasElement,
+  host: HTMLElement,
+  mediaW: number,
+  mediaH: number,
+  guide: QuadPoints,
+  detected: QuadPoints | null,
+) {
+  const rect = host.getBoundingClientRect();
+  if (!rect.width || !rect.height || !mediaW || !mediaH) return;
 
+  const { scale, offsetX, offsetY } = coverMapping(rect.width, rect.height, mediaW, mediaH);
   overlay.width = Math.round(rect.width * devicePixelRatio);
   overlay.height = Math.round(rect.height * devicePixelRatio);
   overlay.style.width = `${rect.width}px`;
   overlay.style.height = `${rect.height}px`;
 
-  const octx = overlay.getContext("2d");
-  if (!octx) return;
+  const ctx = overlay.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 
-  octx.setTransform(1, 0, 0, 1, 0, 0);
-  octx.clearRect(0, 0, overlay.width, overlay.height);
-  octx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  // Dim outside guide
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(0, 0, rect.width, rect.height);
+  ctx.save();
+  drawQuadPath(ctx, guide, offsetX, offsetY, scale);
+  ctx.clip();
+  ctx.clearRect(0, 0, rect.width, rect.height);
+  ctx.restore();
 
-  const guide = defaultPhotoQuad(mediaW, mediaH);
-  drawQuadPath(octx, guide, offsetX, offsetY, scale);
-  octx.setLineDash([8, 6]);
-  octx.strokeStyle = "rgba(250,204,21,0.95)";
-  octx.lineWidth = 2;
-  octx.stroke();
-  octx.setLineDash([]);
+  drawQuadPath(ctx, guide, offsetX, offsetY, scale);
+  ctx.setLineDash([10, 8]);
+  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
 
-  if (quad) {
-    drawQuadPath(octx, quad, offsetX, offsetY, scale);
-    const locked = progress >= 0.85;
-    octx.strokeStyle = locked ? "#4ade80" : progress > 0 ? "#fb923c" : "#ffffff";
-    octx.lineWidth = 3;
-    octx.stroke();
-    octx.fillStyle = locked ? "rgba(74,222,128,0.22)" : "rgba(255,255,255,0.12)";
-    octx.fill();
+  if (detected) {
+    drawQuadPath(ctx, detected, offsetX, offsetY, scale);
+    ctx.strokeStyle = "#4ade80";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(74,222,128,0.18)";
+    ctx.fill();
   }
 }
 
 export default function PhotoScanClient() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const detectCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const overlayRef = useRef<HTMLCanvasElement>(null);
-  const edgePreviewRef = useRef<HTMLCanvasElement>(null);
   const reviewWrapRef = useRef<HTMLDivElement>(null);
   const frameSizeRef = useRef({ width: 0, height: 0 });
 
   const [phase, setPhase] = useState<Phase>("loading");
-  const [scanEngine, setScanEngine] = useState<ScanEngineState>("idle");
-  const [opencvError, setOpencvError] = useState<string | null>(null);
-  const [detectDebug, setDetectDebug] = useState<DetectDebugInfo>(EMPTY_DEBUG);
-  const [detectTick, setDetectTick] = useState(0);
-  const [rawVideoSize, setRawVideoSize] = useState({ w: 0, h: 0 });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [liveQuad, setLiveQuad] = useState<QuadPoints | null>(null);
-  const [stableProgress, setStableProgress] = useState(0);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
   const [reviewQuad, setReviewQuad] = useState<QuadPoints | null>(null);
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [autoDetectOn, setAutoDetectOn] = useState(false);
+  const [detectStatus, setDetectStatus] = useState<"off" | "loading" | "on" | "failed">("off");
+  const [detectDebug, setDetectDebug] = useState<DetectDebugInfo>(EMPTY_DEBUG);
+  const [showDebug, setShowDebug] = useState(false);
+  const [liveQuad, setLiveQuad] = useState<QuadPoints | null>(null);
 
-  const stableSinceRef = useRef<number | null>(null);
-  const lastQuadRef = useRef<QuadPoints | null>(null);
   const capturingRef = useRef(false);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    const video = videoRef.current;
-    if (video) video.srcObject = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     setVideoReady(false);
+  }, []);
+
+  const refreshGuideOverlay = useCallback((detected: QuadPoints | null = null) => {
+    const video = videoRef.current;
+    const stage = stageRef.current;
+    const overlay = overlayRef.current;
+    if (!video?.videoWidth || !stage || !overlay) return;
+
+    if (!detectCanvasRef.current) detectCanvasRef.current = document.createElement("canvas");
+    const size = drawVideoToCanvas(video, detectCanvasRef.current, 720);
+    if (!size) return;
+    frameSizeRef.current = size;
+
+    const guide = defaultPhotoQuad(size.width, size.height);
+    paintOverlay(overlay, stage, size.width, size.height, guide, detected);
   }, []);
 
   const startCamera = useCallback(async () => {
     setErrorMessage(null);
     setPhase("loading");
     setVideoReady(false);
+    setLiveQuad(null);
+
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("unsupported");
-      }
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("unsupported");
+
+      // Keep constraints loose — exact 1080p often breaks / shrinks preview on iOS Safari
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
         },
       });
+
       streamRef.current = stream;
       const video = videoRef.current;
       if (!video) throw new Error("video missing");
+
       video.srcObject = stream;
       video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
       video.muted = true;
       await video.play();
+
       const ready = await waitForVideoFrame(video);
       if (!ready) throw new Error("video not ready");
-      setRawVideoSize({ w: video.videoWidth, h: video.videoHeight });
+
       setVideoReady(true);
       setPhase("camera");
+      requestAnimationFrame(() => refreshGuideOverlay(null));
     } catch (err) {
       setPhase("error");
       const name = err instanceof Error ? err.name : "";
@@ -165,123 +191,57 @@ export default function PhotoScanClient() {
             ? "카메라를 찾을 수 없어요"
             : message === "video not ready"
               ? "카메라 화면을 준비하지 못했어요. 다시 시도해 주세요"
-              : "카메라를 열 수 없어요. HTTPS 환경에서 다시 시도해 주세요",
+              : "카메라를 열 수 없어요. HTTPS에서 다시 시도해 주세요",
       );
     }
-  }, []);
-
-  useEffect(() => {
-    if (phase !== "camera") return;
-    if (isOpenCvReady()) {
-      setScanEngine("ready");
-      return;
-    }
-
-    let cancelled = false;
-    setScanEngine("loading");
-    void loadOpenCv()
-      .then(() => {
-        if (!cancelled) {
-          setScanEngine("ready");
-          setOpencvError(null);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setScanEngine("failed");
-          setOpencvError(err instanceof Error ? err.message : "OpenCV load failed");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [phase]);
+  }, [refreshGuideOverlay]);
 
   useEffect(() => {
     void startCamera();
     return () => stopCamera();
   }, [startCamera, stopCamera]);
 
-  const captureAtQuad = useCallback(
-    async (detectQuad: QuadPoints | null) => {
-      if (capturingRef.current) return;
-      const video = videoRef.current;
-      if (!video) {
-        setErrorMessage("카메라를 찾을 수 없어요");
-        return;
-      }
+  // Keep guide painted on resize / orientation
+  useEffect(() => {
+    if (phase !== "camera" || !videoReady) return;
+    const onResize = () => refreshGuideOverlay(liveQuad);
+    window.addEventListener("resize", onResize);
+    const id = window.setInterval(() => refreshGuideOverlay(liveQuad), 500);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.clearInterval(id);
+    };
+  }, [phase, videoReady, liveQuad, refreshGuideOverlay]);
 
-      capturingRef.current = true;
-      setIsCapturing(true);
-      setErrorMessage(null);
+  // Optional auto-detect — never blocks camera
+  useEffect(() => {
+    if (!autoDetectOn || phase !== "camera" || !videoReady) {
+      if (!autoDetectOn) setDetectStatus("off");
+      return;
+    }
 
+    let cancelled = false;
+    setDetectStatus(isOpenCvReady() ? "on" : "loading");
+
+    void (async () => {
       try {
-        const ready = await waitForVideoFrame(video);
-        if (!ready) {
-          setErrorMessage("카메라가 아직 준비되지 않았어요. 잠시 후 다시 눌러 주세요");
-          return;
+        await loadOpenCv();
+        if (!cancelled) setDetectStatus("on");
+      } catch {
+        if (!cancelled) {
+          setDetectStatus("failed");
+          setAutoDetectOn(false);
         }
-
-        const full = document.createElement("canvas");
-        const fullSize = drawVideoToCanvas(video, full);
-        if (!fullSize) {
-          setErrorMessage("촬영에 실패했어요. 다시 시도해 주세요");
-          return;
-        }
-
-        const detectCanvas = detectCanvasRef.current;
-        let quad: QuadPoints;
-        if (detectQuad && detectCanvas && detectCanvas.width > 0) {
-          const sx = fullSize.width / detectCanvas.width;
-          const sy = fullSize.height / detectCanvas.height;
-          quad = scaleQuad(detectQuad, sx, sy);
-        } else if (isOpenCvReady()) {
-          try {
-            const { quad: detected } = await detectDocumentQuadWithDebug(full);
-            quad = detected ?? defaultPhotoQuad(fullSize.width, fullSize.height);
-          } catch {
-            quad = defaultPhotoQuad(fullSize.width, fullSize.height);
-          }
-        } else {
-          quad = defaultPhotoQuad(fullSize.width, fullSize.height);
-        }
-
-        setCapturedUrl(full.toDataURL("image/jpeg", 0.92));
-        setImageSize(fullSize);
-        setReviewQuad(quad);
-        stopCamera();
-        setPhase("review");
-      } finally {
-        capturingRef.current = false;
-        setIsCapturing(false);
-        stableSinceRef.current = null;
-        setStableProgress(0);
       }
-    },
-    [stopCamera],
-  );
+    })();
 
-  // Guide overlay while OpenCV is loading or failed
-  useEffect(() => {
-    if (phase !== "camera" || !videoReady || scanEngine === "ready") return;
-
-    const id = setInterval(() => {
-      const video = videoRef.current;
-      const overlay = overlayRef.current;
-      if (!video?.videoWidth || !overlay) return;
-      if (!detectCanvasRef.current) detectCanvasRef.current = document.createElement("canvas");
-      const size = drawVideoToCanvas(video, detectCanvasRef.current, 640);
-      if (!size) return;
-      frameSizeRef.current = size;
-      paintDetectOverlay(overlay, video, size, null, 0);
-    }, 300);
-
-    return () => clearInterval(id);
-  }, [phase, videoReady, scanEngine]);
+    return () => {
+      cancelled = true;
+    };
+  }, [autoDetectOn, phase, videoReady]);
 
   useEffect(() => {
-    if (phase !== "camera" || scanEngine !== "ready" || !videoReady) return;
+    if (!autoDetectOn || detectStatus !== "on" || phase !== "camera" || !videoReady) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -289,54 +249,25 @@ export default function PhotoScanClient() {
     const tick = async () => {
       if (cancelled || capturingRef.current) return;
       const video = videoRef.current;
-      if (!video || video.readyState < 2 || video.videoWidth === 0) {
-        timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
+      if (!video?.videoWidth) {
+        timer = setTimeout(() => void tick(), 400);
         return;
       }
 
-      if (!detectCanvasRef.current) {
-        detectCanvasRef.current = document.createElement("canvas");
-      }
-      const canvas = detectCanvasRef.current;
-      const size = drawVideoToCanvas(video, canvas, 640);
+      if (!detectCanvasRef.current) detectCanvasRef.current = document.createElement("canvas");
+      const size = drawVideoToCanvas(video, detectCanvasRef.current, 480);
       if (!size) {
-        timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
+        timer = setTimeout(() => void tick(), 400);
         return;
       }
       frameSizeRef.current = size;
 
-      const { quad, debug } = await detectDocumentQuadWithDebug(canvas, edgePreviewRef.current);
+      const { quad, debug } = await detectDocumentQuadWithDebug(detectCanvasRef.current);
       if (cancelled) return;
-
-      setDetectTick((n) => n + 1);
       setDetectDebug(debug);
       setLiveQuad(quad);
-
-      const overlay = overlayRef.current;
-      if (overlay) {
-        paintDetectOverlay(overlay, video, size, quad, stableSinceRef.current ? stableProgress : 0);
-      }
-
-      const now = Date.now();
-      const prev = lastQuadRef.current;
-      if (quad && prev && quadSimilarity(quad, prev) > 0.65) {
-        if (stableSinceRef.current == null) stableSinceRef.current = now;
-        const elapsed = now - stableSinceRef.current;
-        const progress = Math.min(1, elapsed / STABLE_MS);
-        setStableProgress(progress);
-        if (overlay) paintDetectOverlay(overlay, video, size, quad, progress);
-        if (elapsed >= STABLE_MS) {
-          lastQuadRef.current = quad;
-          await captureAtQuad(quad);
-          return;
-        }
-      } else {
-        stableSinceRef.current = quad ? now : null;
-        setStableProgress(quad ? 0.05 : 0);
-      }
-      lastQuadRef.current = quad;
-
-      timer = setTimeout(() => void tick(), DETECT_INTERVAL_MS);
+      refreshGuideOverlay(quad);
+      timer = setTimeout(() => void tick(), 350);
     };
 
     void tick();
@@ -344,22 +275,87 @@ export default function PhotoScanClient() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [phase, scanEngine, videoReady, captureAtQuad]);
+  }, [autoDetectOn, detectStatus, phase, videoReady, refreshGuideOverlay]);
+
+  const captureNow = useCallback(async () => {
+    if (capturingRef.current) return;
+    const video = videoRef.current;
+    if (!video) {
+      setErrorMessage("카메라를 찾을 수 없어요");
+      return;
+    }
+
+    capturingRef.current = true;
+    setIsCapturing(true);
+    setErrorMessage(null);
+
+    try {
+      const ready = await waitForVideoFrame(video);
+      if (!ready) {
+        setErrorMessage("카메라가 아직 준비되지 않았어요");
+        return;
+      }
+
+      const full = document.createElement("canvas");
+      const fullSize = drawVideoToCanvas(video, full);
+      if (!fullSize) {
+        setErrorMessage("촬영에 실패했어요");
+        return;
+      }
+
+      let quad = liveQuad
+        ? ([
+            {
+              x: (liveQuad[0].x / frameSizeRef.current.width) * fullSize.width,
+              y: (liveQuad[0].y / frameSizeRef.current.height) * fullSize.height,
+            },
+            {
+              x: (liveQuad[1].x / frameSizeRef.current.width) * fullSize.width,
+              y: (liveQuad[1].y / frameSizeRef.current.height) * fullSize.height,
+            },
+            {
+              x: (liveQuad[2].x / frameSizeRef.current.width) * fullSize.width,
+              y: (liveQuad[2].y / frameSizeRef.current.height) * fullSize.height,
+            },
+            {
+              x: (liveQuad[3].x / frameSizeRef.current.width) * fullSize.width,
+              y: (liveQuad[3].y / frameSizeRef.current.height) * fullSize.height,
+            },
+          ] as QuadPoints)
+        : defaultPhotoQuad(fullSize.width, fullSize.height);
+
+      if (!liveQuad && isOpenCvReady()) {
+        try {
+          const { quad: detected } = await detectDocumentQuadWithDebug(full);
+          if (detected) quad = detected;
+        } catch {
+          // keep default guide
+        }
+      }
+
+      setCapturedUrl(full.toDataURL("image/jpeg", 0.92));
+      setImageSize(fullSize);
+      setReviewQuad(quad);
+      stopCamera();
+      setPhase("review");
+    } finally {
+      capturingRef.current = false;
+      setIsCapturing(false);
+    }
+  }, [liveQuad, stopCamera]);
 
   const applyScan = useCallback(async () => {
     if (!capturedUrl || !reviewQuad) return;
     setPhase("processing");
     try {
       const img = new Image();
-      img.decoding = "async";
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error("image load failed"));
         img.src = capturedUrl;
       });
       const warped = warpPerspective(img, reviewQuad);
-      const dataUrl = canvasToJpegDataUrl(warped, 0.92);
-      savePendingScans([dataUrl]);
+      savePendingScans([canvasToJpegDataUrl(warped, 0.92)]);
       router.replace("/wall/edit");
     } catch {
       setPhase("review");
@@ -372,7 +368,6 @@ export default function PhotoScanClient() {
     setReviewQuad(null);
     setLiveQuad(null);
     setErrorMessage(null);
-    lastQuadRef.current = null;
     void startCamera();
   }, [startCamera]);
 
@@ -381,11 +376,9 @@ export default function PhotoScanClient() {
       const wrap = reviewWrapRef.current;
       if (!wrap) return null;
       const rect = wrap.getBoundingClientRect();
-      const x = ((clientX - rect.left) / rect.width) * imageSize.width;
-      const y = ((clientY - rect.top) / rect.height) * imageSize.height;
       return {
-        x: Math.max(0, Math.min(imageSize.width, x)),
-        y: Math.max(0, Math.min(imageSize.height, y)),
+        x: Math.max(0, Math.min(imageSize.width, ((clientX - rect.left) / rect.width) * imageSize.width)),
+        y: Math.max(0, Math.min(imageSize.height, ((clientY - rect.top) / rect.height) * imageSize.height)),
       };
     },
     [imageSize.height, imageSize.width],
@@ -393,7 +386,6 @@ export default function PhotoScanClient() {
 
   useEffect(() => {
     if (dragIndex == null) return;
-
     const onMove = (e: PointerEvent) => {
       const pt = clientToImagePoint(e.clientX, e.clientY);
       if (!pt || !reviewQuad) return;
@@ -402,7 +394,6 @@ export default function PhotoScanClient() {
       setReviewQuad(next);
     };
     const onUp = () => setDragIndex(null);
-
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     return () => {
@@ -412,163 +403,163 @@ export default function PhotoScanClient() {
   }, [dragIndex, clientToImagePoint, reviewQuad]);
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-neutral-950 text-white">
+    <div className="relative h-[100dvh] w-screen overflow-hidden bg-black text-white">
       <header
-        className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4"
+        className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-4"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
         <Link
           href="/wall/edit"
-          className="rounded-full bg-black/45 px-3 py-1.5 text-sm backdrop-blur-sm"
+          className="rounded-full bg-black/50 px-3 py-1.5 text-sm backdrop-blur-sm"
           onClick={stopCamera}
         >
           닫기
         </Link>
-        <p className="rounded-full bg-black/45 px-3 py-1.5 text-xs backdrop-blur-sm">
+        <p className="rounded-full bg-black/50 px-3 py-1.5 text-xs backdrop-blur-sm">
           {phase === "review" ? "모서리 조정" : "사진 스캔"}
         </p>
-        <span className="w-14" />
+        <button
+          type="button"
+          onClick={() => setShowDebug((v) => !v)}
+          className="rounded-full bg-black/50 px-3 py-1.5 text-xs backdrop-blur-sm"
+        >
+          {showDebug ? "디버그 끔" : "디버그"}
+        </button>
       </header>
 
       {(phase === "loading" || phase === "camera" || phase === "error") && (
-        <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+        <div ref={stageRef} className="absolute inset-0">
           <video
             ref={videoRef}
             playsInline
             muted
-            className={`max-h-[100dvh] w-full object-contain ${phase === "camera" ? "" : "opacity-0"}`}
+            autoPlay
+            className={`absolute inset-0 h-full w-full object-cover ${phase === "camera" ? "" : "opacity-0"}`}
           />
-          <canvas
-            ref={overlayRef}
-            className="pointer-events-none absolute inset-0 m-auto max-h-[100dvh] max-w-full"
-          />
+          <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
 
           {phase === "loading" && (
-            <p className="absolute text-sm text-white/80">카메라 여는 중…</p>
+            <p className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+              카메라 여는 중…
+            </p>
           )}
 
           {phase === "error" && (
-            <div className="absolute mx-6 max-w-sm rounded-2xl bg-white/10 p-5 text-center backdrop-blur">
-              <p className="text-sm">{errorMessage}</p>
-              <button
-                type="button"
-                onClick={() => void startCamera()}
-                className="mt-4 rounded-full bg-white px-4 py-2 text-sm font-medium text-neutral-900"
-              >
-                다시 시도
-              </button>
+            <div className="absolute inset-0 flex items-center justify-center px-6">
+              <div className="max-w-sm rounded-2xl bg-white/10 p-5 text-center backdrop-blur">
+                <p className="text-sm">{errorMessage}</p>
+                <button
+                  type="button"
+                  onClick={() => void startCamera()}
+                  className="mt-4 rounded-full bg-white px-4 py-2 text-sm font-medium text-neutral-900"
+                >
+                  다시 시도
+                </button>
+              </div>
             </div>
           )}
 
           {phase === "camera" && (
             <>
-              <div
-                className="pointer-events-none absolute inset-x-2 z-[25] rounded-xl bg-black/75 p-2.5 font-mono text-[10px] leading-relaxed text-white/90 backdrop-blur-sm"
-                style={{ top: "max(3.5rem, calc(env(safe-area-inset-top) + 2.75rem))" }}
-              >
-                <p>
-                  <span className="text-yellow-300">엔진</span>{" "}
-                  {scanEngine === "ready"
-                    ? "✓ 준비됨"
-                    : scanEngine === "loading"
-                      ? "⏳ 로드 중…"
-                      : `✗ 실패${opencvError ? `: ${opencvError}` : ""}`}
-                </p>
-                <p>
-                  <span className="text-yellow-300">카메라</span> {rawVideoSize.w}×{rawVideoSize.h}
-                  {rawVideoSize.w > rawVideoSize.h && typeof window !== "undefined" && window.innerHeight >= window.innerWidth
-                    ? " → 회전補正"
-                    : ""}
-                  {" · "}
-                  분석 {detectDebug.frameW}×{detectDebug.frameH}
-                </p>
-                <p>
-                  <span className="text-yellow-300">분석 #{detectTick}</span> {detectDebug.ms}ms
-                  {" · "}읽기:{detectDebug.readMethod}
-                  {" · "}윤곽:{detectDebug.contourCount}
-                  {" · "}후보:{detectDebug.candidateCount}
-                </p>
-                <p>
-                  <span className="text-yellow-300">엣지</span>{" "}
-                  {(detectDebug.edgeRatio * 100).toFixed(1)}%
-                  {" · "}
-                  <span className={detectDebug.quadFound ? "text-green-400" : "text-orange-300"}>
-                    {detectDebug.quadFound ? "사각형 감지됨" : "사각형 없음"}
-                  </span>
-                  {detectDebug.error ? (
-                    <span className="text-red-300"> · ⚠ {detectDebug.error}</span>
-                  ) : null}
-                </p>
-                <p className="text-white/60">
-                  노란 점선=가이드 · 흰/주황/초록=감지 · 우상단=엣지맵
-                </p>
-              </div>
-
-              <canvas
-                ref={edgePreviewRef}
-                className="pointer-events-none absolute right-3 z-[25] w-20 rounded border border-white/40 bg-black/80"
-                style={{ top: "max(9.5rem, calc(env(safe-area-inset-top) + 8.75rem))" }}
-              />
-              <p
-                className="pointer-events-none absolute right-3 z-[25] text-[9px] text-white/70"
-                style={{ top: "max(12.5rem, calc(env(safe-area-inset-top) + 11.75rem))" }}
-              >
-                엣지맵
-              </p>
-
-            <div
-              className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-3 px-4"
-              style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
-            >
-              {errorMessage && (
-                <p className="rounded-full bg-red-500/80 px-3 py-1.5 text-center text-xs text-white">
-                  {errorMessage}
-                </p>
-              )}
-              <p className="rounded-full bg-black/50 px-3 py-1.5 text-center text-xs text-white/90 backdrop-blur-sm">
-                {!videoReady
-                  ? "카메라 준비 중…"
-                  : scanEngine === "loading"
-                    ? "자동 감지 준비 중… 셔터로 바로 촬영할 수 있어요"
-                    : scanEngine === "failed"
-                      ? "자동 감지를 사용할 수 없어요 — 셔터로 촬영해 주세요"
-                      : liveQuad
-                        ? "테두리가 잡히면 자동으로 촬영해요"
-                        : "인생네컷·사진을 프레임 안에 맞춰 주세요"}
-              </p>
-              {stableProgress > 0 && (
-                <div className="h-1 w-40 overflow-hidden rounded-full bg-white/20">
-                  <div
-                    className="h-full bg-white transition-[width] duration-100"
-                    style={{ width: `${stableProgress * 100}%` }}
-                  />
+              {showDebug && (
+                <div
+                  className="pointer-events-none absolute inset-x-3 z-20 rounded-xl bg-black/70 p-2 font-mono text-[10px] leading-relaxed backdrop-blur"
+                  style={{ top: "max(3.5rem, calc(env(safe-area-inset-top) + 2.75rem))" }}
+                >
+                  <p>
+                    자동감지:{detectStatus} · 프레임 {frameSizeRef.current.width}×
+                    {frameSizeRef.current.height}
+                  </p>
+                  <p>
+                    분석 {detectDebug.ms}ms · 읽기:{detectDebug.readMethod} · 윤곽:
+                    {detectDebug.contourCount} · 후보:{detectDebug.candidateCount}
+                  </p>
+                  <p>
+                    엣지 {(detectDebug.edgeRatio * 100).toFixed(1)}% ·{" "}
+                    {detectDebug.quadFound ? "사각형 O" : "사각형 X"}
+                    {detectDebug.error ? ` · ${detectDebug.error}` : ""}
+                  </p>
                 </div>
               )}
-              <button
-                type="button"
-                disabled={isCapturing || !videoReady}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => void captureAtQuad(liveQuad)}
-                className="flex h-16 w-16 touch-manipulation items-center justify-center rounded-full border-4 border-white/80 bg-white/20 active:scale-95 disabled:opacity-40"
-                aria-label="촬영"
+
+              <div
+                className="absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-3 px-4"
+                style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
               >
-                <span className="h-12 w-12 rounded-full bg-white" />
-              </button>
-            </div>
+                {errorMessage && (
+                  <p className="rounded-full bg-red-500/80 px-3 py-1.5 text-center text-xs">{errorMessage}</p>
+                )}
+                <p className="rounded-full bg-black/55 px-3 py-1.5 text-center text-xs text-white/95 backdrop-blur-sm">
+                  흰 가이드 안에 인생네컷·사진을 맞춘 뒤 촬영하세요
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAutoDetectOn((v) => !v)}
+                    className={`rounded-full px-3 py-2 text-xs font-medium backdrop-blur-sm ${
+                      autoDetectOn ? "bg-green-500/80 text-white" : "bg-white/15 text-white/90"
+                    }`}
+                  >
+                    {detectStatus === "loading"
+                      ? "감지 준비…"
+                      : autoDetectOn
+                        ? "자동감지 ON"
+                        : "자동감지 OFF"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isCapturing || !videoReady}
+                    onClick={() => void captureNow()}
+                    className="flex h-16 w-16 touch-manipulation items-center justify-center rounded-full border-4 border-white/90 bg-white/25 active:scale-95 disabled:opacity-40"
+                    aria-label="촬영"
+                  >
+                    <span className="h-12 w-12 rounded-full bg-white" />
+                  </button>
+                  <label className="cursor-pointer rounded-full bg-white/15 px-3 py-2 text-xs font-medium text-white/90 backdrop-blur-sm">
+                    앨범
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        const url = URL.createObjectURL(file);
+                        const img = new Image();
+                        await new Promise<void>((resolve, reject) => {
+                          img.onload = () => resolve();
+                          img.onerror = () => reject(new Error("load failed"));
+                          img.src = url;
+                        });
+                        const canvas = document.createElement("canvas");
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                        canvas.getContext("2d")?.drawImage(img, 0, 0);
+                        URL.revokeObjectURL(url);
+                        setCapturedUrl(canvas.toDataURL("image/jpeg", 0.92));
+                        setImageSize({ width: canvas.width, height: canvas.height });
+                        setReviewQuad(defaultPhotoQuad(canvas.width, canvas.height));
+                        stopCamera();
+                        setPhase("review");
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
             </>
           )}
         </div>
       )}
 
       {(phase === "review" || phase === "processing") && capturedUrl && reviewQuad && (
-        <div className="flex flex-1 flex-col">
+        <div className="flex h-full flex-col">
           <div className="relative flex flex-1 items-center justify-center px-3 pt-14">
             <div
               ref={reviewWrapRef}
               className="relative mx-auto max-h-[70dvh] w-full max-w-lg"
-              style={{
-                aspectRatio: `${imageSize.width} / ${imageSize.height}`,
-              }}
+              style={{ aspectRatio: `${imageSize.width} / ${imageSize.height}` }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -597,7 +588,7 @@ export default function PhotoScanClient() {
                     fill="#fff"
                     stroke="#111"
                     strokeWidth={2}
-                    className="pointer-events-auto touch-manipulation"
+                    className="touch-manipulation"
                     style={{ cursor: "grab" }}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -610,9 +601,7 @@ export default function PhotoScanClient() {
             </div>
           </div>
 
-          {errorMessage && (
-            <p className="px-4 text-center text-sm text-red-300">{errorMessage}</p>
-          )}
+          {errorMessage && <p className="px-4 text-center text-sm text-red-300">{errorMessage}</p>}
 
           <div
             className="flex gap-3 px-4 pt-4"
