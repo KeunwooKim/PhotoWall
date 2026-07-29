@@ -257,10 +257,7 @@ export default function EditorToolDock({
         </label>
 
         <Link href="/capture" className={dockBtnScan} aria-label="AI 스캔">
-          <span className="sm:hidden" aria-hidden>
-            📷
-          </span>
-          <span className="hidden sm:inline">스캔</span>
+          스캔
         </Link>
 
         <button
