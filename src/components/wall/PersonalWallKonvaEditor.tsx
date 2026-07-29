@@ -16,6 +16,7 @@ import { publishWall } from "@/lib/wall-share";
 import { shareWallImage } from "@/lib/wall-export";
 import { createWallInvite } from "@/lib/wall-invite";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
+import { consumePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import {
   prefetchWallScenePhotoUrls,
   resolveWallPhotoSrc,
@@ -424,7 +425,8 @@ export default function PersonalWallKonvaEditor() {
       if (cancelled) return;
 
       const pendingImports = consumePendingImports();
-      if (pendingImports.length === 0) return;
+      const pendingScanFiles = consumePendingScanFiles();
+      if (pendingImports.length === 0 && pendingScanFiles.length === 0) return;
 
       void (async () => {
         try {
@@ -442,6 +444,21 @@ export default function PersonalWallKonvaEditor() {
             });
           }
 
+          for (const file of pendingScanFiles) {
+            if (cancelled) return;
+            if (!guardAdd(1)) {
+              showToast(limitMessage);
+              break;
+            }
+            await addPhotoToWallScene(file, {
+              userId: user?.id,
+              wallId,
+              wallWidth: bounds.width,
+              wallHeight: bounds.height,
+              plan: wallPlan,
+            });
+          }
+
           if (cancelled) return;
 
           const doc = useWallSceneStore.getState().document;
@@ -455,7 +472,13 @@ export default function PersonalWallKonvaEditor() {
             });
           }
 
-          showToast("QR 네컷 사진을 붙였어요");
+          if (pendingScanFiles.length > 0 && pendingImports.length === 0) {
+            showToast("스캔한 사진을 붙였어요");
+          } else if (pendingImports.length > 0 && pendingScanFiles.length === 0) {
+            showToast("QR 네컷 사진을 붙였어요");
+          } else {
+            showToast("사진을 붙였어요");
+          }
         } catch (err) {
           if (!cancelled) {
             showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
@@ -476,6 +499,8 @@ export default function PersonalWallKonvaEditor() {
     showToast,
     guardAdd,
     limitMessage,
+    wallId,
+    wallPlan,
     persistLocal,
     adoptWallId,
   ]);
