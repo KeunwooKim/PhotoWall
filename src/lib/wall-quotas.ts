@@ -19,15 +19,15 @@ export interface WallQuota {
 export const WALL_QUOTAS: Record<UserPlan, WallQuota> = {
   free: {
     maxOwnedSharedWalls: 1,
-    maxSceneBytes: 2 * 1024 * 1024,
-    maxSceneObjects: 80,
-    maxPhotoBytes: 5 * 1024 * 1024,
+    maxSceneBytes: 4 * 1024 * 1024,
+    maxSceneObjects: 160,
+    maxPhotoBytes: 10 * 1024 * 1024,
   },
   premium: {
     maxOwnedSharedWalls: 5,
-    maxSceneBytes: 5 * 1024 * 1024,
-    maxSceneObjects: 200,
-    maxPhotoBytes: 12 * 1024 * 1024,
+    maxSceneBytes: 10 * 1024 * 1024,
+    maxSceneObjects: 400,
+    maxPhotoBytes: 24 * 1024 * 1024,
   },
 };
 

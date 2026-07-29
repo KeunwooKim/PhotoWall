@@ -36,6 +36,8 @@ export interface WallSceneStore {
   gridSize: number;
   viewportScale: number;
   userZoom: number;
+  panX: number;
+  panY: number;
   historyPast: WallSceneDocument[];
   historyFuture: WallSceneDocument[];
 
@@ -51,6 +53,7 @@ export interface WallSceneStore {
   removeSelectedObjects: () => void;
   setViewportScale: (scale: number) => void;
   setUserZoom: (zoom: number) => void;
+  addPan: (dx: number, dy: number) => void;
   resetUserZoom: () => void;
   recordHistory: () => void;
   undo: () => void;
@@ -109,6 +112,8 @@ export const useWallSceneStore = create<WallSceneStore>()(
     gridSize: DEFAULT_GRID_SIZE,
     viewportScale: 1,
     userZoom: 1,
+    panX: 0,
+    panY: 0,
     historyPast: [],
     historyFuture: [],
 
@@ -129,6 +134,8 @@ export const useWallSceneStore = create<WallSceneStore>()(
         snapGuides: [],
         viewportScale: 1,
         userZoom: 1,
+        panX: 0,
+        panY: 0,
         historyPast: [],
         historyFuture: [],
       }),
@@ -233,7 +240,9 @@ export const useWallSceneStore = create<WallSceneStore>()(
 
     setViewportScale: (scale) => set({ viewportScale: scale }),
     setUserZoom: (zoom) => set({ userZoom: Math.max(0.5, Math.min(4, zoom)) }),
-    resetUserZoom: () => set({ userZoom: 1 }),
+    addPan: (dx, dy) =>
+      set((state) => ({ panX: state.panX + dx, panY: state.panY + dy })),
+    resetUserZoom: () => set({ userZoom: 1, panX: 0, panY: 0 }),
 
     upsertObject: (object) =>
       set((state) => {

@@ -13,14 +13,14 @@ export interface ObjectBounds {
 }
 
 export const DEFAULT_WALL_BOUNDS: WallBounds = {
-  width: 390,
-  height: 600,
+  width: 780,
+  height: 1200,
 };
 
-export const WALL_EXPAND_MARGIN = 48;
-export const WALL_EXPAND_STEP = 80;
-export const WALL_MAX_WIDTH = 1200;
-export const WALL_MAX_HEIGHT = 2000;
+export const WALL_EXPAND_MARGIN = 96;
+export const WALL_EXPAND_STEP = 160;
+export const WALL_MAX_WIDTH = 2400;
+export const WALL_MAX_HEIGHT = 4000;
 
 export function clampWallBounds(bounds: WallBounds): WallBounds {
   return {
