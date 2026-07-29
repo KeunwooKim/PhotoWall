@@ -151,6 +151,9 @@ export default function KonvaWallStage({
   const viewportScale = useWallSceneStore((s) => s.viewportScale);
   const userZoom = useWallSceneStore((s) => s.userZoom);
   const setUserZoom = useWallSceneStore((s) => s.setUserZoom);
+  const panX = useWallSceneStore((s) => s.panX);
+  const panY = useWallSceneStore((s) => s.panY);
+  const addPan = useWallSceneStore((s) => s.addPan);
   const patchObject = useWallSceneStore((s) => s.patchObject);
 
   const [containerSize, setContainerSize] = useState({ width: 390, height: 600 });
@@ -284,14 +287,19 @@ export default function KonvaWallStage({
     return () => ro.disconnect();
   }, [setViewportScale]);
 
-  // ─── 핀치 줌 (모바일) ──────────────────────────────────────────────────────
+  // ─── 핀치 줌 + 두 손가락 패닝 (모바일) ───────────────────────────────────
   const pinchDistRef = useRef<number | null>(null);
+  const pinchMidpointRef = useRef<{ x: number; y: number } | null>(null);
 
   const handleTouchStartZoom = useCallback((e: TouchEvent) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       pinchDistRef.current = Math.hypot(dx, dy);
+      pinchMidpointRef.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
     }
   }, []);
 
@@ -300,6 +308,23 @@ export default function KonvaWallStage({
       if (e.touches.length !== 2 || pinchDistRef.current === null) return;
       if (isStrokeMode(editorModeRef.current)) return;
       e.preventDefault();
+
+      const midpoint = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+
+      if (pinchMidpointRef.current) {
+        const panDx = midpoint.x - pinchMidpointRef.current.x;
+        const panDy = midpoint.y - pinchMidpointRef.current.y;
+        if (panDx !== 0 || panDy !== 0) {
+          const zoom = useWallSceneStore.getState().userZoom;
+          if (Math.abs(zoom - 1) > 0.01) {
+            addPan(panDx, panDy);
+          }
+        }
+      }
+      pinchMidpointRef.current = midpoint;
 
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -310,11 +335,12 @@ export default function KonvaWallStage({
       const current = useWallSceneStore.getState().userZoom;
       setUserZoom(current * ratio);
     },
-    [setUserZoom],
+    [addPan, setUserZoom],
   );
 
   const handleTouchEndZoom = useCallback(() => {
     pinchDistRef.current = null;
+    pinchMidpointRef.current = null;
   }, []);
 
   // ─── 휠 줌 (PC) ───────────────────────────────────────────────────────────
@@ -836,7 +862,7 @@ export default function KonvaWallStage({
         style={{
           width: wallBounds.width,
           height: wallBounds.height,
-          transform: `translate(-50%, -50%) scale(${viewportScale})`,
+          transform: `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px)) scale(${viewportScale})`,
           background: showGrid ? undefined : theme.background,
           backgroundSize: showGrid
             ? `${gridSize}px ${gridSize}px`
