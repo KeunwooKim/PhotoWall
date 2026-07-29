@@ -45,6 +45,7 @@ import type { WallContextMenuActions } from "@/lib/wall-scene/build-context-menu
 import WallContextMenu from "@/components/wall/WallContextMenu";
 import TextStyleBar from "@/components/wall/TextStyleBar";
 import WallQuotaHint from "@/components/wall/WallQuotaHint";
+import ZoomResetButton from "@/components/wall/ZoomResetButton";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
@@ -851,6 +852,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         className="absolute right-4 z-30 flex items-center gap-2 sm:right-5"
         style={{ top: "max(1rem, env(safe-area-inset-top))" }}
       >
+        <ZoomResetButton />
         <WallQuotaHint usage={sceneUsage} plan={wallPlan} />
         {autoSaved && !saveMessage && (
           <div className="pointer-events-none hidden rounded-full bg-white/90 px-3 py-1.5 text-xs text-muted shadow-sm sm:block">
