@@ -416,53 +416,96 @@ export default function PersonalWallKonvaEditor() {
   }, [user, isReady, authLoading, syncCloudWall]);
 
   useEffect(() => {
-    if (!isReady) return;
+    if (!isReady || authLoading) return;
+    // Wait until cloud wall has finished loading — otherwise sync overwrites the new photo
+    if (user && (isCloudSyncing || !cloudSyncDoneRef.current)) return;
 
-    const pendingImports = consumePendingImports();
-    const pendingScanFiles = consumePendingScanFiles();
-    if (pendingImports.length === 0 && pendingScanFiles.length === 0) return;
+    let cancelled = false;
+    // Defer so KonvaWallStage can loadDocument(initialJson) first, then we append
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
 
-    void (async () => {
-      try {
-        const bounds = useWallSceneStore.getState().document.meta.wallBounds;
+      const pendingImports = consumePendingImports();
+      const pendingScanFiles = consumePendingScanFiles();
+      if (pendingImports.length === 0 && pendingScanFiles.length === 0) return;
 
-        for (const dataUrl of pendingImports) {
-          if (!guardAdd(1)) {
-            showToast(limitMessage);
-            break;
+      void (async () => {
+        try {
+          const bounds = useWallSceneStore.getState().document.meta.wallBounds;
+
+          for (const dataUrl of pendingImports) {
+            if (cancelled) return;
+            if (!guardAdd(1)) {
+              showToast(limitMessage);
+              break;
+            }
+            await addPhotoDataUrlToWallScene(dataUrl, {
+              wallWidth: bounds.width,
+              wallHeight: bounds.height,
+            });
           }
-          await addPhotoDataUrlToWallScene(dataUrl, {
-            wallWidth: bounds.width,
-            wallHeight: bounds.height,
-          });
-        }
 
-        for (const file of pendingScanFiles) {
-          if (!guardAdd(1)) {
-            showToast(limitMessage);
-            break;
+          for (const file of pendingScanFiles) {
+            if (cancelled) return;
+            if (!guardAdd(1)) {
+              showToast(limitMessage);
+              break;
+            }
+            await addPhotoToWallScene(file, {
+              userId: user?.id,
+              wallId,
+              wallWidth: bounds.width,
+              wallHeight: bounds.height,
+              plan: wallPlan,
+            });
           }
-          await addPhotoToWallScene(file, {
-            userId: user?.id,
-            wallId,
-            wallWidth: bounds.width,
-            wallHeight: bounds.height,
-            plan: wallPlan,
-          });
-        }
 
-        if (pendingScanFiles.length > 0 && pendingImports.length === 0) {
-          showToast("스캔한 사진을 붙였어요");
-        } else if (pendingImports.length > 0 && pendingScanFiles.length === 0) {
-          showToast("QR 네컷 사진을 붙였어요");
-        } else {
-          showToast("사진을 붙였어요");
+          if (cancelled) return;
+
+          // Persist + refresh Konva initialJson so a later hydrate keeps the photo
+          const doc = useWallSceneStore.getState().document;
+          const json = serializeWallScene(doc);
+          persistLocal(json);
+          lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
+          setLoadedCanvasJson(json);
+          if (user?.id) {
+            void saveWallToCloud(themeIdRef.current, json, wallIdRef.current).then((saved) => {
+              if (saved) adoptWallId(saved.id);
+            });
+          }
+
+          if (pendingScanFiles.length > 0 && pendingImports.length === 0) {
+            showToast("스캔한 사진을 붙였어요");
+          } else if (pendingImports.length > 0 && pendingScanFiles.length === 0) {
+            showToast("QR 네컷 사진을 붙였어요");
+          } else {
+            showToast("사진을 붙였어요");
+          }
+        } catch (err) {
+          if (!cancelled) {
+            showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
+          }
         }
-      } catch (err) {
-        showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
-      }
-    })();
-  }, [isReady, showToast, guardAdd, limitMessage, user?.id, wallId, wallPlan]);
+      })();
+    }, 80);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    isReady,
+    authLoading,
+    user,
+    isCloudSyncing,
+    showToast,
+    guardAdd,
+    limitMessage,
+    wallId,
+    wallPlan,
+    persistLocal,
+    adoptWallId,
+  ]);
 
   const handlePhotoUpload = useCallback(
     async (file: File) => {

@@ -40,12 +40,7 @@ export async function resolvePhotoUrl(
   assertPhotoUploadAllowed(file, plan);
 
   if (userId) {
-    try {
-      return await uploadWallPhoto(file, userId, plan);
-    } catch (err) {
-      if (err instanceof Error && err.name === "PhotoUploadError") throw err;
-      // Storage 미설정·private 전환 전 fallback
-    }
+    return uploadWallPhoto(file, userId, plan);
   }
   return readFileAsDataUrl(file);
 }
