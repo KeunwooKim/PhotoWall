@@ -84,6 +84,8 @@ export interface KonvaWallStageProps {
   onGuardQuotaAdd?: (count?: number) => boolean;
   onQuotaBlocked?: () => void;
   onRequestSelectMode?: () => void;
+  /** Open text style editor (double-click / long-press / after place). */
+  onEditText?: (objectId: string) => void;
   onContextMenuRequest?: WallContextMenuRequestFn;
 }
 
@@ -112,6 +114,7 @@ export default function KonvaWallStage({
   onGuardQuotaAdd,
   onQuotaBlocked,
   onRequestSelectMode,
+  onEditText,
   onContextMenuRequest,
 }: KonvaWallStageProps) {
   const theme = getWallTheme(themeId);
@@ -396,7 +399,10 @@ export default function KonvaWallStage({
             onSelect={select}
             onInteractionStart={() => broadcastSelection()}
             onManipulationChange={setManipulating}
-            onEditRequest={() => onRequestSelectMode?.()}
+            onEditRequest={(id) => {
+              onRequestSelectMode?.();
+              onEditText?.(id);
+            }}
             registerNode={registerNode}
           />
         );
@@ -443,6 +449,7 @@ export default function KonvaWallStage({
       setManipulating,
       registerNode,
       onRequestSelectMode,
+      onEditText,
       handleObjectSelect,
       broadcastSelection,
     ],
@@ -634,13 +641,15 @@ export default function KonvaWallStage({
         onQuotaBlocked?.();
         return;
       }
-      addTextToWallScene({ x: pos.x, y: pos.y });
+      const added = addTextToWallScene({ x: pos.x, y: pos.y });
       broadcastSelection();
       onRequestSelectMode?.();
+      onEditText?.(added.id);
     },
     [
       broadcastSelection,
       getWallPointer,
+      onEditText,
       onGuardQuotaAdd,
       onQuotaBlocked,
       onRequestSelectMode,

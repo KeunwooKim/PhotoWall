@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { EditorMode } from "./editor-types";
 import {
   DEFAULT_PEN_STYLE_ID,
@@ -37,7 +38,11 @@ const dockBtn =
 const dockBtnIdle = `${dockBtn} text-neutral-600 hover:bg-black/5`;
 const dockBtnActive = `${dockBtn} bg-neutral-900 text-white`;
 
-/** Persistent bottom tools — select / pen / tape / text / photo / decorate + undo. */
+/**
+ * Bottom tools. Pen/tape: first tap enters mode + opens settings;
+ * second tap collapses settings so the canvas is free to draw;
+ * third tap reopens settings. Use 선택 to leave the tool.
+ */
 export default function EditorToolDock({
   mode,
   onModeChange,
@@ -58,8 +63,34 @@ export default function EditorToolDock({
   onTapeColorChange,
   onTapeMaxLengthChange,
 }: EditorToolDockProps) {
-  const showPenPicker = mode === "pen";
-  const showTapePicker = mode === "tape";
+  const [settingsOpen, setSettingsOpen] = useState(true);
+
+  useEffect(() => {
+    if (mode === "pen" || mode === "tape") {
+      setSettingsOpen(true);
+    }
+  }, [mode]);
+
+  const handlePenClick = () => {
+    if (mode !== "pen") {
+      onModeChange("pen");
+      setSettingsOpen(true);
+      return;
+    }
+    setSettingsOpen((open) => !open);
+  };
+
+  const handleTapeClick = () => {
+    if (mode !== "tape") {
+      onModeChange("tape");
+      setSettingsOpen(true);
+      return;
+    }
+    setSettingsOpen((open) => !open);
+  };
+
+  const showPenPicker = mode === "pen" && settingsOpen;
+  const showTapePicker = mode === "tape" && settingsOpen;
 
   return (
     <div
@@ -68,7 +99,16 @@ export default function EditorToolDock({
     >
       {showPenPicker && (
         <div className="pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
-          <p className="text-[11px] font-medium text-muted">펜 종류</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-medium text-muted">펜 종류</p>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(false)}
+              className="rounded-full bg-foreground/6 px-2.5 py-1 text-[10px] font-medium text-muted transition hover:bg-foreground/10"
+            >
+              접기
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {PEN_STYLES.map((style) => (
               <button
@@ -114,12 +154,22 @@ export default function EditorToolDock({
               />
             ))}
           </div>
+          <p className="text-[10px] text-muted">펜을 다시 누르면 설정을 접고 그릴 수 있어요</p>
         </div>
       )}
 
       {showTapePicker && (
         <div className="pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
-          <p className="text-[11px] font-medium text-muted">테이프 길이</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-medium text-muted">테이프 길이</p>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(false)}
+              className="rounded-full bg-foreground/6 px-2.5 py-1 text-[10px] font-medium text-muted transition hover:bg-foreground/10"
+            >
+              접기
+            </button>
+          </div>
           <div className="flex gap-1.5">
             {HIGHLIGHTER_LENGTH_PRESETS.map((length) => (
               <button
@@ -152,7 +202,28 @@ export default function EditorToolDock({
               />
             ))}
           </div>
+          <p className="text-[10px] text-muted">테이프를 다시 누르면 설정을 접을 수 있어요</p>
         </div>
+      )}
+
+      {mode === "pen" && !settingsOpen && (
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          className="pointer-events-auto rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium text-muted shadow-md ring-1 ring-black/8 backdrop-blur-sm"
+        >
+          펜 설정
+        </button>
+      )}
+
+      {mode === "tape" && !settingsOpen && (
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          className="pointer-events-auto rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium text-muted shadow-md ring-1 ring-black/8 backdrop-blur-sm"
+        >
+          테이프 설정
+        </button>
       )}
 
       <div className="pointer-events-auto flex max-w-[100vw] items-center gap-0.5 overflow-x-auto rounded-full bg-white/95 p-1.5 shadow-lg ring-1 ring-black/8 backdrop-blur-sm sm:gap-1">
@@ -166,7 +237,7 @@ export default function EditorToolDock({
         </button>
         <button
           type="button"
-          onClick={() => onModeChange(mode === "pen" ? "select" : "pen")}
+          onClick={handlePenClick}
           className={mode === "pen" ? dockBtnActive : dockBtnIdle}
           aria-pressed={mode === "pen"}
         >
@@ -174,7 +245,7 @@ export default function EditorToolDock({
         </button>
         <button
           type="button"
-          onClick={() => onModeChange(mode === "tape" ? "select" : "tape")}
+          onClick={handleTapeClick}
           className={mode === "tape" ? dockBtnActive : dockBtnIdle}
           aria-pressed={mode === "tape"}
         >
