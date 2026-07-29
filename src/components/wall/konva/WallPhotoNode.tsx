@@ -6,7 +6,7 @@ import type Konva from "konva";
 import { getCachedHtmlImage, loadHtmlImage } from "@/lib/storage/load-html-image";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
-import type { WallScenePhoto } from "@/types/wall-scene-v2";
+import type { PhotoCropRect, WallScenePhoto } from "@/types/wall-scene-v2";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { applyDragSnapToNode, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
@@ -26,6 +26,7 @@ interface WallPhotoNodeProps {
   onInteractionStart?: () => void;
   onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onManipulationChange?: (active: boolean, objectId: string) => void;
+  onCropRequest?: (objectId: string) => void;
   registerNode: (id: string, node: Konva.Group | null) => void;
 }
 
@@ -43,6 +44,7 @@ export default function WallPhotoNode({
   onSelect,
   onInteractionStart,
   onManipulationChange,
+  onCropRequest,
   registerNode,
 }: WallPhotoNodeProps) {
   const displaySrc = useResolvedImageSrc(object.src, resolvePhotoSrc);
@@ -114,6 +116,13 @@ export default function WallPhotoNode({
     [broadcastLivePosition, onManipulationChange, objectId],
   );
 
+  const requestCrop = useCallback(() => {
+    if (readOnly) return;
+    onSelect(false);
+    onInteractionStart?.();
+    onCropRequest?.(objectId);
+  }, [objectId, onCropRequest, onInteractionStart, onSelect, readOnly]);
+
   useLayoutEffect(() => {
     const node = groupRef.current;
     if (!node || isDraggingRef.current) return;
@@ -153,6 +162,16 @@ export default function WallPhotoNode({
 
   const shownImage = image ?? imageCacheRef.current;
 
+  const konvaCrop = useMemo((): PhotoCropRect | undefined => {
+    if (!shownImage || !object.crop) return undefined;
+    return {
+      x: object.crop.x,
+      y: object.crop.y,
+      width: object.crop.width,
+      height: object.crop.height,
+    };
+  }, [object.crop, shownImage]);
+
   return (
     <Group
       ref={attachGroupRef}
@@ -161,6 +180,16 @@ export default function WallPhotoNode({
       draggable={!readOnly}
       listening
       onContextMenu={handleContextMenu}
+      onDblClick={(e) => {
+        e.cancelBubble = true;
+        cancelLongPress();
+        requestCrop();
+      }}
+      onDblTap={(e) => {
+        e.cancelBubble = true;
+        cancelLongPress();
+        requestCrop();
+      }}
       onMouseDown={(e) => {
         e.cancelBubble = true;
         handleContextPointerDown(e);
@@ -184,6 +213,7 @@ export default function WallPhotoNode({
           image={shownImage}
           width={object.width}
           height={object.height}
+          crop={konvaCrop}
           perfectDrawEnabled={false}
           shadowForStrokeEnabled={false}
         />

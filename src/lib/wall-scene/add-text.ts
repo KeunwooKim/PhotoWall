@@ -64,7 +64,12 @@ export function addTextToWallScene(options: {
 
 export function updateTextObject(
   id: string,
-  patch: Partial<Pick<WallSceneText, "text" | "fontSize" | "fontFamily" | "fill" | "width">>,
+  patch: Partial<
+    Pick<
+      WallSceneText,
+      "text" | "fontSize" | "fontFamily" | "fill" | "width" | "fontWeight" | "textAlign"
+    >
+  >,
 ): void {
   const current = useWallSceneStore.getState().document.objects.find((o) => o.id === id);
   if (!current || current.type !== "text") return;

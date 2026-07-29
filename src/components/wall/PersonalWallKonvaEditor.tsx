@@ -16,6 +16,7 @@ import { publishWall } from "@/lib/wall-share";
 import { shareWallImage } from "@/lib/wall-export";
 import { createWallInvite } from "@/lib/wall-invite";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
+import { consumePendingScans } from "@/lib/photo-scan/scan-session";
 import {
   prefetchWallScenePhotoUrls,
   resolveWallPhotoSrc,
@@ -49,6 +50,9 @@ import WallContextMenu from "@/components/wall/WallContextMenu";
 import TextStyleBar from "@/components/wall/TextStyleBar";
 import WallQuotaHint from "@/components/wall/WallQuotaHint";
 import ZoomResetButton from "@/components/wall/ZoomResetButton";
+import WallObjectInspector from "@/components/wall/WallObjectInspector";
+import PhotoCropToolbar from "@/components/wall/PhotoCropToolbar";
+import { usePhotoCrop } from "@/hooks/usePhotoCrop";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import GuestSaveBanner from "@/components/wall/GuestSaveBanner";
@@ -140,6 +144,22 @@ export default function PersonalWallKonvaEditor() {
   }, [selectedIds, sceneObjects]);
   const editingTextObject =
     editingTextId && selectedTextObject?.id === editingTextId ? selectedTextObject : null;
+  const inspectorObject = useMemo(() => {
+    if (selectedIds.length !== 1 || editingTextId) return null;
+    return sceneObjects.find((o) => o.id === selectedIds[0]) ?? null;
+  }, [editingTextId, selectedIds, sceneObjects]);
+
+  const {
+    cropPhotoId,
+    cropAspectPreset,
+    setCropAspectPreset,
+    handleStartCrop,
+    handleCropApply,
+    handleCropCancel,
+    handleCropReset,
+    canResetCrop,
+    konvaCropProps,
+  } = usePhotoCrop(sceneObjects);
 
   useEffect(() => {
     if (!editingTextId) return;
@@ -399,7 +419,9 @@ export default function PersonalWallKonvaEditor() {
   useEffect(() => {
     if (!isReady || importedRef.current) return;
 
-    const pending = consumePendingImports();
+    const pendingImports = consumePendingImports();
+    const pendingScans = consumePendingScans();
+    const pending = [...pendingImports, ...pendingScans];
     if (pending.length === 0) return;
 
     importedRef.current = true;
@@ -411,7 +433,13 @@ export default function PersonalWallKonvaEditor() {
           wallHeight: bounds.height,
         });
       }
-      showToast("QR 네컷 사진을 붙였어요");
+      if (pendingScans.length > 0 && pendingImports.length === 0) {
+        showToast("스캔한 사진을 붙였어요");
+      } else if (pendingImports.length > 0 && pendingScans.length === 0) {
+        showToast("QR 네컷 사진을 붙였어요");
+      } else {
+        showToast("사진을 붙였어요");
+      }
     })();
   }, [isReady, showToast]);
 
@@ -913,7 +941,9 @@ export default function PersonalWallKonvaEditor() {
         onQuotaBlocked={() => showToast(limitMessage)}
         onRequestSelectMode={() => setMode("select")}
         onEditText={setEditingTextId}
+        onStartPhotoCrop={handleStartCrop}
         onContextMenuRequest={handleContextMenuRequest}
+        {...konvaCropProps}
       />
 
       <WallContextMenu
@@ -965,6 +995,30 @@ export default function PersonalWallKonvaEditor() {
 
       {editingTextObject && mode === "select" && (
         <TextStyleBar object={editingTextObject} onClose={() => setEditingTextId(null)} />
+      )}
+
+      {inspectorObject && mode === "select" && !editingTextObject && !cropPhotoId && (
+        <div
+          className="absolute left-3 z-30 sm:left-4"
+          style={{ bottom: "max(6rem, calc(env(safe-area-inset-bottom) + 5rem))" }}
+        >
+          <WallObjectInspector
+            object={inspectorObject}
+            onStartCrop={inspectorObject.type === "photo" ? handleStartCrop : undefined}
+          />
+        </div>
+      )}
+
+      {cropPhotoId && (
+        <PhotoCropToolbar
+          aspectPreset={cropAspectPreset}
+          onAspectChange={setCropAspectPreset}
+          onApply={handleCropApply}
+          onCancel={handleCropCancel}
+          onReset={handleCropReset}
+          canReset={canResetCrop}
+          showRecoveryHint={canResetCrop}
+        />
       )}
 
       <EditorToolDock

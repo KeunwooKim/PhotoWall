@@ -114,6 +114,39 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
             ))}
           </div>
 
+          <p className="text-[11px] font-medium text-muted">스타일</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                updateTextObject(object.id, {
+                  fontWeight: object.fontWeight === "bold" ? "normal" : "bold",
+                })
+              }
+              className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${
+                object.fontWeight === "bold"
+                  ? "bg-foreground text-background"
+                  : "bg-foreground/6 hover:bg-foreground/10"
+              }`}
+            >
+              B
+            </button>
+            {(["left", "center", "right"] as const).map((align) => (
+              <button
+                key={align}
+                type="button"
+                onClick={() => updateTextObject(object.id, { textAlign: align })}
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
+                  (object.textAlign ?? "left") === align
+                    ? "bg-foreground text-background"
+                    : "bg-foreground/6 hover:bg-foreground/10"
+                }`}
+              >
+                {align === "left" ? "왼쪽" : align === "center" ? "가운데" : "오른쪽"}
+              </button>
+            ))}
+          </div>
+
           <p className="text-[10px] text-muted">
             선택 후 드래그로 이동 · 더블탭으로 다시 편집 · 길게 누르면 메뉴
           </p>

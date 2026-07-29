@@ -4,9 +4,13 @@ import { useWallSceneStore } from "@/stores/wall-scene-store";
 
 export default function ZoomResetButton() {
   const userZoom = useWallSceneStore((s) => s.userZoom);
+  const panX = useWallSceneStore((s) => s.panX);
+  const panY = useWallSceneStore((s) => s.panY);
   const resetUserZoom = useWallSceneStore((s) => s.resetUserZoom);
 
-  if (Math.abs(userZoom - 1) < 0.01) return null;
+  const zoomed = Math.abs(userZoom - 1) >= 0.01;
+  const panned = Math.abs(panX) >= 1 || Math.abs(panY) >= 1;
+  if (!zoomed && !panned) return null;
 
   const pct = Math.round(userZoom * 100);
 
