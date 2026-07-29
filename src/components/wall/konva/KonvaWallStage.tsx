@@ -149,6 +149,8 @@ export default function KonvaWallStage({
   const clearSelection = useWallSceneStore((s) => s.clearSelection);
   const setViewportScale = useWallSceneStore((s) => s.setViewportScale);
   const viewportScale = useWallSceneStore((s) => s.viewportScale);
+  const userZoom = useWallSceneStore((s) => s.userZoom);
+  const setUserZoom = useWallSceneStore((s) => s.setUserZoom);
   const patchObject = useWallSceneStore((s) => s.patchObject);
 
   const [containerSize, setContainerSize] = useState({ width: 390, height: 600 });
@@ -252,21 +254,20 @@ export default function KonvaWallStage({
     return () => unsub();
   }, []);
 
+  const fitScale = useMemo(
+    () =>
+      computeFitScale(
+        containerSize.width,
+        containerSize.height,
+        wallBounds.width,
+        wallBounds.height,
+      ),
+    [containerSize.width, containerSize.height, wallBounds.width, wallBounds.height],
+  );
+
   useEffect(() => {
-    const fit = computeFitScale(
-      containerSize.width,
-      containerSize.height,
-      wallBounds.width,
-      wallBounds.height,
-    );
-    setViewportScale(fit);
-  }, [
-    containerSize.width,
-    containerSize.height,
-    wallBounds.width,
-    wallBounds.height,
-    setViewportScale,
-  ]);
+    setViewportScale(fitScale * userZoom);
+  }, [fitScale, userZoom, setViewportScale]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -282,6 +283,70 @@ export default function KonvaWallStage({
     ro.observe(el);
     return () => ro.disconnect();
   }, [setViewportScale]);
+
+  // ─── 핀치 줌 (모바일) ──────────────────────────────────────────────────────
+  const pinchDistRef = useRef<number | null>(null);
+
+  const handleTouchStartZoom = useCallback((e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchDistRef.current = Math.hypot(dx, dy);
+    }
+  }, []);
+
+  const handleTouchMoveZoom = useCallback(
+    (e: TouchEvent) => {
+      if (e.touches.length !== 2 || pinchDistRef.current === null) return;
+      if (isStrokeMode(editorModeRef.current)) return;
+      e.preventDefault();
+
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const ratio = dist / pinchDistRef.current;
+      pinchDistRef.current = dist;
+
+      const current = useWallSceneStore.getState().userZoom;
+      setUserZoom(current * ratio);
+    },
+    [setUserZoom],
+  );
+
+  const handleTouchEndZoom = useCallback(() => {
+    pinchDistRef.current = null;
+  }, []);
+
+  // ─── 휠 줌 (PC) ───────────────────────────────────────────────────────────
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (isStrokeMode(editorModeRef.current)) return;
+      e.preventDefault();
+
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const current = useWallSceneStore.getState().userZoom;
+      setUserZoom(current * delta);
+    },
+    [setUserZoom],
+  );
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    el.addEventListener("touchstart", handleTouchStartZoom, { passive: true });
+    el.addEventListener("touchmove", handleTouchMoveZoom, { passive: false });
+    el.addEventListener("touchend", handleTouchEndZoom, { passive: true });
+    el.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      el.removeEventListener("touchstart", handleTouchStartZoom);
+      el.removeEventListener("touchmove", handleTouchMoveZoom);
+      el.removeEventListener("touchend", handleTouchEndZoom);
+      el.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleTouchStartZoom, handleTouchMoveZoom, handleTouchEndZoom, handleWheel]);
 
   const registerNode = useCallback((id: string, node: Konva.Group | null) => {
     if (node) nodeRegistry.current.set(id, node);
