@@ -35,9 +35,10 @@ interface EditorToolDockProps {
 }
 
 const dockBtn =
-  "flex h-11 min-w-11 items-center justify-center rounded-full px-2.5 text-[11px] font-medium transition active:scale-95 sm:px-3 sm:text-xs";
+  "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2.5 text-[11px] font-medium transition active:scale-95 sm:px-3 sm:text-xs";
 const dockBtnIdle = `${dockBtn} text-neutral-600 hover:bg-black/5`;
 const dockBtnActive = `${dockBtn} bg-neutral-900 text-white`;
+const dockBtnScan = `${dockBtn} border border-foreground/20 bg-foreground/5 text-neutral-800 hover:bg-foreground/10`;
 
 /**
  * Bottom tools. Pen/tape: first tap enters mode + opens settings;
@@ -227,7 +228,8 @@ export default function EditorToolDock({
         </button>
       )}
 
-      <div className="pointer-events-auto flex max-w-[100vw] items-center gap-0.5 overflow-x-auto rounded-full bg-white/95 p-1.5 shadow-lg ring-1 ring-black/8 backdrop-blur-sm sm:gap-1">
+      <div className="pointer-events-auto relative max-w-[100vw]">
+        <div className="flex items-center gap-0.5 overflow-x-auto rounded-full bg-white/95 p-1.5 shadow-lg ring-1 ring-black/8 backdrop-blur-sm sm:gap-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
           onClick={() => onModeChange("select")}
@@ -236,6 +238,31 @@ export default function EditorToolDock({
         >
           선택
         </button>
+
+        <label className={`${dockBtnIdle} cursor-pointer`}>
+          사진
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files) {
+                [...files].forEach((file) => onPhotoUpload(file));
+              }
+              e.target.value = "";
+            }}
+          />
+        </label>
+
+        <Link href="/capture" className={dockBtnScan} aria-label="카메라로 스캔">
+          <span className="sm:hidden" aria-hidden>
+            📷
+          </span>
+          <span className="hidden sm:inline">스캔</span>
+        </Link>
+
         <button
           type="button"
           onClick={handlePenClick}
@@ -261,27 +288,6 @@ export default function EditorToolDock({
           텍스트
         </button>
 
-        <label className={`${dockBtnIdle} cursor-pointer`}>
-          사진
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = e.target.files;
-              if (files) {
-                [...files].forEach((file) => onPhotoUpload(file));
-              }
-              e.target.value = "";
-            }}
-          />
-        </label>
-
-        <Link href="/capture" className={dockBtnIdle}>
-          스캔
-        </Link>
-
         <button type="button" onClick={onOpenDecorate} className={dockBtnIdle}>
           꾸미기
         </button>
@@ -306,6 +312,11 @@ export default function EditorToolDock({
         >
           ↪
         </button>
+        </div>
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 w-6 rounded-r-full bg-gradient-to-l from-white/95 to-transparent sm:hidden"
+          aria-hidden
+        />
       </div>
     </div>
   );
