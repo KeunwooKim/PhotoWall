@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { EditorMode } from "./editor-types";
 import {
   DEFAULT_PEN_STYLE_ID,
@@ -37,6 +38,7 @@ const dockBtn =
   "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2.5 text-[11px] font-medium transition active:scale-95 sm:px-3 sm:text-xs";
 const dockBtnIdle = `${dockBtn} text-neutral-600 hover:bg-black/5`;
 const dockBtnActive = `${dockBtn} bg-neutral-900 text-white`;
+const dockBtnScan = `${dockBtn} border border-foreground/20 bg-foreground/5 text-neutral-800 hover:bg-foreground/10`;
 
 /**
  * Bottom tools. Pen/tape: first tap enters mode + opens settings;
@@ -253,6 +255,13 @@ export default function EditorToolDock({
             }}
           />
         </label>
+
+        <Link href="/capture" className={dockBtnScan} aria-label="AI 스캔">
+          <span className="sm:hidden" aria-hidden>
+            📷
+          </span>
+          <span className="hidden sm:inline">스캔</span>
+        </Link>
 
         <button
           type="button"
