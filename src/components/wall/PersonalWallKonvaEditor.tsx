@@ -49,6 +49,8 @@ import WallContextMenu from "@/components/wall/WallContextMenu";
 import TextStyleBar from "@/components/wall/TextStyleBar";
 import WallQuotaHint from "@/components/wall/WallQuotaHint";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
+import GuestSaveBanner from "@/components/wall/GuestSaveBanner";
 import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
 import { HIGHLIGHTER_LENGTH_PRESETS } from "@/lib/wall-scene/highlighter";
 import {
@@ -294,7 +296,7 @@ export default function PersonalWallKonvaEditor() {
             lastSavedFingerprintRef.current = fingerprintPersistableScene(
               parseWallScene(saved.canvasJson),
             );
-            showToast("로컬 벽을 클라우드에 복구했어요");
+            showToast("체험 중이던 벽을 저장했어요");
           } else {
             saveWall(local.themeId, local.canvasJson);
             setThemeId(resolveWallThemeId(local.themeId));
@@ -355,7 +357,7 @@ export default function PersonalWallKonvaEditor() {
           lastSavedFingerprintRef.current = fingerprintPersistableScene(
             parseWallScene(saved.canvasJson),
           );
-          showToast("내 벽을 클라우드에 연결했어요");
+          showToast("벽이 이어졌어요 · 이제 어디서든 볼 수 있어요");
         }
       }
     } finally {
@@ -708,6 +710,10 @@ export default function PersonalWallKonvaEditor() {
   }, [showToast, persistLocal, adoptWallId, markPreviewDirty]);
 
   const handleShare = useCallback(async () => {
+    if (!user) {
+      showToast("로그인하면 벽을 공유할 수 있어요");
+      return;
+    }
     const json = serializeWallScene(useWallSceneStore.getState().document);
     setIsSharing(true);
     try {
@@ -741,6 +747,10 @@ export default function PersonalWallKonvaEditor() {
   }, [isExporting, showToast]);
 
   const handleInvite = useCallback(async () => {
+    if (!user) {
+      showToast("로그인하면 친구를 초대할 수 있어요");
+      return;
+    }
     const json = serializeWallScene(useWallSceneStore.getState().document);
     setIsInviting(true);
     try {
@@ -866,11 +876,7 @@ export default function PersonalWallKonvaEditor() {
   }, [handleCopy, handleCut, handleDelete, handleDuplicate, handleGroup, handlePaste, handleSelectAll, handleUngroup, mode, nudgeSelection, redo, selectedIds.length, undo]);
 
   if (!loadedCanvasJson) {
-    return (
-      <div className="flex h-[100dvh] items-center justify-center text-sm text-muted">
-        저장된 벽 불러오는 중...
-      </div>
-    );
+    return <WallLoadingOverlay title="내 벽 불러오는 중..." />;
   }
 
   return (
@@ -976,6 +982,8 @@ export default function PersonalWallKonvaEditor() {
         onTapeMaxLengthChange={setHighlighterMaxLength}
       />
 
+      <GuestSaveBanner hasObjects={sceneObjects.length > 0} />
+
       {saveMessage && (
         <div
           className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background shadow-lg"
@@ -986,9 +994,7 @@ export default function PersonalWallKonvaEditor() {
       )}
 
       {!isReady && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/70 text-sm text-muted">
-          캔버스 준비 중...
-        </div>
+        <WallLoadingOverlay mode="overlay" title="편집 화면 준비 중..." />
       )}
 
       <Toolbar

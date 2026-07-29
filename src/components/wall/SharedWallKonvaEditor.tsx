@@ -46,6 +46,7 @@ import WallContextMenu from "@/components/wall/WallContextMenu";
 import TextStyleBar from "@/components/wall/TextStyleBar";
 import WallQuotaHint from "@/components/wall/WallQuotaHint";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
 import { HIGHLIGHTER_LENGTH_PRESETS } from "@/lib/wall-scene/highlighter";
 import {
@@ -759,11 +760,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }
 
   if (loadState === "loading" || !loadedCanvasJson) {
-    return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6">
-        <p className="text-sm text-muted">공동 벽 불러오는 중...</p>
-      </div>
-    );
+    return <WallLoadingOverlay title="공동 벽 불러오는 중..." />;
   }
 
   return (
@@ -902,9 +899,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       )}
 
       {!isReady && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/70 text-sm text-muted">
-          캔버스 준비 중...
-        </div>
+        <WallLoadingOverlay mode="overlay" title="편집 화면 준비 중..." />
       )}
 
       <Toolbar
