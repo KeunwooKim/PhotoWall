@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { detectDocumentQuad, quadSimilarity } from "@/lib/photo-scan/detect-quad";
-import { loadOpenCv } from "@/lib/photo-scan/load-opencv";
+import { isOpenCvReady, loadOpenCv } from "@/lib/photo-scan/load-opencv";
 import {
   canvasToJpegDataUrl,
   defaultInsetQuad,
@@ -14,6 +14,7 @@ import { savePendingScans } from "@/lib/photo-scan/scan-session";
 import type { Point2, QuadPoints } from "@/lib/photo-scan/types";
 
 type Phase = "loading" | "camera" | "review" | "processing" | "error";
+type ScanEngineState = "idle" | "loading" | "ready" | "failed";
 
 const STABLE_MS = 700;
 const DETECT_INTERVAL_MS = 120;
@@ -55,6 +56,7 @@ export default function PhotoScanClient() {
   const reviewWrapRef = useRef<HTMLDivElement>(null);
 
   const [phase, setPhase] = useState<Phase>("loading");
+  const [scanEngine, setScanEngine] = useState<ScanEngineState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [liveQuad, setLiveQuad] = useState<QuadPoints | null>(null);
   const [stableProgress, setStableProgress] = useState(0);
@@ -78,7 +80,9 @@ export default function PhotoScanClient() {
     setErrorMessage(null);
     setPhase("loading");
     try {
-      await loadOpenCv();
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("unsupported");
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -91,17 +95,43 @@ export default function PhotoScanClient() {
       const video = videoRef.current;
       if (!video) throw new Error("video missing");
       video.srcObject = stream;
+      video.setAttribute("playsinline", "true");
       await video.play();
       setPhase("camera");
     } catch (err) {
       setPhase("error");
+      const name = err instanceof Error ? err.name : "";
       setErrorMessage(
-        err instanceof Error && err.name === "NotAllowedError"
+        name === "NotAllowedError"
           ? "카메라 권한이 필요해요. 브라우저 설정에서 허용해 주세요"
-          : "카메라를 열 수 없어요. HTTPS 환경에서 다시 시도해 주세요",
+          : name === "NotFoundError"
+            ? "카메라를 찾을 수 없어요"
+            : "카메라를 열 수 없어요. HTTPS 환경에서 다시 시도해 주세요",
       );
     }
   }, []);
+
+  useEffect(() => {
+    if (phase !== "camera") return;
+    if (isOpenCvReady()) {
+      setScanEngine("ready");
+      return;
+    }
+
+    let cancelled = false;
+    setScanEngine("loading");
+    void loadOpenCv()
+      .then(() => {
+        if (!cancelled) setScanEngine("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setScanEngine("failed");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [phase]);
 
   useEffect(() => {
     void startCamera();
@@ -129,9 +159,15 @@ export default function PhotoScanClient() {
           const sx = full.width / detectCanvas.width;
           const sy = full.height / detectCanvas.height;
           quad = scaleQuad(detectQuad, sx, sy);
+        } else if (isOpenCvReady()) {
+          try {
+            const detected = await detectDocumentQuad(full);
+            quad = detected ?? defaultInsetQuad(full.width, full.height);
+          } catch {
+            quad = defaultInsetQuad(full.width, full.height);
+          }
         } else {
-          const detected = await detectDocumentQuad(full);
-          quad = detected ?? defaultInsetQuad(full.width, full.height);
+          quad = defaultInsetQuad(full.width, full.height);
         }
 
         const url = full.toDataURL("image/jpeg", 0.95);
@@ -149,9 +185,9 @@ export default function PhotoScanClient() {
     [stopCamera],
   );
 
-  // Live detection loop
+  // Live detection loop — only when OpenCV is ready
   useEffect(() => {
-    if (phase !== "camera") return;
+    if (phase !== "camera" || scanEngine !== "ready") return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -243,7 +279,7 @@ export default function PhotoScanClient() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [phase, captureAtQuad]);
+  }, [phase, scanEngine, captureAtQuad]);
 
   const applyScan = useCallback(async () => {
     if (!capturedUrl || !reviewQuad) return;
@@ -343,7 +379,7 @@ export default function PhotoScanClient() {
           />
 
           {phase === "loading" && (
-            <p className="absolute text-sm text-white/80">카메라·스캔 엔진 준비 중…</p>
+            <p className="absolute text-sm text-white/80">카메라 여는 중…</p>
           )}
 
           {phase === "error" && (
@@ -365,9 +401,13 @@ export default function PhotoScanClient() {
               style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
             >
               <p className="rounded-full bg-black/50 px-3 py-1.5 text-center text-xs text-white/90 backdrop-blur-sm">
-                {liveQuad
-                  ? "테두리가 잡히면 자동으로 촬영해요"
-                  : "인생네컷·사진을 프레임 안에 맞춰 주세요"}
+                {scanEngine === "loading"
+                  ? "자동 감지 준비 중… 아래 셔터로 바로 촬영할 수 있어요"
+                  : scanEngine === "failed"
+                    ? "자동 감지를 사용할 수 없어요 — 셔터로 촬영해 주세요"
+                    : liveQuad
+                      ? "테두리가 잡히면 자동으로 촬영해요"
+                      : "인생네컷·사진을 프레임 안에 맞춰 주세요"}
               </p>
               {stableProgress > 0 && (
                 <div className="h-1 w-40 overflow-hidden rounded-full bg-white/20">
