@@ -16,7 +16,6 @@ import { publishWall } from "@/lib/wall-share";
 import { shareWallImage } from "@/lib/wall-export";
 import { createWallInvite } from "@/lib/wall-invite";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
-import { consumePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import {
   prefetchWallScenePhotoUrls,
   resolveWallPhotoSrc,
@@ -417,17 +416,15 @@ export default function PersonalWallKonvaEditor() {
 
   useEffect(() => {
     if (!isReady || authLoading) return;
-    // Wait until cloud wall has finished loading — otherwise sync overwrites the new photo
+    // Wait until cloud wall has finished loading — otherwise sync overwrites imports
     if (user && (isCloudSyncing || !cloudSyncDoneRef.current)) return;
 
     let cancelled = false;
-    // Defer so KonvaWallStage can loadDocument(initialJson) first, then we append
     const timer = window.setTimeout(() => {
       if (cancelled) return;
 
       const pendingImports = consumePendingImports();
-      const pendingScanFiles = consumePendingScanFiles();
-      if (pendingImports.length === 0 && pendingScanFiles.length === 0) return;
+      if (pendingImports.length === 0) return;
 
       void (async () => {
         try {
@@ -445,24 +442,8 @@ export default function PersonalWallKonvaEditor() {
             });
           }
 
-          for (const file of pendingScanFiles) {
-            if (cancelled) return;
-            if (!guardAdd(1)) {
-              showToast(limitMessage);
-              break;
-            }
-            await addPhotoToWallScene(file, {
-              userId: user?.id,
-              wallId,
-              wallWidth: bounds.width,
-              wallHeight: bounds.height,
-              plan: wallPlan,
-            });
-          }
-
           if (cancelled) return;
 
-          // Persist + refresh Konva initialJson so a later hydrate keeps the photo
           const doc = useWallSceneStore.getState().document;
           const json = serializeWallScene(doc);
           persistLocal(json);
@@ -474,13 +455,7 @@ export default function PersonalWallKonvaEditor() {
             });
           }
 
-          if (pendingScanFiles.length > 0 && pendingImports.length === 0) {
-            showToast("스캔한 사진을 붙였어요");
-          } else if (pendingImports.length > 0 && pendingScanFiles.length === 0) {
-            showToast("QR 네컷 사진을 붙였어요");
-          } else {
-            showToast("사진을 붙였어요");
-          }
+          showToast("QR 네컷 사진을 붙였어요");
         } catch (err) {
           if (!cancelled) {
             showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
@@ -501,8 +476,6 @@ export default function PersonalWallKonvaEditor() {
     showToast,
     guardAdd,
     limitMessage,
-    wallId,
-    wallPlan,
     persistLocal,
     adoptWallId,
   ]);

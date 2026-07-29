@@ -223,13 +223,6 @@ export default function Toolbar({
             >
               QR로 네컷 가져오기
             </Link>
-            <Link
-              href="/capture"
-              onClick={onClose}
-              className="block w-full rounded-xl border border-foreground/15 bg-surface px-4 py-3 text-center text-sm font-medium transition hover:bg-foreground/5 active:scale-[0.98]"
-            >
-              카메라로 스캔하기
-            </Link>
             <p className="text-[11px] text-muted">캔버스에 사진을 끌어다 놓을 수도 있어요</p>
           </section>
 
