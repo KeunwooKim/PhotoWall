@@ -1,4 +1,5 @@
-import * as ort from "onnxruntime-web";
+// Use wasm-only entry (not default bundle) — default pulls jsep/WebGPU artifacts we don't ship.
+import * as ort from "onnxruntime-web/wasm";
 import { orderQuadCorners } from "./perspective";
 import type { Point2, QuadPoints } from "./types";
 
@@ -10,9 +11,10 @@ const HEATMAP_THRESHOLD = 0.25;
 let sessionPromise: Promise<ort.InferenceSession> | null = null;
 
 function configureOrt() {
-  // Prefer local wasm copies to avoid CDN blocks on mobile Safari
+  // Local copies of ort-wasm-simd-threaded.{mjs,wasm} under /public/ort
   ort.env.wasm.wasmPaths = "/ort/";
   ort.env.wasm.numThreads = 1;
+  ort.env.wasm.proxy = false;
 }
 
 export async function loadCornerDetector(): Promise<ort.InferenceSession> {

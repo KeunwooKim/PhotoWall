@@ -39,7 +39,8 @@ export default function PhotoScanClient() {
       .then(() => {
         if (!cancelled) setModelReady(true);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[photo-scan] model load failed", err);
         if (!cancelled) setModelReady(false);
       });
     return () => {
@@ -91,7 +92,8 @@ export default function PhotoScanClient() {
           setReviewQuad(defaultPhotoQuad(w, h));
           setStatusHint("자동 감지가 약해요 · 모서리를 직접 맞춰 주세요");
         }
-      } catch {
+      } catch (err) {
+        console.error("[photo-scan] detect failed", err);
         setReviewQuad(defaultPhotoQuad(w, h));
         setStatusHint("AI 모델을 쓰지 못했어요 · 모서리를 직접 맞춰 주세요");
       }
@@ -235,7 +237,9 @@ export default function PhotoScanClient() {
               보정해요.
             </p>
             <p className="text-[11px] text-white/45">
-              {modelReady ? "AI 모델 준비됨 · 서버 전송 없음" : "AI 모델 준비 중…"}
+              {modelReady
+                ? "AI 모델 준비됨 · 서버 전송 없음"
+                : "AI 모델 준비 중… (실패해도 수동 모서리 조정은 가능)"}
             </p>
           </div>
 
