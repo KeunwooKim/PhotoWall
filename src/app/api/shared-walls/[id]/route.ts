@@ -5,6 +5,8 @@ import { saveSharedWallToDb } from "@/lib/supabase/walls";
 import { resolveWallThemeId } from "@/lib/wall-themes";
 import { getUserPlan } from "@/lib/auth/user-plan";
 import { checkSceneQuota, sceneQuotaMessage } from "@/lib/wall-quotas";
+import { restrictedResponse } from "@/lib/auth/account-restrict";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 
 export async function GET(
   request: NextRequest,
@@ -58,10 +60,20 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const blocked = await restrictedResponse(supabase, user.id);
+  if (blocked) return applyCookies(blocked);
+
+  if (!(await checkRateLimitAsync(`shared-save:${user.id}`, 120, 60 * 1000))) {
+    return applyCookies(
+      NextResponse.json({ error: "Too many saves. Slow down." }, { status: 429 }),
+    );
+  }
+
   const body = (await request.json()) as {
     themeId?: string;
     canvasJson?: object;
     title?: string;
+    baseRevision?: number;
   };
 
   // Title-only update (벽 설정)
@@ -120,15 +132,34 @@ export async function PATCH(
 
   const wall = await saveSharedWallToDb(
     id,
-    { themeId, canvasJson: body.canvasJson, userId: user.id },
+    {
+      themeId,
+      canvasJson: body.canvasJson,
+      userId: user.id,
+      baseRevision: body.baseRevision,
+    },
     supabase,
   );
 
-  if (!wall) {
+  if (wall.status === "conflict") {
+    return applyCookies(
+      NextResponse.json(
+        {
+          error: "revision_conflict",
+          message: "다른 사람이 먼저 저장했어요. 최신 내용으로 다시 불러왔어요.",
+          currentRevision: wall.currentRevision,
+          wall: wall.wall,
+        },
+        { status: 409 },
+      ),
+    );
+  }
+
+  if (wall.status !== "ok") {
     return applyCookies(
       NextResponse.json({ error: "Failed to save shared wall" }, { status: 500 }),
     );
   }
 
-  return applyCookies(NextResponse.json(wall));
+  return applyCookies(NextResponse.json(wall.wall));
 }

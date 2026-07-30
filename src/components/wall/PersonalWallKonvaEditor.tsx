@@ -13,6 +13,7 @@ import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { WallThemeId } from "@/types/wall";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchCloudWall, saveWallToCloud } from "@/lib/auth/migrate-wall";
+import { sceneRevisionFromJson } from "@/lib/wall-scene/scene-revision";
 import { clearWall, getOrCreateWallId, loadWall, saveWall, setPersonalWallId } from "@/lib/wall-storage";
 import { publishWall } from "@/lib/wall-share";
 import { shareWallImage } from "@/lib/wall-export";
@@ -120,6 +121,8 @@ export default function PersonalWallKonvaEditor() {
   const syncedUserRef = useRef<string | null>(null);
   const persistEnabledRef = useRef(false);
   const lastSavedFingerprintRef = useRef<string | null>(null);
+  /** Last successfully synced server revision (optimistic concurrency). */
+  const serverRevisionRef = useRef<number | undefined>(undefined);
   /** Skip destructive local reload when wallId only changes via cloud id adopt */
   const suppressWallIdReloadRef = useRef(false);
   /** Block autosave until cloud sync finishes (prevents empty local overwriting DB) */
@@ -253,14 +256,35 @@ export default function PersonalWallKonvaEditor() {
           const objectCount = useWallSceneStore.getState().document.objects.length;
           if (objectCount === 0) return;
 
-          void saveWallToCloud(themeIdRef.current, json, wallIdRef.current).then((saved) => {
-            if (saved) {
-              adoptWallId(saved.id);
+          void saveWallToCloud(
+            themeIdRef.current,
+            json,
+            wallIdRef.current,
+            serverRevisionRef.current,
+          ).then((result) => {
+            if (result.restricted) {
+              showToast(result.message || "활동이 제한된 계정이에요");
+              return;
+            }
+            if (result.conflictWall) {
+              const doc = parseWallScene(result.conflictWall.canvasJson);
+              useWallSceneStore.getState().loadDocument(doc);
+              serverRevisionRef.current = sceneRevisionFromJson(
+                result.conflictWall.canvasJson,
+              );
+              lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
+              saveWall(result.conflictWall.themeId, result.conflictWall.canvasJson);
+              showToast(result.message || "다른 기기 저장본으로 맞췄어요");
+              return;
+            }
+            if (result.wall) {
+              adoptWallId(result.wall.id);
+              serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
             }
           });
         }
       }, 1500),
-    [persistLocal, adoptWallId, markPreviewDirty],
+    [persistLocal, adoptWallId, markPreviewDirty, showToast],
   );
 
   const handleDocumentChange = useCallback(
@@ -396,14 +420,20 @@ export default function PersonalWallKonvaEditor() {
         // Empty cloud must not wipe a non-empty local wall (refresh / race heal)
         if (cloudCount === 0 && localCount > 0 && local && localDoc) {
           const json = serializeWallScene(localDoc);
-          const saved = await saveWallToCloud(local.themeId, json, cloud.id);
-          if (saved) {
-            saveWall(saved.themeId, saved.canvasJson);
-            adoptWallId(saved.id);
-            setThemeId(resolveWallThemeId(saved.themeId));
-            setLoadedCanvasJson(saved.canvasJson);
+          const saved = await saveWallToCloud(
+            local.themeId,
+            json,
+            cloud.id,
+            cloudDoc.meta.revision ?? 0,
+          );
+          if (saved.wall) {
+            saveWall(saved.wall.themeId, saved.wall.canvasJson);
+            adoptWallId(saved.wall.id);
+            serverRevisionRef.current = sceneRevisionFromJson(saved.wall.canvasJson);
+            setThemeId(resolveWallThemeId(saved.wall.themeId));
+            setLoadedCanvasJson(saved.wall.canvasJson);
             lastSavedFingerprintRef.current = fingerprintPersistableScene(
-              parseWallScene(saved.canvasJson),
+              parseWallScene(saved.wall.canvasJson),
             );
             showToast("체험 중이던 벽을 저장했어요");
           } else {
@@ -430,14 +460,20 @@ export default function PersonalWallKonvaEditor() {
 
           if (localNewer) {
             const json = serializeWallScene(localDoc);
-            const saved = await saveWallToCloud(local.themeId, json, cloud.id);
-            if (saved) {
-              saveWall(saved.themeId, saved.canvasJson);
-              adoptWallId(saved.id);
-              setThemeId(resolveWallThemeId(saved.themeId));
-              setLoadedCanvasJson(saved.canvasJson);
+            const saved = await saveWallToCloud(
+              local.themeId,
+              json,
+              cloud.id,
+              cloudRev,
+            );
+            if (saved.wall) {
+              saveWall(saved.wall.themeId, saved.wall.canvasJson);
+              adoptWallId(saved.wall.id);
+              serverRevisionRef.current = sceneRevisionFromJson(saved.wall.canvasJson);
+              setThemeId(resolveWallThemeId(saved.wall.themeId));
+              setLoadedCanvasJson(saved.wall.canvasJson);
               lastSavedFingerprintRef.current = fingerprintPersistableScene(
-                parseWallScene(saved.canvasJson),
+                parseWallScene(saved.wall.canvasJson),
               );
             }
             return;
@@ -447,6 +483,7 @@ export default function PersonalWallKonvaEditor() {
         // Write local BEFORE adoptWallId so any concurrent reload sees cloud data
         saveWall(cloud.themeId, cloud.canvasJson);
         adoptWallId(cloud.id);
+        serverRevisionRef.current = cloudDoc.meta.revision ?? 0;
         setThemeId(resolveWallThemeId(cloud.themeId));
         await prefetchWallScenePhotoUrls(cloudDoc, cloud.id);
         setLoadedCanvasJson(cloud.canvasJson);
@@ -457,14 +494,20 @@ export default function PersonalWallKonvaEditor() {
 
       if (local && localDoc) {
         const json = serializeWallScene(localDoc);
-        const saved = await saveWallToCloud(local.themeId, json, local.id);
-        if (saved) {
-          saveWall(saved.themeId, saved.canvasJson);
-          adoptWallId(saved.id);
-          setThemeId(resolveWallThemeId(saved.themeId));
-          setLoadedCanvasJson(saved.canvasJson);
+        const saved = await saveWallToCloud(
+          local.themeId,
+          json,
+          local.id,
+          localDoc.meta.revision ?? 0,
+        );
+        if (saved.wall) {
+          saveWall(saved.wall.themeId, saved.wall.canvasJson);
+          adoptWallId(saved.wall.id);
+          serverRevisionRef.current = sceneRevisionFromJson(saved.wall.canvasJson);
+          setThemeId(resolveWallThemeId(saved.wall.themeId));
+          setLoadedCanvasJson(saved.wall.canvasJson);
           lastSavedFingerprintRef.current = fingerprintPersistableScene(
-            parseWallScene(saved.canvasJson),
+            parseWallScene(saved.wall.canvasJson),
           );
           showToast("벽이 이어졌어요 · 이제 어디서든 볼 수 있어요");
         }
@@ -553,8 +596,16 @@ export default function PersonalWallKonvaEditor() {
           lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
           setLoadedCanvasJson(json);
           if (user?.id) {
-            void saveWallToCloud(themeIdRef.current, json, wallIdRef.current).then((saved) => {
-              if (saved) adoptWallId(saved.id);
+            void saveWallToCloud(
+              themeIdRef.current,
+              json,
+              wallIdRef.current,
+              serverRevisionRef.current,
+            ).then((result) => {
+              if (result.wall) {
+                adoptWallId(result.wall.id);
+                serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+              }
             });
           }
 
@@ -859,9 +910,10 @@ export default function PersonalWallKonvaEditor() {
       persistLocal(json);
       markPreviewDirty();
       if (userRef.current) {
-        void saveWallToCloud(next, json, wallIdRef.current).then((saved) => {
-          if (saved) {
-            adoptWallId(saved.id);
+        void saveWallToCloud(next, json, wallIdRef.current, serverRevisionRef.current).then((result) => {
+          if (result.wall) {
+            adoptWallId(result.wall.id);
+            serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
           }
         });
       }
@@ -875,11 +927,29 @@ export default function PersonalWallKonvaEditor() {
     markPreviewDirty();
 
     if (user) {
-      const cloud = await saveWallToCloud(themeId, json, wallIdRef.current);
-      if (cloud) {
-        adoptWallId(cloud.id);
+      const result = await saveWallToCloud(
+        themeId,
+        json,
+        wallIdRef.current,
+        serverRevisionRef.current,
+      );
+      if (result.conflictWall) {
+        const doc = parseWallScene(result.conflictWall.canvasJson);
+        useWallSceneStore.getState().loadDocument(doc);
+        serverRevisionRef.current = sceneRevisionFromJson(result.conflictWall.canvasJson);
+        lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
+        showToast(result.message || "다른 기기 저장본으로 맞췄어요");
+        return;
       }
-      showToast(cloud ? "클라우드에 저장됐어요" : "저장됐어요");
+      if (result.restricted) {
+        showToast(result.message || "활동이 제한된 계정이에요");
+        return;
+      }
+      if (result.wall) {
+        adoptWallId(result.wall.id);
+        serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+      }
+      showToast(result.wall ? "클라우드에 저장됐어요" : "저장됐어요");
       return;
     }
 
@@ -899,8 +969,16 @@ export default function PersonalWallKonvaEditor() {
     );
     markPreviewDirty();
     if (userRef.current) {
-      void saveWallToCloud(themeIdRef.current, json, wallIdRef.current).then((saved) => {
-        if (saved) adoptWallId(saved.id);
+      void saveWallToCloud(
+        themeIdRef.current,
+        json,
+        wallIdRef.current,
+        serverRevisionRef.current,
+      ).then((result) => {
+        if (result.wall) {
+          adoptWallId(result.wall.id);
+          serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+        }
       });
     }
     showToast("벽을 비웠어요");

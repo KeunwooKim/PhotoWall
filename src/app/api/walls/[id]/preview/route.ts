@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { restrictedResponse } from "@/lib/auth/account-restrict";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { canEditWall } from "@/lib/supabase/wall-role";
 import { WALL_PHOTOS_BUCKET } from "@/lib/storage/wall-photos";
 import { wallPreviewStoragePath } from "@/lib/storage/wall-preview";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 
 const MAX_PREVIEW_BYTES = 2.5 * 1024 * 1024;
 
@@ -20,6 +22,15 @@ export async function POST(
   const user = await getRouteUser(supabase, request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const blocked = await restrictedResponse(supabase, user.id);
+  if (blocked) return applyCookies(blocked);
+
+  if (!(await checkRateLimitAsync(`wall-preview:${user.id}`, 60, 60 * 1000))) {
+    return applyCookies(
+      NextResponse.json({ error: "Too many uploads. Slow down." }, { status: 429 }),
+    );
   }
 
   const allowed = await canEditWall(supabase, wallId, user.id);

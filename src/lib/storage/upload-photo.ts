@@ -10,6 +10,16 @@ export async function uploadWallPhoto(
   assertPhotoUploadAllowed(file, plan);
 
   const supabase = createClient();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("restricted_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profile?.restricted_at) {
+    throw new Error("활동이 제한된 계정이에요. 문의하기에서 도움을 요청해 주세요");
+  }
+
   const ext = file.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
   const path = `${userId}/${crypto.randomUUID()}.${ext}`;
 

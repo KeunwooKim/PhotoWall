@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 import type { InquiryCategory } from "@/types/inquiry";
 
 const VALID_CATEGORIES: InquiryCategory[] = [
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     return applyCookies(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
   }
 
-  if (!checkRateLimit(`inquiry:${user.id}`, 5, 60 * 60 * 1000)) {
+  if (!(await checkRateLimitAsync(`inquiry:${user.id}`, 5, 60 * 60 * 1000))) {
     return applyCookies(
       NextResponse.json({ error: "문의는 1시간에 5회까지 가능해요" }, { status: 429 }),
     );

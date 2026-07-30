@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PublishedWall } from "@/types/wall";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
+import { sceneRevisionFromJson } from "@/lib/wall-scene/scene-revision";
 import { getSupabaseEnv } from "./env";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { canEditWall } from "./wall-role";
@@ -78,16 +79,23 @@ export async function fetchPersonalWallIdForOwner(
 }
 
 /** 개인 벽 저장 — 소유자당 is_shared=false 벽 하나만 upsert */
+export type SaveWallResult =
+  | { status: "ok"; wall: PublishedWall }
+  | { status: "conflict"; currentRevision: number; wall: PublishedWall }
+  | { status: "error" };
+
 export async function savePersonalWallToDb(
   wall: {
     id?: string;
     themeId: string;
     canvasJson: object;
     ownerId?: string;
+    /** Last known server revision; mismatch → conflict */
+    baseRevision?: number;
   },
   supabase: SupabaseClient | null = getSupabaseServer(),
-): Promise<PublishedWall | null> {
-  if (!supabase || !wall.ownerId) return null;
+): Promise<SaveWallResult> {
+  if (!supabase || !wall.ownerId) return { status: "error" };
 
   const payload: Record<string, unknown> = {
     theme_id: wall.themeId,
@@ -97,7 +105,33 @@ export async function savePersonalWallToDb(
     updated_at: new Date().toISOString(),
   };
 
-  const updateById = async (id: string): Promise<PublishedWall | null> => {
+  const checkConflict = async (
+    id: string,
+  ): Promise<SaveWallResult | null> => {
+    if (typeof wall.baseRevision !== "number") return null;
+    const { data: row } = await supabase
+      .from("walls")
+      .select("id, theme_id, canvas_json, updated_at, preview_path")
+      .eq("id", id)
+      .eq("owner_id", wall.ownerId!)
+      .eq("is_shared", false)
+      .maybeSingle();
+    if (!row) return null;
+    const currentRevision = sceneRevisionFromJson(row.canvas_json);
+    if (currentRevision !== wall.baseRevision) {
+      return {
+        status: "conflict",
+        currentRevision,
+        wall: mapRow(row),
+      };
+    }
+    return null;
+  };
+
+  const updateById = async (id: string): Promise<SaveWallResult> => {
+    const conflict = await checkConflict(id);
+    if (conflict) return conflict;
+
     const { data, error } = await supabase
       .from("walls")
       .update(payload)
@@ -107,8 +141,8 @@ export async function savePersonalWallToDb(
       .select("id, theme_id, canvas_json, updated_at")
       .maybeSingle();
 
-    if (error || !data) return null;
-    return mapRow(data);
+    if (error || !data) return { status: "error" };
+    return { status: "ok", wall: mapRow(data) };
   };
 
   // 1) Client id가 내 개인 벽이면 그 행을 갱신
@@ -119,11 +153,10 @@ export async function savePersonalWallToDb(
       .eq("id", wall.id)
       .maybeSingle();
 
-    if (byId?.is_shared) return null;
+    if (byId?.is_shared) return { status: "error" };
 
     if (byId && byId.owner_id === wall.ownerId) {
-      const updated = await updateById(byId.id);
-      if (updated) return updated;
+      return updateById(byId.id);
     }
   }
 
@@ -151,8 +184,8 @@ export async function savePersonalWallToDb(
     .select("id, theme_id, canvas_json, updated_at")
     .single();
 
-  if (insertError || !inserted) return null;
-  return mapRow(inserted);
+  if (insertError || !inserted) return { status: "error" };
+  return { status: "ok", wall: mapRow(inserted) };
 }
 
 function isWallUuid(id: string): boolean {
@@ -168,21 +201,33 @@ export async function saveSharedWallToDb(
     themeId: string;
     canvasJson: object;
     userId: string;
+    baseRevision?: number;
   },
   supabase: SupabaseClient | null = getSupabaseServer(),
-): Promise<PublishedWall | null> {
-  if (!supabase) return null;
+): Promise<SaveWallResult> {
+  if (!supabase) return { status: "error" };
 
   const allowed = await canEditWall(supabase, wallId, wall.userId);
-  if (!allowed) return null;
+  if (!allowed) return { status: "error" };
 
   const { data: existing } = await supabase
     .from("walls")
-    .select("id, is_shared")
+    .select("id, is_shared, theme_id, canvas_json, updated_at, preview_path")
     .eq("id", wallId)
     .maybeSingle();
 
-  if (!existing?.is_shared) return null;
+  if (!existing?.is_shared) return { status: "error" };
+
+  if (typeof wall.baseRevision === "number") {
+    const currentRevision = sceneRevisionFromJson(existing.canvas_json);
+    if (currentRevision !== wall.baseRevision) {
+      return {
+        status: "conflict",
+        currentRevision,
+        wall: mapRow(existing),
+      };
+    }
+  }
 
   const { data, error } = await supabase
     .from("walls")
@@ -196,8 +241,8 @@ export async function saveSharedWallToDb(
     .select("id, theme_id, canvas_json, updated_at")
     .single();
 
-  if (error || !data) return null;
-  return mapRow(data);
+  if (error || !data) return { status: "error" };
+  return { status: "ok", wall: mapRow(data) };
 }
 
 function mapRow(data: {

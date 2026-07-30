@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { restrictedResponse } from "@/lib/auth/account-restrict";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import {
   addFriendship,
@@ -6,6 +7,7 @@ import {
   getFriends,
   getProfileByFriendCode,
 } from "@/lib/supabase/profiles";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   const routeClient = createRouteClient(request);
@@ -37,6 +39,15 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const blocked = await restrictedResponse(supabase, user.id);
+  if (blocked) return applyCookies(blocked);
+
+  if (!(await checkRateLimitAsync(`friend-add:${user.id}`, 30, 60 * 60 * 1000))) {
+    return applyCookies(
+      NextResponse.json({ error: "Too many requests. Try again later." }, { status: 429 }),
+    );
   }
 
   const body = (await request.json()) as { friendCode?: string };
