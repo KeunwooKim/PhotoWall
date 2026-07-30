@@ -126,6 +126,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const isManipulatingRef = useRef(false);
 
   const selectedIds = useWallSceneStore((s) => s.selectedIds);
+  const multiSelectMode = useWallSceneStore((s) => s.multiSelectMode);
+  const setMultiSelectMode = useWallSceneStore((s) => s.setMultiSelectMode);
   const sceneObjects = useWallSceneStore((s) => s.document.objects);
   const showGrid = useWallSceneStore((s) => s.showGrid);
   const snapToGrid = useWallSceneStore((s) => s.snapToGrid);
@@ -1058,7 +1060,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
               <EditorSelectionSheet
                 object={inspectorObject}
                 selectionCount={selectedIds.length}
-                onClose={() => useWallSceneStore.getState().setSelectedIds([])}
+                onClose={() => useWallSceneStore.getState().clearSelection()}
                 onCopy={handleCopy}
                 onPaste={handlePaste}
                 onDuplicate={handleDuplicate}
@@ -1093,6 +1095,28 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
                 onBringOntoWall={handleBringOntoWall}
               />
             )}
+
+          {multiSelectMode && mode === "select" && (
+            <div
+              className="pointer-events-auto absolute inset-x-0 z-40 flex justify-center px-3 md:hidden"
+              style={{
+                bottom: selectedIds.length > 0
+                  ? "max(9.5rem, calc(env(safe-area-inset-bottom) + 8.5rem))"
+                  : "max(4.75rem, calc(env(safe-area-inset-bottom) + 3.75rem))",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setMultiSelectMode(false)}
+                className="flex items-center gap-2 rounded-full bg-neutral-900 px-3.5 py-2 text-[11px] font-medium text-white shadow-lg"
+              >
+                <span>
+                  여러 선택 중{selectedIds.length > 0 ? ` · ${selectedIds.length}` : ""}
+                </span>
+                <span className="rounded-full bg-white/20 px-2 py-0.5">완료</span>
+              </button>
+            </div>
+          )}
 
           {cropPhotoId && (
             <PhotoCropToolbar
@@ -1176,7 +1200,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onStartColorEdit={handleStartColorEdit}
             onUpscalePhoto={(id) => void handleUpscalePhoto(id)}
             upscaleBusy={upscaleBusy}
-            onCloseSelection={() => useWallSceneStore.getState().setSelectedIds([])}
+            onCloseSelection={() => useWallSceneStore.getState().clearSelection()}
             onCloseTextEdit={() => setEditingTextId(null)}
             penColor={penColor}
             penStyleId={penStyleId}
