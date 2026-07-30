@@ -1168,7 +1168,6 @@ export default function PersonalWallKonvaEditor() {
           <EditorToolRail
             mode={mode}
             onModeChange={handleModeChange}
-            onPhotoUpload={handlePhotoUpload}
             onToggleAssets={() => setIsAssetsOpen((v) => !v)}
             assetsOpen={isAssetsOpen}
             onUndo={undo}
@@ -1300,7 +1299,6 @@ export default function PersonalWallKonvaEditor() {
             <EditorToolDock
               mode={mode}
               onModeChange={handleModeChange}
-              onPhotoUpload={handlePhotoUpload}
               onOpenDecorate={() => setIsAssetsOpen(true)}
               onUndo={undo}
               onRedo={redo}
