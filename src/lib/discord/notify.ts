@@ -1,7 +1,15 @@
 /**
  * Fire-and-forget Discord webhook helpers.
  * Set DISCORD_WEBHOOK_URL (channel Integrations → Webhooks).
+ * Must also be set on Vercel for production alerts.
  */
+
+export type DiscordPostResult = {
+  ok: boolean;
+  configured: boolean;
+  status?: number;
+  error?: string;
+};
 
 function webhookUrl(): string | undefined {
   const url = process.env.DISCORD_WEBHOOK_URL?.trim();
@@ -13,18 +21,34 @@ function escapeMd(text: string): string {
   return text.replace(/([\\*_`~|])/g, "\\$1").slice(0, 80);
 }
 
-export async function postDiscordMessage(content: string): Promise<void> {
+export async function postDiscordMessage(content: string): Promise<DiscordPostResult> {
   const url = webhookUrl();
-  if (!url) return;
+  if (!url) {
+    return { ok: false, configured: false, error: "DISCORD_WEBHOOK_URL is not set" };
+  }
 
   try {
-    await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),
     });
-  } catch {
-    /* ops notify must never break the app */
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return {
+        ok: false,
+        configured: true,
+        status: res.status,
+        error: body.slice(0, 200) || `HTTP ${res.status}`,
+      };
+    }
+    return { ok: true, configured: true, status: res.status };
+  } catch (err) {
+    return {
+      ok: false,
+      configured: true,
+      error: err instanceof Error ? err.message : "fetch failed",
+    };
   }
 }
 
@@ -62,3 +86,10 @@ export function notifyAccountRestricted(input: {
   }
 }
 
+/** True when auth user was created recently (first OAuth callback after signup). */
+export function isLikelyNewAuthUser(createdAt: string | undefined, windowMs = 15 * 60 * 1000): boolean {
+  if (!createdAt) return false;
+  const t = Date.parse(createdAt);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < windowMs;
+}
