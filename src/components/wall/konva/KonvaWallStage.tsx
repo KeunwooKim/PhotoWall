@@ -171,6 +171,7 @@ export default function KonvaWallStage({
 
   const document = useWallSceneStore((s) => s.document);
   const selectedIds = useWallSceneStore((s) => s.selectedIds);
+  const multiSelectMode = useWallSceneStore((s) => s.multiSelectMode);
   const snapGuides = useWallSceneStore((s) => s.snapGuides);
   const showGrid = useWallSceneStore((s) => s.showGrid);
   const gridSize = useWallSceneStore((s) => s.gridSize);
@@ -616,7 +617,7 @@ export default function KonvaWallStage({
     (object: WallSceneObject) => {
       const select = (additive = false) => {
         if (peerLockedIds.has(object.id)) return;
-        handleObjectSelect(object.id, additive);
+        handleObjectSelect(object.id, additive || multiSelectMode);
       };
 
       const isSelected = selectedIds.includes(object.id);
@@ -730,6 +731,7 @@ export default function KonvaWallStage({
       readOnly,
       editorMode,
       selectedIds,
+      multiSelectMode,
       peerLockedIds,
       cropPhotoId,
       resolvePhotoSrc,
@@ -1016,9 +1018,9 @@ export default function KonvaWallStage({
 
       if (readOnly || editorModeRef.current !== "select" || !isStageTarget || !stage) return;
 
-      const zoom = useWallSceneStore.getState().userZoom;
+      const { userZoom: zoom, multiSelectMode: multi } = useWallSceneStore.getState();
       const pt = clientPointFromEvent(nativeEvt);
-      if (!shiftKey && Math.abs(zoom - 1) > 0.01 && pt) {
+      if (!shiftKey && !multi && Math.abs(zoom - 1) > 0.01 && pt) {
         stagePanRef.current = {
           x: pt.x,
           y: pt.y,
@@ -1031,7 +1033,11 @@ export default function KonvaWallStage({
       const pos = stage.getPointerPosition();
       if (!pos) return;
 
-      marqueeStartRef.current = { x1: pos.x, y1: pos.y, shiftKey };
+      marqueeStartRef.current = {
+        x1: pos.x,
+        y1: pos.y,
+        shiftKey: shiftKey || multi,
+      };
       setMarqueeRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
     },
     [readOnly, reportPointer],

@@ -31,6 +31,8 @@ export function createEmptyWallScene(): WallSceneDocument {
 export interface WallSceneStore {
   document: WallSceneDocument;
   selectedIds: string[];
+  /** Mobile: tap-to-add and empty-drag marquee while true. */
+  multiSelectMode: boolean;
   snapGuides: SnapGuide[];
   showGrid: boolean;
   snapToGrid: boolean;
@@ -46,6 +48,7 @@ export interface WallSceneStore {
   reset: () => void;
   setSelectedIds: (ids: string[]) => void;
   clearSelection: () => void;
+  setMultiSelectMode: (on: boolean) => void;
   setSnapGuides: (guides: SnapGuide[]) => void;
   toggleShowGrid: () => void;
   toggleSnapToGrid: () => void;
@@ -114,6 +117,7 @@ export const useWallSceneStore = create<WallSceneStore>()(
       objects: [],
     },
     selectedIds: [],
+    multiSelectMode: false,
     snapGuides: [],
     showGrid: false,
     snapToGrid: false,
@@ -133,12 +137,14 @@ export const useWallSceneStore = create<WallSceneStore>()(
         }),
         historyPast: [],
         historyFuture: [],
+        multiSelectMode: false,
       }),
 
     reset: () =>
       set({
         document: createEmptyWallScene(),
         selectedIds: [],
+        multiSelectMode: false,
         snapGuides: [],
         viewportScale: 1,
         userZoom: 1,
@@ -186,7 +192,9 @@ export const useWallSceneStore = create<WallSceneStore>()(
         selectedIds: normalizeSelectedIds(ids, state.document.objects),
       })),
 
-    clearSelection: () => set({ selectedIds: [], snapGuides: [] }),
+    clearSelection: () => set({ selectedIds: [], snapGuides: [], multiSelectMode: false }),
+
+    setMultiSelectMode: (on) => set({ multiSelectMode: on }),
 
     setSnapGuides: (guides) => set({ snapGuides: guides }),
 
