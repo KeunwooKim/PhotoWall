@@ -126,8 +126,6 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const isManipulatingRef = useRef(false);
 
   const selectedIds = useWallSceneStore((s) => s.selectedIds);
-  const multiSelectMode = useWallSceneStore((s) => s.multiSelectMode);
-  const setMultiSelectMode = useWallSceneStore((s) => s.setMultiSelectMode);
   const sceneObjects = useWallSceneStore((s) => s.document.objects);
   const showGrid = useWallSceneStore((s) => s.showGrid);
   const snapToGrid = useWallSceneStore((s) => s.snapToGrid);
@@ -774,54 +772,64 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         handleSelectAll();
         return;
       }
+      if (!isMod && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        setMode("select");
+        return;
+      }
+      if (!isMod && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        setMode("hand");
+        return;
+      }
       if (e.key === "Escape") {
         useWallSceneStore.getState().clearSelection();
         broadcastPresence(null);
         return;
       }
       if (isMod && e.key.toLowerCase() === "d") {
-        if (selectedIds.length > 0 && mode === "select") {
+        if (selectedIds.length > 0 && (mode === "select" || mode === "hand")) {
           e.preventDefault();
           handleDuplicate();
         }
         return;
       }
       if (isMod && e.key.toLowerCase() === "c") {
-        if (selectedIds.length > 0 && mode === "select") {
+        if (selectedIds.length > 0 && (mode === "select" || mode === "hand")) {
           e.preventDefault();
           handleCopy();
         }
         return;
       }
       if (isMod && e.key.toLowerCase() === "x") {
-        if (selectedIds.length > 0 && mode === "select") {
+        if (selectedIds.length > 0 && (mode === "select" || mode === "hand")) {
           e.preventDefault();
           handleCut();
         }
         return;
       }
       if (isMod && e.key.toLowerCase() === "v") {
-        if (mode === "select") {
+        if (mode === "select" || mode === "hand") {
           e.preventDefault();
           handlePaste();
         }
         return;
       }
       if (isMod && e.shiftKey && e.key.toLowerCase() === "g") {
-        if (mode === "select") {
+        if (mode === "select" || mode === "hand") {
           e.preventDefault();
           handleUngroup();
         }
         return;
       }
       if (isMod && e.key.toLowerCase() === "g") {
-        if (selectedIds.length > 0 && mode === "select") {
+        if (selectedIds.length > 0 && (mode === "select" || mode === "hand")) {
           e.preventDefault();
           handleGroup();
         }
         return;
       }
-      if (mode === "select" && selectedIds.length > 0) {
+      if ((mode === "select" || mode === "hand") && selectedIds.length > 0) {
         const step = e.shiftKey ? 10 : 1;
         if (e.key === "ArrowLeft") {
           e.preventDefault();
@@ -1053,7 +1061,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           )}
 
           {selectedIds.length > 0 &&
-            mode === "select" &&
+            (mode === "select" || mode === "hand") &&
             !editingTextObject &&
             !cropPhotoId &&
             !colorEditPhotoId && (
@@ -1095,28 +1103,6 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
                 onBringOntoWall={handleBringOntoWall}
               />
             )}
-
-          {multiSelectMode && mode === "select" && (
-            <div
-              className="pointer-events-auto absolute inset-x-0 z-40 flex justify-center px-3 md:hidden"
-              style={{
-                bottom: selectedIds.length > 0
-                  ? "max(9.5rem, calc(env(safe-area-inset-bottom) + 8.5rem))"
-                  : "max(4.75rem, calc(env(safe-area-inset-bottom) + 3.75rem))",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setMultiSelectMode(false)}
-                className="flex items-center gap-2 rounded-full bg-neutral-900 px-3.5 py-2 text-[11px] font-medium text-white shadow-lg"
-              >
-                <span>
-                  여러 선택 중{selectedIds.length > 0 ? ` · ${selectedIds.length}` : ""}
-                </span>
-                <span className="rounded-full bg-white/20 px-2 py-0.5">완료</span>
-              </button>
-            </div>
-          )}
 
           {cropPhotoId && (
             <PhotoCropToolbar

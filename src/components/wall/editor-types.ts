@@ -1,1 +1,1 @@
-export type EditorMode = "select" | "pen" | "tape" | "text";
+export type EditorMode = "select" | "hand" | "pen" | "tape" | "text";

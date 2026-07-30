@@ -235,8 +235,20 @@ export default function EditorToolDock({
           onClick={() => onModeChange("select")}
           className={mode === "select" ? dockBtnActive : dockBtnIdle}
           aria-pressed={mode === "select"}
+          aria-label="선택"
+          title="선택 (V)"
         >
-          선택
+          <SelectCursorIcon />
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange("hand")}
+          className={mode === "hand" ? dockBtnActive : dockBtnIdle}
+          aria-pressed={mode === "hand"}
+          aria-label="이동"
+          title="이동 (H)"
+        >
+          <HandIcon />
         </button>
 
         <label className={`${dockBtnIdle} cursor-pointer`}>
@@ -327,6 +339,49 @@ export function MenuIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** Figma-style cursor / select tool. */
+export function SelectCursorIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 4l7.5 16 1.8-6.7L20 11.5 4 4z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Figma-style hand / pan tool. */
+export function HandIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M8 11V6.5a1.5 1.5 0 013 0V11M11 10.5V5.5a1.5 1.5 0 013 0V11M14 10V7.5a1.5 1.5 0 013 0V14c0 3.5-2 5.5-5.5 5.5S6 17.5 6 14v-3.5a1.5 1.5 0 013 0V11"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
