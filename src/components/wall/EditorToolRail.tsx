@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RedoIcon, UndoIcon } from "@/components/wall/EditorToolDock";
 import type { EditorMode } from "./editor-types";
 
 interface EditorToolRailProps {
@@ -184,7 +185,7 @@ export default function EditorToolRail({
         aria-label="실행 취소"
         title="실행 취소"
       >
-        <span className="text-sm">↩</span>
+        <UndoIcon />
       </button>
       <button
         type="button"
@@ -194,7 +195,7 @@ export default function EditorToolRail({
         aria-label="다시 실행"
         title="다시 실행"
       >
-        <span className="text-sm">↪</span>
+        <RedoIcon />
       </button>
     </aside>
   );

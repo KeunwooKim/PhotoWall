@@ -1,6 +1,6 @@
 "use client";
 
-import { dedupePresencePeers } from "@/lib/wall-scene/presence-utils";
+import { dedupePresencePeers, presencePeerKey } from "@/lib/wall-scene/presence-utils";
 import { presenceColorForUser } from "@/lib/wall-scene/presence-colors";
 import type { WallPresenceState } from "@/types/wall-scene-v2";
 
@@ -9,11 +9,12 @@ const MAX_VISIBLE = 4;
 export interface PeerAvatarSelf {
   userId: string;
   displayName: string;
+  sessionId?: string;
 }
 
 interface PeerAvatarStackProps {
   peers: WallPresenceState[];
-  /** Always show the current user first when provided. */
+  /** Always show the current session first when provided. */
   self?: PeerAvatarSelf | null;
   maxVisible?: number;
   className?: string;
@@ -51,27 +52,33 @@ function AvatarCircle({
   );
 }
 
-/** Overlapping circular presence avatars for the editor header. */
+/** Overlapping circular presence avatars — one circle per session (same user on two devices = two). */
 export default function PeerAvatarStack({
   peers,
   self,
   maxVisible = MAX_VISIBLE,
   className = "",
 }: PeerAvatarStackProps) {
-  const others = dedupePresencePeers(peers).filter((p) => !self || p.userId !== self.userId);
+  const others = dedupePresencePeers(peers).filter((p) => {
+    if (!self?.sessionId) return true;
+    return p.sessionId !== self.sessionId;
+  });
 
-  const entries: { userId: string; displayName: string; color: string }[] = [];
+  const entries: { key: string; displayName: string; color: string }[] = [];
   if (self?.userId) {
     entries.push({
-      userId: self.userId,
+      key: self.sessionId || `self:${self.userId}`,
       displayName: self.displayName || "나",
       color: presenceColorForUser(self.userId),
     });
   }
   for (const peer of others) {
+    const sameUser = self?.userId && peer.userId === self.userId;
     entries.push({
-      userId: peer.userId,
-      displayName: peer.displayName || "친구",
+      key: presencePeerKey(peer),
+      displayName: sameUser
+        ? `${peer.displayName || "나"}(다른 기기)`
+        : peer.displayName || "친구",
       color: peer.color || presenceColorForUser(peer.userId),
     });
   }
@@ -90,7 +97,7 @@ export default function PeerAvatarStack({
     >
       {visible.map((entry, index) => (
         <AvatarCircle
-          key={entry.userId}
+          key={entry.key}
           name={entry.displayName}
           color={entry.color}
           title={entry.displayName}

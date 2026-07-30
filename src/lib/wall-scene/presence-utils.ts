@@ -17,6 +17,14 @@ export interface PeerHighlightLayout {
   offsetY?: number;
 }
 
+/** Stable map key for a presence peer — prefer session (device/tab), not user. */
+export function presencePeerKey(peer: {
+  userId: string;
+  sessionId?: string;
+}): string {
+  return peer.sessionId || peer.userId;
+}
+
 /** Local box for peer selection frames (photo, sticker, tape, emoji). */
 export function peerHighlightLayout(object: WallSceneObject): PeerHighlightLayout | null {
   const base = {
@@ -83,15 +91,12 @@ function hasMeaningfulCursor(peer: WallPresenceState): boolean {
   );
 }
 
-/** Peer cursor chip — others only, and only while idle (no selection / drag). */
+/** Peer cursor chip — other sessions only, and only while idle (no selection / drag). */
 export function shouldShowPeerCursor(
   peer: WallPresenceState,
-  options: { currentSessionId?: string; currentUserId?: string },
+  options: { currentSessionId?: string },
 ): boolean {
   if (options.currentSessionId && peer.sessionId === options.currentSessionId) {
-    return false;
-  }
-  if (options.currentUserId && peer.userId === options.currentUserId) {
     return false;
   }
   if (peer.isManipulating) return false;
@@ -129,30 +134,31 @@ export function mergePeerPresence(
   return existing;
 }
 
-/** One presence entry per user — latest cursor wins (multi-tab / reconnect safe). */
+/** One presence entry per browser session (same account on two devices stays as two peers). */
 export function dedupePresencePeers(peers: WallPresenceState[]): WallPresenceState[] {
-  const byUserId = new Map<string, WallPresenceState>();
+  const bySession = new Map<string, WallPresenceState>();
 
   for (const peer of peers) {
     if (!peer.userId) continue;
-    const existing = byUserId.get(peer.userId);
+    const key = presencePeerKey(peer);
+    const existing = bySession.get(key);
     if (!existing || peer.updatedAt >= existing.updatedAt) {
-      byUserId.set(peer.userId, peer);
+      bySession.set(key, peer);
     }
   }
 
-  return [...byUserId.values()];
+  return [...bySession.values()];
 }
 
-/** Objects currently selected by other peers — treat as soft-locked for local edit. */
+/** Objects currently selected by other sessions — soft-locked for local edit. */
 export function peerLockedObjectIds(
   peers: WallPresenceState[],
-  currentUserId?: string,
+  currentSessionId?: string,
 ): Set<string> {
   const locked = new Set<string>();
 
   for (const peer of dedupePresencePeers(peers)) {
-    if (currentUserId && peer.userId === currentUserId) continue;
+    if (currentSessionId && peer.sessionId === currentSessionId) continue;
     for (const objectId of peerSelectedObjectIds(peer)) {
       locked.add(objectId);
     }
@@ -161,15 +167,15 @@ export function peerLockedObjectIds(
   return locked;
 }
 
-/** Peers (excluding self) grouped by the object they are selecting / moving. */
+/** Peers (excluding this session) grouped by the object they are selecting / moving. */
 export function peerSelectionsByObjectId(
   peers: WallPresenceState[],
-  currentUserId?: string,
+  currentSessionId?: string,
 ): Map<string, WallPresenceState[]> {
   const map = new Map<string, WallPresenceState[]>();
 
   for (const peer of dedupePresencePeers(peers)) {
-    if (currentUserId && peer.userId === currentUserId) continue;
+    if (currentSessionId && peer.sessionId === currentSessionId) continue;
 
     for (const objectId of peerSelectedObjectIds(peer)) {
       const list = map.get(objectId) ?? [];

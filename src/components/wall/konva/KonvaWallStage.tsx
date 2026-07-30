@@ -26,6 +26,7 @@ import {
   type PenStyleId,
 } from "@/lib/wall-scene/pen";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
+import { clampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { containerCenter } from "@/lib/wall-scene/viewport-zoom";
 import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
 import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
@@ -78,7 +79,6 @@ export interface KonvaWallStageProps {
   wallId?: string;
   resolvePhotoSrc?: (src: string) => Promise<string>;
   peers?: WallPresenceState[];
-  currentUserId?: string;
   currentSessionId?: string;
   onDocumentChange?: (json: object) => void;
   onPointerMove?: (x: number, y: number) => void;
@@ -120,7 +120,6 @@ export default function KonvaWallStage({
   wallId,
   resolvePhotoSrc,
   peers = [],
-  currentUserId,
   currentSessionId,
   onDocumentChange,
   onPointerMove,
@@ -199,13 +198,13 @@ export default function KonvaWallStage({
   const primaryId = primarySelectedId(selectedIds);
 
   const peerLockedIds = useMemo(
-    () => peerLockedObjectIds(peers, currentUserId),
-    [peers, currentUserId],
+    () => peerLockedObjectIds(peers, currentSessionId),
+    [peers, currentSessionId],
   );
 
   const peerHighlightsByObjectId = useMemo(
-    () => peerSelectionsByObjectId(peers, currentUserId),
-    [peers, currentUserId],
+    () => peerSelectionsByObjectId(peers, currentSessionId),
+    [peers, currentSessionId],
   );
 
   useEffect(() => {
@@ -681,17 +680,28 @@ export default function KonvaWallStage({
 
   const commitTransformSelection = useCallback(() => {
     useWallSceneStore.getState().setSnapGuides([]);
+    const store = useWallSceneStore.getState();
+    const wall = store.document.meta.wallBounds;
     for (const id of transformableSelectedIds) {
       const node = nodeRegistry.current.get(id);
       if (!node) continue;
 
-      const patch = {
+      const object = store.document.objects.find((item) => item.id === id);
+      let patch = {
         x: node.x(),
         y: node.y(),
         scaleX: node.scaleX(),
         scaleY: node.scaleY(),
         rotation: node.rotation(),
       };
+      if (object) {
+        const candidate = { ...object, ...patch };
+        const clamped = clampObjectPositionToWall(candidate, wall);
+        if (clamped) {
+          patch = { ...patch, ...clamped };
+          node.position(clamped);
+        }
+      }
       patchObject(id, patch);
       broadcastWallPatch(id, patch);
     }
@@ -1228,7 +1238,6 @@ export default function KonvaWallStage({
         <WallPresenceOverlay
           peers={peers}
           currentSessionId={currentSessionId}
-          currentUserId={currentUserId}
           wallWidth={wallBounds.width}
           wallHeight={wallBounds.height}
           containerWidth={containerSize.width}

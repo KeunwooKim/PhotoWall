@@ -77,34 +77,6 @@ export function reconcileWallBounds(
   return next;
 }
 
-type FabricObjectLike = {
-  getBoundingRect: () => { left: number; top: number; width: number; height: number };
-};
-
-type FabricCanvasLike = {
-  getObjects: () => FabricObjectLike[];
-};
-
-export function getObjectsBounds(canvas: FabricCanvasLike): ObjectBounds | null {
-  const objects = canvas.getObjects();
-  if (objects.length === 0) return null;
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  for (const obj of objects) {
-    const rect = obj.getBoundingRect();
-    minX = Math.min(minX, rect.left);
-    minY = Math.min(minY, rect.top);
-    maxX = Math.max(maxX, rect.left + rect.width);
-    maxY = Math.max(maxY, rect.top + rect.height);
-  }
-
-  return { minX, minY, maxX, maxY };
-}
-
 function mergeExtents(
   acc: ObjectBounds | null,
   minX: number,

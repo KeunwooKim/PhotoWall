@@ -299,7 +299,7 @@ export default function EditorToolDock({
           className={`${dockBtnIdle} disabled:opacity-30`}
           aria-label="실행 취소"
         >
-          ↩
+          <UndoIcon />
         </button>
         <button
           type="button"
@@ -308,7 +308,7 @@ export default function EditorToolDock({
           className={`${dockBtnIdle} disabled:opacity-30`}
           aria-label="다시 실행"
         >
-          ↪
+          <RedoIcon />
         </button>
         </div>
         <div
@@ -328,6 +328,64 @@ export function MenuIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** Curved undo arrow — shared with desktop tool rail. */
+export function UndoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M9 14L4 9l5-5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 9h9a6 6 0 010 12h-2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Curved redo arrow — shared with desktop tool rail. */
+export function RedoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M15 14l5-5-5-5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 9h-9a6 6 0 000 12h2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
