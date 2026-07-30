@@ -19,6 +19,7 @@ import {
   saveSharedWallToCloud,
   updateSharedWallTitle,
 } from "@/lib/auth/shared-wall";
+import { sceneRevisionFromJson } from "@/lib/wall-scene/scene-revision";
 import {
   prefetchWallScenePhotoUrls,
   resolveWallPhotoSrc,
@@ -122,6 +123,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   themeIdRef.current = themeId;
   const lastSavedFingerprintRef = useRef<string | null>(null);
   const persistEnabledRef = useRef(false);
+  const serverRevisionRef = useRef<number | undefined>(undefined);
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const isManipulatingRef = useRef(false);
 
@@ -238,18 +240,50 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     isEnabled: () => !!userRef.current,
   });
 
+  const applySharedSaveResult = useCallback(
+    (result: Awaited<ReturnType<typeof saveSharedWallToCloud>>) => {
+      if (result.restricted) {
+        showToast(result.message || "활동이 제한된 계정이에요");
+        return;
+      }
+      if (result.conflictWall) {
+        void import("@/lib/wall-scene/fabric-import").then(({ parseWallScene }) => {
+          const doc = parseWallScene(result.conflictWall!.canvasJson);
+          useWallSceneStore.getState().loadDocument(doc);
+          serverRevisionRef.current = sceneRevisionFromJson(result.conflictWall!.canvasJson);
+          lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
+          setThemeId(resolveWallThemeId(result.conflictWall!.themeId));
+          showToast(result.message || "다른 사람 저장본으로 맞췄어요");
+        });
+        return;
+      }
+      if (result.wall) {
+        serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+      }
+    },
+    [showToast],
+  );
+
   const autoSave = useMemo(
     () =>
       debounce((json: object, fingerprint: string) => {
         if (!user || !persistEnabledRef.current) return;
-        void saveSharedWallToCloud(sharedId, themeIdRef.current, json).then(() => {
-          lastSavedFingerprintRef.current = fingerprint;
-          setAutoSaved(true);
-          setTimeout(() => setAutoSaved(false), 1500);
-          markPreviewDirty();
+        void saveSharedWallToCloud(
+          sharedId,
+          themeIdRef.current,
+          json,
+          serverRevisionRef.current,
+        ).then((result) => {
+          applySharedSaveResult(result);
+          if (result.wall) {
+            lastSavedFingerprintRef.current = fingerprint;
+            setAutoSaved(true);
+            setTimeout(() => setAutoSaved(false), 1500);
+            markPreviewDirty();
+          }
         });
       }, 800),
-    [sharedId, user, markPreviewDirty],
+    [sharedId, user, markPreviewDirty, applySharedSaveResult],
   );
 
   const broadcastPresence = useCallback(
@@ -379,6 +413,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       await prefetchWallScenePhotoUrls(doc, sharedId);
 
       setLoadedCanvasJson(wall.canvasJson);
+      serverRevisionRef.current = doc.meta.revision ?? 0;
       setLoadState("ready");
     })();
   }, [sharedId, user]);
@@ -682,9 +717,14 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       themeIdRef.current = next;
       const doc = useWallSceneStore.getState().document;
       markPreviewDirty();
-      void saveSharedWallToCloud(sharedId, next, serializeWallScene(doc));
+      void saveSharedWallToCloud(
+        sharedId,
+        next,
+        serializeWallScene(doc),
+        serverRevisionRef.current,
+      ).then(applySharedSaveResult);
     },
-    [sharedId, markPreviewDirty],
+    [sharedId, markPreviewDirty, applySharedSaveResult],
   );
 
   const handleShare = useCallback(async () => {
@@ -722,10 +762,15 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     broadcastClear();
     const json = serializeWallScene(useWallSceneStore.getState().document);
     markPreviewDirty();
-    void saveSharedWallToCloud(sharedId, themeIdRef.current, json);
+    void saveSharedWallToCloud(
+      sharedId,
+      themeIdRef.current,
+      json,
+      serverRevisionRef.current,
+    ).then(applySharedSaveResult);
     setLoadedCanvasJson(json);
     showToast("벽을 비웠어요");
-  }, [sharedId, broadcastClear, showToast, markPreviewDirty]);
+  }, [sharedId, broadcastClear, showToast, markPreviewDirty, applySharedSaveResult]);
 
   const handleInvite = useCallback(async () => {
     setIsInviting(true);

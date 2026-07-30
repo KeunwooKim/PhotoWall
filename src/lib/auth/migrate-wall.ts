@@ -1,16 +1,25 @@
 import type { PublishedWall, WallThemeId } from "@/types/wall";
 import { loadWall, saveWall, getOrCreateWallId, setPersonalWallId } from "@/lib/wall-storage";
 import { authFetch } from "@/lib/auth/api-fetch";
+import { sceneRevisionFromJson } from "@/lib/wall-scene/scene-revision";
 
 function isValidWallId(id: string): boolean {
   return id !== "my-wall" && id.length === 36;
 }
 
+export type CloudSaveResult = {
+  wall: PublishedWall | null;
+  conflictWall?: PublishedWall;
+  message?: string;
+  restricted?: boolean;
+};
+
 export async function saveWallToCloud(
   themeId: WallThemeId,
   canvasJson: object,
   wallId?: string,
-): Promise<PublishedWall | null> {
+  baseRevision?: number,
+): Promise<CloudSaveResult> {
   const id = wallId ?? getOrCreateWallId();
 
   const res = await authFetch("/api/walls", {
@@ -20,14 +29,39 @@ export async function saveWallToCloud(
       id: isValidWallId(id) ? id : undefined,
       themeId,
       canvasJson,
+      baseRevision,
     }),
   });
 
-  if (!res.ok) return null;
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as {
+      wall?: PublishedWall;
+      message?: string;
+    };
+    return {
+      wall: null,
+      conflictWall: body.wall,
+      message: body.message,
+    };
+  }
+
+  if (res.status === 403) {
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    return {
+      wall: null,
+      restricted: body.error === "account_restricted",
+      message: body.message,
+    };
+  }
+
+  if (!res.ok) return { wall: null };
 
   const wall = (await res.json()) as PublishedWall;
   setPersonalWallId(wall.id);
-  return wall;
+  return { wall };
 }
 
 export async function migrateLocalWallToCloud(): Promise<{
@@ -37,7 +71,12 @@ export async function migrateLocalWallToCloud(): Promise<{
   const local = loadWall();
   if (!local) return null;
 
-  const wall = await saveWallToCloud(local.themeId, local.canvasJson, local.id);
+  const { wall } = await saveWallToCloud(
+    local.themeId,
+    local.canvasJson,
+    local.id,
+    sceneRevisionFromJson(local.canvasJson),
+  );
   if (!wall) return null;
 
   saveWall(wall.themeId, wall.canvasJson);

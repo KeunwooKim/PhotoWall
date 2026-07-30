@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { importPhotosFromBoothUrl } from "@/lib/booth-import/fetch-booth-images";
+import { restrictedResponse } from "@/lib/auth/account-restrict";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
 
 export async function POST(request: NextRequest) {
@@ -28,8 +29,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const blocked = await restrictedResponse(routeClient.supabase, user.id);
+  if (blocked) return routeClient.applyCookies(blocked);
+
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? user.id;
-  if (!checkRateLimit(`booth-import:${ip}`, 10, 60_000)) {
+  if (!(await checkRateLimitAsync(`booth-import:${ip}`, 10, 60_000))) {
     return NextResponse.json(
       { ok: false, error: "rate_limited", message: "요청이 너무 많아요. 잠시 후 다시 시도해 주세요" },
       { status: 429 },

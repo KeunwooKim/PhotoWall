@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { LOCAL_STORAGE_QUOTA_EVENT } from "@/lib/wall-storage";
 
 const DISMISSED_KEY = "photowall-guest-banner-dismissed";
 
@@ -13,14 +14,26 @@ interface GuestSaveBannerProps {
 export default function GuestSaveBanner({ hasObjects }: GuestSaveBannerProps) {
   const { user, isLoading, isConfigured, signInWithGoogle } = useAuth();
   const [dismissed, setDismissed] = useState(true); // 초기엔 숨김 — hydration 후 결정
+  const [quotaHit, setQuotaHit] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setDismissed(!!localStorage.getItem(DISMISSED_KEY));
+
+    const onQuota = () => {
+      setQuotaHit(true);
+      setDismissed(false);
+    };
+    window.addEventListener(LOCAL_STORAGE_QUOTA_EVENT, onQuota);
+    return () => window.removeEventListener(LOCAL_STORAGE_QUOTA_EVENT, onQuota);
   }, []);
 
   const handleDismiss = () => {
+    if (quotaHit) {
+      setDismissed(true);
+      return;
+    }
     localStorage.setItem(DISMISSED_KEY, "1");
     setDismissed(true);
   };
@@ -42,7 +55,9 @@ export default function GuestSaveBanner({ hasObjects }: GuestSaveBannerProps) {
       style={{ bottom: "max(5rem, calc(env(safe-area-inset-bottom) + 4rem))" }}
     >
       <p className="min-w-0 flex-1 text-xs leading-snug text-background/80">
-        지금 로그인하면 이 벽이 자동으로 저장돼요
+        {quotaHit
+          ? "이 기기 저장 공간이 가득 찼어요. 로그인하면 클라우드에 안전하게 보관돼요"
+          : "지금 로그인하면 이 벽이 자동으로 저장돼요. 브라우저 데이터를 지우면 사라질 수 있어요"}
       </p>
       <button
         type="button"

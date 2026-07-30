@@ -25,6 +25,9 @@ export default function SettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -74,6 +77,28 @@ export default function SettingsPage() {
       await signOut();
     } finally {
       setIsSigningOut(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE" || isDeleting) return;
+    setIsDeleting(true);
+    setMessage(null);
+    try {
+      const res = await authFetch("/api/account", {
+        method: "DELETE",
+        headers: { "X-Confirm-Delete": "DELETE" },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || "탈퇴에 실패했어요");
+      }
+      await signOut();
+      window.location.href = "/";
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "탈퇴에 실패했어요");
+      setTimeout(() => setMessage(null), 4000);
+      setIsDeleting(false);
     }
   };
 
@@ -191,6 +216,56 @@ export default function SettingsPage() {
             >
               {isSigningOut ? "로그아웃 중..." : "로그아웃"}
             </button>
+
+            {!showDeleteConfirm ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteConfirm(true);
+                  setDeleteConfirmText("");
+                }}
+                className="w-full rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-4 text-left text-sm font-medium text-red-700 transition hover:bg-red-500/10 dark:text-red-300"
+              >
+                회원 탈퇴
+              </button>
+            ) : (
+              <div className="space-y-3 rounded-2xl border border-red-500/25 bg-red-500/[0.06] px-4 py-4">
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300">탈퇴하시겠어요?</p>
+                <p className="text-xs leading-relaxed text-muted">
+                  개인·공동 벽, 사진, 친구 관계가 삭제되며 복구할 수 없어요. 계속하려면 아래에{" "}
+                  <span className="font-semibold text-foreground">DELETE</span>를 입력하세요.
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  autoComplete="off"
+                  className="w-full rounded-xl border border-foreground/10 bg-background px-3 py-2.5 text-sm outline-none focus:border-foreground/30"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteConfirmText("");
+                    }}
+                    disabled={isDeleting}
+                    className="flex-1 rounded-xl bg-foreground/8 px-3 py-2.5 text-sm font-medium disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteAccount()}
+                    disabled={isDeleting || deleteConfirmText !== "DELETE"}
+                    className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-medium text-white disabled:opacity-40"
+                  >
+                    {isDeleting ? "탈퇴 중..." : "영구 탈퇴"}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         )}
 

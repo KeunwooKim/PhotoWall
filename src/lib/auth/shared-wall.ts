@@ -28,15 +28,41 @@ export async function saveSharedWallToCloud(
   wallId: string,
   themeId: WallThemeId,
   canvasJson: object,
-): Promise<PublishedWall | null> {
+  baseRevision?: number,
+): Promise<{
+  wall: PublishedWall | null;
+  conflictWall?: PublishedWall;
+  message?: string;
+  restricted?: boolean;
+}> {
   const res = await authFetch(`/api/shared-walls/${wallId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ themeId, canvasJson }),
+    body: JSON.stringify({ themeId, canvasJson, baseRevision }),
   });
 
-  if (!res.ok) return null;
-  return (await res.json()) as PublishedWall;
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => ({}))) as {
+      wall?: PublishedWall;
+      message?: string;
+    };
+    return { wall: null, conflictWall: body.wall, message: body.message };
+  }
+
+  if (res.status === 403) {
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    return {
+      wall: null,
+      restricted: body.error === "account_restricted",
+      message: body.message,
+    };
+  }
+
+  if (!res.ok) return { wall: null };
+  return { wall: (await res.json()) as PublishedWall };
 }
 
 /** Rename a shared wall title (editor must already have edit access). */

@@ -1,17 +1,65 @@
-const hits = new Map<string, { count: number; resetAt: number }>();
+/**
+ * Rate limiter — uses Upstash Redis REST when configured, otherwise
+ * falls back to per-instance memory (dev / single-instance only).
+ */
 
-/** Simple in-memory rate limiter (per serverless instance). Returns false when over limit. */
-export function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
+const memoryHits = new Map<string, { count: number; resetAt: number }>();
+
+function memoryCheck(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
-  const entry = hits.get(key);
+  const entry = memoryHits.get(key);
 
   if (!entry || now > entry.resetAt) {
-    hits.set(key, { count: 1, resetAt: now + windowMs });
+    memoryHits.set(key, { count: 1, resetAt: now + windowMs });
     return true;
   }
 
   if (entry.count >= limit) return false;
-
   entry.count += 1;
   return true;
+}
+
+async function upstashIncr(key: string, windowMs: number): Promise<number | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+
+  const redisKey = `rl:${key}`;
+  const pipeline = [
+    ["INCR", redisKey],
+    ["PEXPIRE", redisKey, String(windowMs), "NX"],
+  ];
+
+  try {
+    const res = await fetch(`${url}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(pipeline),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Array<{ result?: number }>;
+    const count = data?.[0]?.result;
+    return typeof count === "number" ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Sync wrapper kept for existing call sites — uses memory only. Prefer checkRateLimitAsync in new code. */
+export function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
+  return memoryCheck(key, limit, windowMs);
+}
+
+/** Durable when UPSTASH_REDIS_REST_* is set; otherwise memory fallback. */
+export async function checkRateLimitAsync(
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<boolean> {
+  const count = await upstashIncr(key, windowMs);
+  if (count == null) return memoryCheck(key, limit, windowMs);
+  return count <= limit;
 }

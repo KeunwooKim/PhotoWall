@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createInvite } from "@/lib/supabase/social";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { restrictedResponse } from "@/lib/auth/account-restrict";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as { wallId?: string };
@@ -22,6 +23,12 @@ export async function POST(request: NextRequest) {
 
   const blocked = await restrictedResponse(routeClient.supabase, user.id);
   if (blocked) return routeClient.applyCookies(blocked);
+
+  if (!(await checkRateLimitAsync(`invite-create:${user.id}`, 30, 60 * 60 * 1000))) {
+    return routeClient.applyCookies(
+      NextResponse.json({ error: "Too many invites. Try again later." }, { status: 429 }),
+    );
+  }
 
   const invite = await createInvite(routeClient.supabase, body.wallId);
   if (!invite) {

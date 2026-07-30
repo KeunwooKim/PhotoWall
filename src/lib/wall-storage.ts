@@ -5,6 +5,9 @@ const STORAGE_KEY = "photowall-data";
 const WALL_ID_KEY = "photowall-personal-wall-id";
 const LEGACY_WALL_ID_KEY = "photowall-wall-id";
 
+/** Dispatched on window when localStorage quota blocks a persist. */
+export const LOCAL_STORAGE_QUOTA_EVENT = "photowall:local-storage-quota";
+
 export function getOrCreateWallId(): string {
   if (typeof window === "undefined") return "my-wall";
 
@@ -52,6 +55,9 @@ export function saveWall(themeId: WallThemeId, canvasJson: object): WallData {
       (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED");
     if (!quota) throw err;
     console.warn("[photowall] localStorage quota exceeded — wall kept in memory only");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(LOCAL_STORAGE_QUOTA_EVENT));
+    }
   }
   return data;
 }

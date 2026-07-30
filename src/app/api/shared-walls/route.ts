@@ -5,6 +5,7 @@ import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-s
 import { getUserPlan } from "@/lib/auth/user-plan";
 import { getWallQuota } from "@/lib/wall-quotas";
 import { restrictedResponse } from "@/lib/auth/account-restrict";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   const routeClient = createRouteClient(request);
@@ -38,6 +39,12 @@ export async function POST(request: NextRequest) {
 
   const blocked = await restrictedResponse(supabase, user.id);
   if (blocked) return applyCookies(blocked);
+
+  if (!(await checkRateLimitAsync(`shared-create:${user.id}`, 20, 60 * 60 * 1000))) {
+    return applyCookies(
+      NextResponse.json({ error: "Too many requests. Try again later." }, { status: 429 }),
+    );
+  }
 
   if (!(await isFeatureEnabled("shared_walls", supabase))) {
     return applyCookies(
