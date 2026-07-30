@@ -53,6 +53,9 @@ function StatCard({ label, value }: { label: string; value: number }) {
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [discordConfigured, setDiscordConfigured] = useState<boolean | null>(null);
+  const [discordBusy, setDiscordBusy] = useState(false);
+  const [discordMessage, setDiscordMessage] = useState<string | null>(null);
 
   const loadStats = useCallback(() => {
     authFetch("/api/admin/stats")
@@ -66,7 +69,29 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     loadStats();
+    authFetch("/api/admin/discord-test")
+      .then(async (res) => (res.ok ? ((await res.json()) as { configured?: boolean }) : null))
+      .then((data) => setDiscordConfigured(!!data?.configured))
+      .catch(() => setDiscordConfigured(false));
   }, [loadStats]);
+
+  const sendDiscordTest = async () => {
+    setDiscordBusy(true);
+    setDiscordMessage(null);
+    try {
+      const res = await authFetch("/api/admin/discord-test", { method: "POST" });
+      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !body.ok) {
+        setDiscordMessage(body.error || "전송에 실패했어요");
+        return;
+      }
+      setDiscordMessage("Discord로 테스트 알림을 보냈어요");
+    } catch {
+      setDiscordMessage("전송에 실패했어요");
+    } finally {
+      setDiscordBusy(false);
+    }
+  };
 
   if (error) {
     return <p className="text-sm text-red-600">{error}</p>;
@@ -81,6 +106,32 @@ export default function AdminDashboardPage() {
       <section className="space-y-1">
         <h2 className="text-xl font-bold">대시보드</h2>
         <p className="text-sm text-muted">서비스 현황 요약</p>
+      </section>
+
+      <section className="rounded-2xl border border-foreground/8 bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Discord 알림</h3>
+            <p className="mt-0.5 text-xs text-muted">
+              {discordConfigured == null
+                ? "설정 확인 중…"
+                : discordConfigured
+                  ? "웹후크 연결됨 · 신규 가입/신고/제한 알림"
+                  : "DISCORD_WEBHOOK_URL 미설정 (Vercel env 확인)"}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={discordBusy || discordConfigured === false}
+            onClick={() => void sendDiscordTest()}
+            className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
+          >
+            {discordBusy ? "보내는 중…" : "테스트 알림"}
+          </button>
+        </div>
+        {discordMessage && (
+          <p className="mt-3 text-xs text-muted">{discordMessage}</p>
+        )}
       </section>
 
       <section className="space-y-3">
