@@ -38,7 +38,6 @@ const dockBtn =
   "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2.5 text-[11px] font-medium transition active:scale-95 sm:px-3 sm:text-xs";
 const dockBtnIdle = `${dockBtn} text-neutral-600 hover:bg-black/5`;
 const dockBtnActive = `${dockBtn} bg-neutral-900 text-white`;
-const dockBtnScan = `${dockBtn} border border-neutral-300 bg-neutral-50 text-neutral-800 hover:bg-neutral-100`;
 const panelShell =
   "pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white p-3 text-neutral-800 shadow-lg ring-1 ring-black/10 backdrop-blur-sm";
 const panelLabel = "text-[11px] font-medium text-neutral-500";
@@ -257,7 +256,7 @@ export default function EditorToolDock({
           />
         </label>
 
-        <Link href="/capture" className={dockBtnScan} aria-label="AI 스캔">
+        <Link href="/capture" className={dockBtnIdle} aria-label="AI 스캔">
           스캔
         </Link>
 

@@ -1077,7 +1077,7 @@ export default function PersonalWallKonvaEditor() {
   }
 
   return (
-    <div className={`flex h-[100dvh] w-screen flex-col overflow-hidden bg-neutral-100 ${wallTextFontVariables}`}>
+    <div className={`flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-neutral-100 ${wallTextFontVariables}`}>
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-50 px-3"
         style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}

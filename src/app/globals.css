@@ -34,6 +34,14 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* Editor shells lock document scroll / pull-to-refresh on mobile */
+html:has(main.overscroll-none),
+body:has(main.overscroll-none) {
+  overflow: hidden;
+  overscroll-behavior: none;
+  height: 100%;
+}
+
 .workspace-grid {
   background-color: #e5e5e5;
   background-image:
