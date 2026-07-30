@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Friend, Profile } from "@/types/profile";
 import { fetchPersonalWallIdForOwner } from "@/lib/supabase/walls";
+import { notifyNewUser } from "@/lib/discord/notify";
 
 function generateFriendCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -69,6 +70,10 @@ export async function ensureProfile(
       .single();
 
     if (!error && data) {
+      notifyNewUser({
+        displayName: data.display_name ?? displayName,
+        userId: data.id,
+      });
       const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
       return { ...mapProfile(data), wallId };
     }
