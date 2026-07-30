@@ -11,6 +11,7 @@ import type { WallSceneObject } from "@/types/wall-scene-v2";
 interface WallObjectInspectorProps {
   object: WallSceneObject;
   onStartCrop?: (id: string) => void;
+  onStartColorEdit?: (id: string) => void;
 }
 
 function NumField({
@@ -44,7 +45,11 @@ function NumField({
   );
 }
 
-export default function WallObjectInspector({ object, onStartCrop }: WallObjectInspectorProps) {
+export default function WallObjectInspector({
+  object,
+  onStartCrop,
+  onStartColorEdit,
+}: WallObjectInspectorProps) {
   const patchObject = useWallSceneStore((s) => s.patchObject);
   const recordHistory = useWallSceneStore((s) => s.recordHistory);
   const bumpRevision = useWallSceneStore((s) => s.bumpRevision);
@@ -126,14 +131,27 @@ export default function WallObjectInspector({ object, onStartCrop }: WallObjectI
           />
         </div>
       </div>
-      {object.type === "photo" && onStartCrop && (
-        <button
-          type="button"
-          onClick={() => onStartCrop(object.id)}
-          className="w-full rounded-xl bg-foreground px-3 py-2 text-xs font-medium text-background transition active:scale-[0.98]"
-        >
-          자르기
-        </button>
+      {object.type === "photo" && (onStartCrop || onStartColorEdit) && (
+        <div className="flex flex-col gap-1.5">
+          {onStartCrop && (
+            <button
+              type="button"
+              onClick={() => onStartCrop(object.id)}
+              className="w-full rounded-xl bg-foreground px-3 py-2 text-xs font-medium text-background transition active:scale-[0.98]"
+            >
+              자르기
+            </button>
+          )}
+          {onStartColorEdit && (
+            <button
+              type="button"
+              onClick={() => onStartColorEdit(object.id)}
+              className="w-full rounded-xl border border-foreground/15 bg-surface px-3 py-2 text-xs font-medium transition hover:bg-foreground/5 active:scale-[0.98]"
+            >
+              색 보정
+            </button>
+          )}
+        </div>
       )}
       <p className="text-[10px] text-muted">더블탭/더블클릭으로도 자를 수 있어요</p>
     </div>

@@ -103,6 +103,8 @@ export interface KonvaWallStageProps {
   onStartPhotoCrop?: (objectId: string) => void;
   onContextMenuRequest?: WallContextMenuRequestFn;
   cropPhotoId?: string | null;
+  /** When set, disables transformer (e.g. color edit session). */
+  interactionLockId?: string | null;
   cropAspectPreset?: CropAspectPresetId;
   onCropDraftChange?: (
     crop: PhotoCropRect,
@@ -140,6 +142,7 @@ export default function KonvaWallStage({
   onStartPhotoCrop,
   onContextMenuRequest,
   cropPhotoId = null,
+  interactionLockId = null,
   cropAspectPreset = "free",
   onCropDraftChange,
   onCropNaturalSize,
@@ -222,11 +225,12 @@ export default function KonvaWallStage({
         (object) =>
           selected.has(object.id) &&
           object.id !== cropPhotoId &&
+          object.id !== interactionLockId &&
           isTransformableObject(object) &&
           !peerLockedIds.has(object.id),
       )
       .map((object) => object.id);
-  }, [cropPhotoId, document.objects, selectedIds, peerLockedIds]);
+  }, [cropPhotoId, interactionLockId, document.objects, selectedIds, peerLockedIds]);
 
   const cropPhoto = useMemo(() => {
     if (!cropPhotoId) return null;
@@ -497,7 +501,10 @@ export default function KonvaWallStage({
     if (!tr) return;
 
     const canTransform =
-      editorMode === "select" && !cropPhotoId && transformableSelectedIds.length > 0;
+      editorMode === "select" &&
+      !cropPhotoId &&
+      !interactionLockId &&
+      transformableSelectedIds.length > 0;
     const nodes = canTransform
       ? transformableSelectedIds
           .map((id) => nodeRegistry.current.get(id))
@@ -506,7 +513,7 @@ export default function KonvaWallStage({
 
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
-  }, [transformableSelectedIds, editorMode, cropPhotoId]);
+  }, [transformableSelectedIds, editorMode, cropPhotoId, interactionLockId]);
 
   const visibleObjects = useMemo(() => {
     const viewport = {
@@ -1082,7 +1089,7 @@ export default function KonvaWallStage({
               wallWidth={wallBounds.width}
               wallHeight={wallBounds.height}
             />
-            {!readOnly && editorMode === "select" && !cropPhotoId && (
+            {!readOnly && editorMode === "select" && !cropPhotoId && !interactionLockId && (
               <Transformer
                 ref={transformerRef}
                 rotateEnabled
