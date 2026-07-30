@@ -354,9 +354,11 @@ export default function KonvaWallStage({
 
   const handleTouchMoveZoom = useCallback(
     (e: TouchEvent) => {
+      // Block browser scroll / pull-to-refresh while touching the workspace.
+      if (e.cancelable) e.preventDefault();
+
       if (e.touches.length !== 2 || pinchDistRef.current === null) return;
       if (isStrokeMode(editorModeRef.current)) return;
-      e.preventDefault();
 
       const midpoint = {
         x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
@@ -367,10 +369,7 @@ export default function KonvaWallStage({
         const panDx = midpoint.x - pinchMidpointRef.current.x;
         const panDy = midpoint.y - pinchMidpointRef.current.y;
         if (panDx !== 0 || panDy !== 0) {
-          const zoom = useWallSceneStore.getState().userZoom;
-          if (Math.abs(zoom - 1) > 0.01) {
-            addPan(panDx, panDy);
-          }
+          addPan(panDx, panDy);
         }
       }
       pinchMidpointRef.current = midpoint;
@@ -472,6 +471,52 @@ export default function KonvaWallStage({
       window.removeEventListener("mouseup", onMouseUp);
     };
   }, [addPan, readOnly]);
+
+  // One-finger pan on the gray workspace (outside the wall stage) — blocks page rubber-band.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || readOnly) return;
+
+    let panStart: { x: number; y: number } | null = null;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) {
+        panStart = null;
+        return;
+      }
+      if (isStrokeMode(editorModeRef.current)) return;
+      const target = e.target as Node | null;
+      const wallEl = wallStageRef?.current;
+      if (wallEl && target && wallEl.contains(target)) return;
+      panStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!panStart || e.touches.length !== 1) return;
+      if (e.cancelable) e.preventDefault();
+      const x = e.touches[0].clientX;
+      const y = e.touches[0].clientY;
+      const dx = x - panStart.x;
+      const dy = y - panStart.y;
+      if (dx !== 0 || dy !== 0) addPan(dx, dy);
+      panStart = { x, y };
+    };
+
+    const onTouchEnd = () => {
+      panStart = null;
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [addPan, readOnly, wallStageRef]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1021,7 +1066,10 @@ export default function KonvaWallStage({
   }, [editorMode]);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-neutral-200">
+    <div
+      ref={containerRef}
+      className="relative h-full w-full touch-none overflow-hidden overscroll-none bg-neutral-200"
+    >
       <div
         ref={wallStageRef}
         className={`absolute left-1/2 top-1/2 origin-center shadow-lg ring-1 ring-black/10 ${

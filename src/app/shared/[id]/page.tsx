@@ -8,7 +8,7 @@ export default async function SharedWallPage({ params }: SharedWallPageProps) {
   const { id } = await params;
 
   return (
-    <main className="h-[100dvh] w-screen overflow-hidden bg-white">
+    <main className="h-[100dvh] w-screen overflow-hidden overscroll-none bg-white">
       <SharedWallKonvaEditor sharedId={id} />
     </main>
   );
