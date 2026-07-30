@@ -11,6 +11,8 @@ interface WallPresenceOverlayProps {
   containerWidth: number;
   containerHeight: number;
   wallScale: number;
+  panX: number;
+  panY: number;
 }
 
 export default function WallPresenceOverlay({
@@ -21,9 +23,12 @@ export default function WallPresenceOverlay({
   containerWidth,
   containerHeight,
   wallScale,
+  panX,
+  panY,
 }: WallPresenceOverlayProps) {
-  const offsetX = containerWidth / 2 - (wallWidth * wallScale) / 2;
-  const offsetY = containerHeight / 2 - (wallHeight * wallScale) / 2;
+  // Match wall stage: centered + pan + scale (see KonvaWallStage transform).
+  const offsetX = containerWidth / 2 - (wallWidth * wallScale) / 2 + panX;
+  const offsetY = containerHeight / 2 - (wallHeight * wallScale) / 2 + panY;
 
   const visiblePeers = dedupePresencePeers(peers).filter((peer) =>
     shouldShowPeerCursor(peer, { currentSessionId }),

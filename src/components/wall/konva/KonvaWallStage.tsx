@@ -58,6 +58,8 @@ import {
   type WallContextMenuRequestFn,
 } from "./wall-context-menu-context";
 
+/** Client-px movement below this counts as a tap (clear selection). */
+const TAP_CLEAR_PX = 10;
 function isStrokeMode(mode: EditorMode) {
   return mode === "pen" || mode === "tape";
 }
@@ -332,7 +334,13 @@ export default function KonvaWallStage({
   const pinchMidpointRef = useRef<{ x: number; y: number } | null>(null);
   const spaceHeldRef = useRef(false);
   const containerPanRef = useRef<{ x: number; y: number } | null>(null);
-  const stagePanRef = useRef<{ x: number; y: number } | null>(null);
+  /** Empty-stage pan while zoomed; `origin*` used to detect tap-to-deselect. */
+  const stagePanRef = useRef<{
+    x: number;
+    y: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
 
   const getContainerCenter = useCallback(() => {
     const el = containerRef.current;
@@ -477,7 +485,8 @@ export default function KonvaWallStage({
     const el = containerRef.current;
     if (!el || readOnly) return;
 
-    let panStart: { x: number; y: number } | null = null;
+    let panStart: { x: number; y: number; originX: number; originY: number } | null =
+      null;
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) {
@@ -488,7 +497,9 @@ export default function KonvaWallStage({
       const target = e.target as Node | null;
       const wallEl = wallStageRef?.current;
       if (wallEl && target && wallEl.contains(target)) return;
-      panStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      const x = e.touches[0].clientX;
+      const y = e.touches[0].clientY;
+      panStart = { x, y, originX: x, originY: y };
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -499,10 +510,20 @@ export default function KonvaWallStage({
       const dx = x - panStart.x;
       const dy = y - panStart.y;
       if (dx !== 0 || dy !== 0) addPan(dx, dy);
-      panStart = { x, y };
+      panStart = { ...panStart, x, y };
     };
 
     const onTouchEnd = () => {
+      if (panStart) {
+        const moved = Math.hypot(
+          panStart.x - panStart.originX,
+          panStart.y - panStart.originY,
+        );
+        if (moved < TAP_CLEAR_PX && editorModeRef.current === "select") {
+          clearSelection();
+          onPresenceSelection?.(null);
+        }
+      }
       panStart = null;
     };
 
@@ -516,7 +537,7 @@ export default function KonvaWallStage({
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [addPan, readOnly, wallStageRef]);
+  }, [addPan, clearSelection, onPresenceSelection, readOnly, wallStageRef]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -998,7 +1019,12 @@ export default function KonvaWallStage({
       const zoom = useWallSceneStore.getState().userZoom;
       const pt = clientPointFromEvent(nativeEvt);
       if (!shiftKey && Math.abs(zoom - 1) > 0.01 && pt) {
-        stagePanRef.current = pt;
+        stagePanRef.current = {
+          x: pt.x,
+          y: pt.y,
+          originX: pt.x,
+          originY: pt.y,
+        };
         return;
       }
 
@@ -1021,7 +1047,11 @@ export default function KonvaWallStage({
           const dx = pt.x - stagePanRef.current.x;
           const dy = pt.y - stagePanRef.current.y;
           if (dx !== 0 || dy !== 0) addPan(dx, dy);
-          stagePanRef.current = pt;
+          stagePanRef.current = {
+            ...stagePanRef.current,
+            x: pt.x,
+            y: pt.y,
+          };
           return;
         }
       }
@@ -1043,7 +1073,17 @@ export default function KonvaWallStage({
 
   const handleStagePointerUp = useCallback(
     (stage: Konva.Stage | null) => {
+      const pan = stagePanRef.current;
       stagePanRef.current = null;
+
+      if (pan) {
+        const moved = Math.hypot(pan.x - pan.originX, pan.y - pan.originY);
+        if (moved < TAP_CLEAR_PX) {
+          clearSelection();
+          broadcastSelection(null);
+        }
+        return;
+      }
 
       if (drawingRef.current || freehandRef.current) {
         finishDrawing();
@@ -1054,7 +1094,7 @@ export default function KonvaWallStage({
         finishMarquee(stage);
       }
     },
-    [finishDrawing, finishMarquee],
+    [broadcastSelection, clearSelection, finishDrawing, finishMarquee],
   );
 
   useEffect(() => {
@@ -1291,6 +1331,8 @@ export default function KonvaWallStage({
           containerWidth={containerSize.width}
           containerHeight={containerSize.height}
           wallScale={viewportScale}
+          panX={panX}
+          panY={panY}
         />
       )}
     </div>
