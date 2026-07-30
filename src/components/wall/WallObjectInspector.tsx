@@ -12,6 +12,8 @@ interface WallObjectInspectorProps {
   object: WallSceneObject;
   onStartCrop?: (id: string) => void;
   onStartColorEdit?: (id: string) => void;
+  onUpscalePhoto?: (id: string) => void;
+  upscaleBusy?: boolean;
 }
 
 function NumField({
@@ -49,6 +51,8 @@ export default function WallObjectInspector({
   object,
   onStartCrop,
   onStartColorEdit,
+  onUpscalePhoto,
+  upscaleBusy = false,
 }: WallObjectInspectorProps) {
   const patchObject = useWallSceneStore((s) => s.patchObject);
   const recordHistory = useWallSceneStore((s) => s.recordHistory);
@@ -131,7 +135,8 @@ export default function WallObjectInspector({
           />
         </div>
       </div>
-      {object.type === "photo" && (onStartCrop || onStartColorEdit) && (
+      {object.type === "photo" &&
+        (onStartCrop || onStartColorEdit || onUpscalePhoto) && (
         <div className="flex flex-col gap-1.5">
           {onStartCrop && (
             <button
@@ -149,6 +154,16 @@ export default function WallObjectInspector({
               className="w-full rounded-xl border border-foreground/15 bg-surface px-3 py-2 text-xs font-medium transition hover:bg-foreground/5 active:scale-[0.98]"
             >
               색 보정
+            </button>
+          )}
+          {onUpscalePhoto && (
+            <button
+              type="button"
+              disabled={upscaleBusy}
+              onClick={() => onUpscalePhoto(object.id)}
+              className="w-full rounded-xl border border-foreground/15 bg-surface px-3 py-2 text-xs font-medium transition hover:bg-foreground/5 active:scale-[0.98] disabled:opacity-40"
+            >
+              {upscaleBusy ? "업스케일 중…" : "화질 업스케일"}
             </button>
           )}
         </div>
