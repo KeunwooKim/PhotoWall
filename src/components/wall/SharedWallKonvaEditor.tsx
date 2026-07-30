@@ -30,6 +30,10 @@ import {
   countSelectedQuotaObjects,
   getClipboardQuotaObjectCount,
 } from "@/lib/wall-scene/clipboard-objects";
+import {
+  applyBringOntoWall,
+  countOutsideObjectsOnWall,
+} from "@/lib/wall-scene/bring-objects-onto-wall";
 import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { debounce } from "@/lib/debounce";
@@ -278,6 +282,17 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     setIsReady(true);
   }, []);
 
+  useEffect(() => {
+    if (!isReady) return;
+    const outside = countOutsideObjectsOnWall();
+    if (outside <= 0) return;
+    showToast(
+      outside === 1
+        ? "벽 밖 요소 1개 — 메뉴에서 가져올 수 있어요"
+        : `벽 밖 요소 ${outside}개 — 메뉴에서 가져올 수 있어요`,
+    );
+  }, [isReady, showToast]);
+
   const handlePointerMove = useCallback(
     (x: number, y: number) => {
       lastPointerRef.current = { x, y };
@@ -434,6 +449,22 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     const ids = useWallSceneStore.getState().selectedIds;
     broadcastPresence(ids);
   }, [broadcastPresence]);
+
+  const handleBringOntoWall = useCallback(() => {
+    const ids = useWallSceneStore.getState().selectedIds;
+    const moved = applyBringOntoWall(ids);
+    if (moved === 0) {
+      showToast(
+        ids.length > 0
+          ? "선택한 항목은 이미 벽 안에 있어요"
+          : "벽 밖으로 나간 항목이 없어요",
+      );
+      return;
+    }
+    showToast(
+      moved === 1 ? "벽 안으로 가져왔어요" : `${moved}개 항목을 벽 안으로 가져왔어요`,
+    );
+  }, [showToast]);
 
   const handleBringForward = useCallback(() => {
     if (!primaryId) return;
@@ -912,7 +943,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           {user && (
             <PeerAvatarStack
               peers={peers}
-              self={{ userId: user.id, displayName }}
+              self={{ userId: user.id, displayName, sessionId }}
             />
           )}
           <ZoomResetButton />
@@ -955,6 +986,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onExport={() => void handleExport()}
         isExporting={isExporting}
         onOpenAssets={() => setIsAssetsOpen(true)}
+        onBringOntoWall={handleBringOntoWall}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -988,7 +1020,6 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             wallId={sharedId}
             resolvePhotoSrc={resolvePhotoSrc}
             peers={peers}
-            currentUserId={user.id}
             currentSessionId={sessionId}
             onDocumentChange={handleDocumentChange}
             onPointerMove={handlePointerMove}
@@ -1059,6 +1090,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
                 }
                 upscaleBusy={upscaleBusy}
                 onToast={showToast}
+                onBringOntoWall={handleBringOntoWall}
               />
             )}
 

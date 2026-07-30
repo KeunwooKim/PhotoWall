@@ -48,18 +48,21 @@
 |---|---|---|
 | 이미지 업로드 및 자유 배치 | 파일 선택 업로드 + 캔버스 내 드래그 이동 | ✅ 완료 |
 | 이미지 변형 | 크기 조절, 회전(각도), 레이어 순서(z-index) 변경 | ✅ 완료 |
-| PPT형 선택·정렬 | 다중 선택, 전체 선택, 정렬 6종, 벽 가운데, 복제, 화살표 미세 이동, 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드 | ✅ Phase A·B·C 완료 |
+| PPT형 선택·정렬 | 다중 선택, 전체 선택, 정렬 6종, 벽 가운데, 복제, 화살표 미세 이동, 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드, 그룹, 격자, 컨텍스트 메뉴 | ✅ Phase A–D (레이어 패널 UI는 제거, z-order는 메뉴로) |
 | 벽지 테마 선택 | 이미지 벽지 7종 (린넨·스튜디오 핑크·세이지·별밤·카페 칠판/코르크/벽돌) | ✅ |
-| 기본 꾸미기 에셋 | 마스킹 테이프 4종, 이모지·SVG 스티커 (basic 팩), 무한도전 스티커 팩, 펜(색상 6·굵기 3) | ✅ 완료 |
+| 기본 꾸미기 에셋 | 마스킹 테이프 4종, 이모지·SVG 스티커 (basic 팩), 무한도전 스티커 팩, 펜(색상 6·굵기 3), 텍스트 | ✅ 완료 |
+| 사진 편집 | 자르기(크롭), 색 보정, 화질 업스케일 | ✅ 완료 |
+| AI 사진 스캔 | `/capture` — 카메라/갤러리 → ONNX DocAligner 코너 → warp·보정 → 벽에 붙이기 | ✅ 1차 완료 |
 | 게스트 체험 | 로그인 없이 `/wall/edit` 진입 → 작업 후 로그인 시 클라우드 마이그레이션 | ✅ 완료 |
 | 로딩 UI | `WallLoadingOverlay` — 데이터 fetch·Konva hydrate 통합 | ✅ 완료 |
 | 줌·패닝 | 핀치/Ctrl+휠 줌 (0.5×–4×), 두 손가락 패닝, 줌 리셋 버튼 | ✅ 완료 |
-| 에디터 UI | 전체 화면 흰 캔버스 + 좌상단 메뉴 → 왼쪽 슬라이드 팝업 | ✅ 완료 |
-| 벽 저장/불러오기 | localStorage + 자동 저장 (1.5초 debounce) | ✅ 완료 |
+| 에디터 UI | 데스크톱: 툴 레일 + 에셋 + 속성 사이드바 / 모바일: 하단 독 + 선택 가로 바 + 햄버거 메뉴 | ✅ 완료 |
+| 벽 저장/불러오기 | localStorage + 자동 저장 (1.5초 debounce) + 클라우드 | ✅ 완료 |
 | 실행 취소/다시하기 | Undo/Redo (최대 50단계) + ⌘Z / ⌘⇧Z 단축키 | ✅ 완료 |
 | 드래그 앤 드롭 업로드 | 캔버스에 이미지 끌어놓기 (다중 파일) | ✅ 완료 |
 | QR 네컷 가져오기 | 인생네컷·포토이즘 QR 스캔 → 벽에 자동 붙이기 (`/import`) | 🔄 1차 완료 — 실제 부스 QR 검증 필요 |
 | 모바일 최적화 | 100dvh, safe-area, 터치 핸들 확대, touch-none | ✅ 완료 |
+| 벽 밖 복구 | 드래그/변형 클램프 + 「벽으로 가져오기」 | ✅ 완료 |
 
 ### 🤝 2단계: 너의 벽을 보여줘 (소셜 네트워크 확장)
 
@@ -77,6 +80,7 @@
 | 벽 프라이버시 | `allow_wall_visits` — 친구만 내 벽 방문 (기본 비공개) | ✅ 1차 완료 |
 | 공동벽 초대 수락 | `wall_member_invites` — 초대 accept/decline | ✅ 1차 완료 |
 | 다크 모드 | 라이트/다크/시스템 테마 + 시맨틱 UI 토큰 | ✅ 완료 |
+| Presence (세션 단위) | 같은 계정·다른 기기에서도 선택 테두리·소프트락 표시 | ✅ 완료 |
 
 ### 💰 3단계: 아이템 숍 오픈 (비즈니스 모델 구축)
 
@@ -321,6 +325,7 @@ src/
 │   ├── wall/edit/                    # 내 벽 편집 (Konva)
 │   ├── shared/[id]/                  # 공동 벽 편집 (Konva + Realtime)
 │   ├── import/                       # QR 네컷 가져오기
+│   ├── capture/                      # AI 사진 스캔 (ONNX)
 │   ├── profile/ · settings/          # 내정보·설정
 │   ├── admin/                        # 관리자 UI (allowlist)
 │   ├── api/admin/                    # 관리자 API (service role)
@@ -331,9 +336,11 @@ src/
 │   ├── PersonalWallKonvaEditor.tsx   # 개인 벽 진입점
 │   ├── SharedWallKonvaEditor.tsx     # 공동 벽 진입점
 │   ├── WallViewer.tsx                # 공개 벽 뷰어
+│   ├── EditorToolRail / Dock / MenuDrawer / SelectionSheet
 │   ├── StickerPicker.tsx             # 스티커 카탈로그 UI
 │   └── konva/                        # Konva Stage·노드·Presence
 ├── lib/stickers/                     # 스티커 팩 카탈로그 (basic·mudo)
+├── lib/photo-scan/ · photo-edit/     # AI 스캔 · 색보정·업스케일
 ├── stores/wall-scene-store.ts        # Zustand 씬 상태 + Undo/Redo
 ├── hooks/useWallRealtime.ts          # Supabase Broadcast ↔ store
 ├── lib/wall-scene/                   # v2 씬 모델·legacy import·realtime
@@ -343,14 +350,16 @@ src/
 
 > **단일 Konva 아키텍처:** 개인·공동·뷰어 모두 `react-konva` + v2 `photowallScene`. DB의 v1 Fabric JSON은 로드 시 자동 import. npm `fabric`·`yjs` 의존성 제거됨.
 
-### 현재 UI (2026-07-29)
+### 현재 UI (2026-07-30)
 
 - **Figma형 확장 벽** — 780×1200 시작, 콘텐츠에 따라 자동 확장·축소 (최대 2400×4000), 격자 워크스페이스 + 핀치 줌 + 두 손가락 패닝
-- **개인 벽 (`/wall/edit`)** — Konva: 사진·스티커·테이프·Undo·export·clear·게스트 체험
-- **공동 벽 (`/shared/[id]`)** — Konva + 실시간: 사진·스티커·테이프·Undo·export·clear·Presence
-- **공개 벽 뷰어 (`/wall/[id]`)** — Konva read-only + 방명록·좋아요·신고
+- **데스크톱 크롬** — 상단 액션 + 왼쪽 툴 레일/에셋 + 오른쪽 속성 패널
+- **모바일 크롬** — 햄버거 메뉴, 하단 독, 한 번 탭 시 가로 선택 바 (길게 누르기 = 컨텍스트 메뉴)
+- **개인 벽 (`/wall/edit`)** — Konva: 사진·스티커·테이프·펜·텍스트·크롭·색보정·업스케일·Undo·export·게스트
+- **공동 벽 (`/shared/[id]`)** — 위 + 실시간 Presence(session)·접속자 아바타·초대
+- **AI 스캔 (`/capture`)** — 기기 카메라/갤러리 → ONNX 코너 검출 → 벽에 붙이기
+- **공개 벽 (`/wall/[id]`)** — Konva read-only + 소셜 패널 (좋아요·댓글·방명록)
 - **홈 CTA** — 「지금 꾸며보기」→ `/wall/edit` 직행
-- **좌상단 햄버거** — 왼쪽 슬라이드 팝업 메뉴
 - **설정** — 다크모드·프라이버시·문의하기·관리자 진입 (allowlist)
 
 ---
@@ -440,7 +449,7 @@ erDiagram
 
 ```
 { photowallScene: { meta: { version: 2, wallBounds, revision }, objects[] } }
-objects[] → photo | sticker | emoji | tape | path
+objects[] → photo | sticker | emoji | tape | path | text | svg(타입만)
 사진 src → wall-photo://userId/uuid.ext (Storage path ref, signed URL로 표시)
 스티커 → stickerId (public/stickers/ 카탈로그 참조)
 ```
@@ -557,7 +566,7 @@ erDiagram
 
 ## 7. 진행 현황
 
-> **마지막 정리:** 2026-07-29 — 코드베이스 기준 (줌·패닝, 벽 2배, 게스트 체험, Figma 대비 점검 반영)
+> **마지막 정리:** 2026-07-30 — 에디터 크롬·사진 편집·스캔·Presence session·벽 밖 복구·미사용 코드 정리
 
 ### 한눈에 보기
 
@@ -566,14 +575,18 @@ erDiagram
 | 개인·공동·뷰어 (Konva) | ✅ 완료 | `/wall/edit`, `/shared/[id]`, `/wall/[id]` |
 | 스티커 카탈로그 | ✅ 1차 | basic·무한도전(mudo) 팩 + 출처 표기 |
 | 소셜·친구·프라이버시 | ✅ 1차 완료 | 좋아요·댓글·방명록·초대 |
-| 공동 벽 실시간 | ✅ 1차 | Broadcast + Presence — 다중 선택 테두리·live patch |
-| PPT형 에디터 도구 | ✅ Phase A·B·C·D | 다중 선택·정렬·그룹·레이어·격자·컨텍스트 메뉴 |
+| 공동 벽 실시간 | ✅ 1차 | Broadcast + Presence — **sessionId** 기준 테두리·live patch |
+| PPT형 에디터 도구 | ✅ Phase A–D | 다중 선택·정렬·그룹·격자·컨텍스트 메뉴 (레이어 패널 UI 제거) |
+| 에디터 크롬 | ✅ 완료 | 데스크톱 레일/속성, 모바일 독·선택 바·햄버거 |
+| 사진 편집 | ✅ 완료 | 크롭·색 보정·업스케일 |
+| AI 스캔 | ✅ 1차 | `/capture` ONNX DocAligner |
 | 줌·패닝 | ✅ 완료 | 핀치/Ctrl+휠 줌, 두 손가락 패닝, % 리셋 |
 | 게스트 체험 | ✅ 완료 | 로그인 전 편집 → 로그인 후 클라우드 연결 |
 | 보안 2차 (Storage) | ✅ 완료 | private + signed URL — SQL·프로덕션 검증 완료 |
 | 관리자 | ✅ 코드 완료 | SQL·`SUPABASE_SERVICE_ROLE_KEY` 확인 |
 | QR 네컷 | 🔄 1차 | 실부스 QR E2E 검증 남음 |
 | 펜·레이어 순서 | ✅ 완료 | draw mode + zIndex reorder + 맨 앞/뒤 |
+| 벽 밖 복구 | ✅ 완료 | 클램프 + 「벽으로 가져오기」 |
 | 수익화 (3단계) | ⬜ 미착수 | — |
 
 ### 전체 진행률
@@ -610,7 +623,7 @@ erDiagram
 | 이미지 export | ✅ | ✅ | ✅ |
 | 벽 비우기 (clear) | ✅ | ✅ (+ realtime) | — |
 | Supabase Broadcast 동기화 | — | ✅ | — |
-| Presence 커서·이름·선택 테두리 | — | ✅ (다중 선택) | — |
+| Presence 커서·이름·선택 테두리 | — | ✅ (다중 선택, **session 단위**) | — |
 | DB 자동 저장 (debounce) | ✅ | ✅ | — |
 | v1 Fabric → v2 import | ✅ | ✅ | ✅ |
 | 방명록 (v2) | — | — | ✅ |
@@ -622,6 +635,10 @@ erDiagram
 | 전체 선택 (⌘A)·Esc 해제 | ✅ | ✅ | — |
 | 정렬 6종·벽 가운데·복제 | ✅ | ✅ (+ patch) | — |
 | 화살표 미세 이동 (Shift=10px) | ✅ | ✅ (+ patch) | — |
+| 사진 자르기·색 보정·업스케일 | ✅ | ✅ | — |
+| 벽 밖 클램프·가져오기 | ✅ | ✅ | — |
+| 햄버거 메뉴·모바일 선택 바 | ✅ | ✅ | — |
+| 접속자 아바타 스택 | — | ✅ | — |
 
 ### PPT형 에디터 — 로드맵 진행
 
@@ -630,7 +647,7 @@ erDiagram
 | **A** | 다중 선택, 전체 선택, Esc, 맨 앞/뒤, 마퀴 선택 | ✅ |
 | **B** | 정렬 6종, 벽 가운데, 복제 (⌘D), 화살표 이동 | ✅ |
 | **C** | 가로·세로 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드 | ✅ |
-| **D** | 그룹/해제, 레이어 패널, 격자, 컨텍스트 메뉴 | ✅ |
+| **D** | 그룹/해제, 격자, 컨텍스트 메뉴 (레이어 패널 UI는 제거) | ✅ |
 
 ### 최근 완료 (2026-06-16 기준)
 
@@ -758,7 +775,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | **2** | ~~Space / 빈 공간 드래그 패닝~~ | ✅ 2026-07-29 |
 | **3** | ~~속성 패널 (위치·크기·회전 숫자 입력)~~ | ✅ 2026-07-29 |
 | **4** | **텍스트 스타일 확장** (행간) | 방꾸 캡션 품질 — 굵게·정렬 ✅ |
-| **5** | **이미지 크롭·프레임** | 네컷 비율 맞추기 — 핵심 use case |
+| **5** | ~~이미지 크롭·프레임~~ | ✅ 2026-07 — 자르기 + 색 보정 + 업스케일 |
 
 ### 8.5 의도적으로 하지 않을 것 (Figma ≠ 목표)
 
@@ -773,18 +790,20 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 |---|---|---|
 | `WallSceneSvg` | 타입만 존재, Konva 렌더 없음 | 렌더 추가 또는 타입 제거 |
 | `WallSceneEmoji` | 레거시 import만 | sticker catalog로 통합 완료 |
-| `CanvasHistory` | 미사용 (Zustand snapshot 사용) | 삭제 검토 |
-| `setupWorkspacePinchZoom` | 미사용 | 삭제 검토 |
+| `CanvasHistory` | ~~미사용~~ | ✅ 2026-07-30 삭제 |
+| `setupWorkspacePinchZoom` / `canvas-viewport` | ~~미사용~~ | ✅ 2026-07-30 삭제 |
+| Fabric `getObjectsBounds` | ~~미사용~~ | ✅ 2026-07-30 삭제 |
+| `notion-ui/` 목업 | 런타임 무관 | ✅ 저장소에서 제거 + gitignore |
 | tape 2종 개념 | `tape` 오브젝트 vs tape draw mode | 문서화만 (기능 유지) |
 
 ---
 
 ## 9. 다음 할 일
 
-### 현재 포커스 (2026-07-29)
+### 현재 포커스 (2026-07-30)
 
 ```
-① 이미지 크롭·프레임  →  ② 2-browser 실시간 QA  →  ③ QR 실부스 E2E
+① 2-browser 실시간 QA  →  ② QR 실부스 E2E  →  ③ 텍스트 행간 (선택)
 ```
 
 | 우선순위 | 작업 | 상태 |
@@ -798,8 +817,10 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | **P1** | **Space / 빈 공간 패닝** | ✅ |
 | **P1** | **속성 패널 (x/y/w/h/rotation)** | ✅ |
 | **P1** | 모바일 auth 로딩 hang fix | ✅ |
+| **P1** | 이미지 크롭·색 보정·업스케일 | ✅ |
+| **P1** | 에디터 크롬 (레일·햄버거·선택 바) | ✅ |
+| **P1** | Presence session + 벽 밖 복구 | ✅ |
 | **P2** | 텍스트 행간 | ⬜ |
-| **P2** | **이미지 크롭·프레임** | ⬜ |
 | **P2** | 2-browser 실시간 QA | 🔄 |
 | **P3** | QR 실부스 E2E + 홈 CTA | ⬜ *(보류)* |
 | **P3** | 3단계 수익화 | ⬜ |
@@ -915,7 +936,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | 2026-06-16 | **PPT Phase B** — 정렬 6종·벽 가운데·복제(⌘D)·화살표 nudge, `align-objects.ts` |
 | 2026-06-16 | **Presence 다중 선택** — `selectedObjectIds[]` 브로드캐스트, 피어 테두리 전체 표시 |
 | 2026-06-16 | **성능** — 이미지 캐시·preload, 드래그 live patch (Zustand 지연 갱신) |
-| 2026-06-24 | **PPT Phase D** — 그룹/해제(⌘G/⌘⇧G), 레이어 패널, 격자·격자 맞춤 |
+| 2026-06-24 | **PPT Phase D** — 그룹/해제(⌘G/⌘⇧G), 격자·격자 맞춤 (레이어 패널은 이후 UI 개편에서 제거) |
 | 2026-06-24 | **컨텍스트 메뉴** — 우클릭(PC)·길게 누르기(모바일), 그룹하기/해제 조건부 표시 |
 | 2026-06-24 | **그룹 실시간 동기화** — `groupId` fingerprint·patch 브로드캐스트 |
 | 2026-06-24 | **형광펜 이동** — 드래그·스냅·다중 선택 이동 (크기 조절 없음) |
@@ -934,6 +955,11 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | 2026-07-29 | **공동 벽 데이터 유실 fix** — unmount 시 autosave flush → cancel |
 | 2026-07-29 | `PROJECT.md` 갱신 — 진행 현황·다음 할 일·UI 스펙 반영 |
 | 2026-07-29 | **Figma P1** — 중점 줌, Space/빈공간 패닝, `WallObjectInspector`, 텍스트 굵게·정렬 |
+| 2026-07-30 | **사진 편집** — 크롭·색 보정·화질 업스케일, `/capture` AI 스캔 |
+| 2026-07-30 | **에디터 크롬** — 툴 레일·에셋·속성 사이드바, 모바일 선택 가로 바, 햄버거 메뉴 |
+| 2026-07-30 | **Presence session** — 같은 계정 다른 기기 선택 테두리·소프트락, 접속자 아바타 |
+| 2026-07-30 | **벽 밖 복구** — 드래그 클램프, 「벽으로 가져오기」 |
+| 2026-07-30 | **정리** — `CanvasHistory`·`canvas-viewport`·Fabric `getObjectsBounds`·`notion-ui` 제거, `PROJECT.md` 동기화 |
 
 ---
 

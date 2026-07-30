@@ -1,8 +1,10 @@
 import type Konva from "konva";
+import { clampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
+import type { WallSceneObject } from "@/types/wall-scene-v2";
 
 interface DragSession {
   leaderId: string;
@@ -14,6 +16,16 @@ interface DragSession {
 let session: DragSession | null = null;
 const liveBroadcast = createLivePatchBroadcaster();
 
+function clampPatchForObject(
+  object: WallSceneObject,
+  patch: { x: number; y: number; rotation: number; scaleX: number; scaleY: number },
+): { x: number; y: number; rotation: number; scaleX: number; scaleY: number } {
+  const wall = useWallSceneStore.getState().document.meta.wallBounds;
+  const candidate = { ...object, ...patch } as WallSceneObject;
+  const clamped = clampObjectPositionToWall(candidate, wall);
+  if (!clamped) return patch;
+  return { ...patch, ...clamped };
+}
 function movingIdsForLeader(leaderId: string): string[] {
   const { document, selectedIds } = useWallSceneStore.getState();
   const leader = document.objects.find((object) => object.id === leaderId);
@@ -88,13 +100,18 @@ export function commitGroupDrag(leaderNode: Konva.Node): void {
     const node = getWallNode(id) ?? (id === leaderNode.id() ? leaderNode : null);
     if (!node) continue;
 
-    const patch = {
+    const object = store.document.objects.find((item) => item.id === id);
+    if (!object) continue;
+
+    let patch = {
       x: node.x(),
       y: node.y(),
       rotation: node.rotation(),
       scaleX: node.scaleX(),
       scaleY: node.scaleY(),
     };
+    patch = clampPatchForObject(object, patch);
+    node.position({ x: patch.x, y: patch.y });
     store.patchObject(id, patch);
     broadcastWallPatch(id, patch);
   }
@@ -105,15 +122,21 @@ export function commitGroupDrag(leaderNode: Konva.Node): void {
 
 function commitSingleDrag(node: Konva.Node): void {
   const id = node.id();
-  const patch = {
+  const store = useWallSceneStore.getState();
+  const object = store.document.objects.find((item) => item.id === id);
+  let patch = {
     x: node.x(),
     y: node.y(),
     rotation: node.rotation(),
     scaleX: node.scaleX(),
     scaleY: node.scaleY(),
   };
-  useWallSceneStore.getState().patchObject(id, patch);
-  useWallSceneStore.getState().recordHistory();
+  if (object) {
+    patch = clampPatchForObject(object, patch);
+    node.position({ x: patch.x, y: patch.y });
+  }
+  store.patchObject(id, patch);
+  store.recordHistory();
   broadcastWallPatch(id, patch);
 }
 

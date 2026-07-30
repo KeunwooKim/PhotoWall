@@ -21,6 +21,7 @@ interface EditorMenuDrawerProps {
   isExporting?: boolean;
   onSave?: () => void;
   onOpenAssets?: () => void;
+  onBringOntoWall?: () => void;
   homeHref?: string;
 }
 
@@ -38,6 +39,7 @@ export default function EditorMenuDrawer({
   isExporting = false,
   onSave,
   onOpenAssets,
+  onBringOntoWall,
   homeHref = "/walls",
 }: EditorMenuDrawerProps) {
   const [panel, setPanel] = useState<Panel>("menu");
@@ -240,6 +242,17 @@ export default function EditorMenuDrawer({
                   벽지 · 스티커 열기
                 </button>
               )}
+
+              {onBringOntoWall && (
+                <button
+                  type="button"
+                  className={itemClass}
+                  onClick={() => runAndClose(() => onBringOntoWall())}
+                >
+                  <BringIcon />
+                  벽으로 가져오기
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -322,6 +335,20 @@ function AssetsIcon() {
       <rect x="14" y="4" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
       <rect x="3" y="13" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
       <rect x="14" y="13" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function BringIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M12 8v8M8 12h8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

@@ -40,6 +40,12 @@ yarn-error.log*
 # source archives for sticker packs (extracted copies live in public/)
 /stickers-src/
 
+# design references / obsolete mocks (not shipped)
+/notion-ui/
+/에셋유아이.png
+/에셋유아이2.png
+/미리캔버스_모바일화면.png
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

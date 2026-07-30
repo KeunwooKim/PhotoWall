@@ -6,7 +6,6 @@ import { dedupePresencePeers, shouldShowPeerCursor } from "@/lib/wall-scene/pres
 interface WallPresenceOverlayProps {
   peers: WallPresenceState[];
   currentSessionId: string;
-  currentUserId?: string;
   wallWidth: number;
   wallHeight: number;
   containerWidth: number;
@@ -17,7 +16,6 @@ interface WallPresenceOverlayProps {
 export default function WallPresenceOverlay({
   peers,
   currentSessionId,
-  currentUserId,
   wallWidth,
   wallHeight,
   containerWidth,
@@ -28,7 +26,7 @@ export default function WallPresenceOverlay({
   const offsetY = containerHeight / 2 - (wallHeight * wallScale) / 2;
 
   const visiblePeers = dedupePresencePeers(peers).filter((peer) =>
-    shouldShowPeerCursor(peer, { currentSessionId, currentUserId }),
+    shouldShowPeerCursor(peer, { currentSessionId }),
   );
 
   return (

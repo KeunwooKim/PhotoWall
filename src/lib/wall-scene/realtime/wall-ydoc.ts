@@ -1,6 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
-import { dedupePresencePeers, mergePeerPresence } from "@/lib/wall-scene/presence-utils";
+import { dedupePresencePeers, mergePeerPresence, presencePeerKey } from "@/lib/wall-scene/presence-utils";
 import { throttle } from "@/lib/throttle";
 
 const CHANNEL_PREFIX = "shared-wall";
@@ -267,8 +267,9 @@ export class WallRealtimeSession {
       const peer = unwrapBroadcastPayload<WallPresenceState>(message, isPresenceLivePayload);
       if (!peer?.userId || peer.sessionId === sessionId) return;
 
-      const existing = this.livePeers.get(peer.userId);
-      this.livePeers.set(peer.userId, mergePeerPresence(existing, peer));
+      const key = presencePeerKey(peer);
+      const existing = this.livePeers.get(key);
+      this.livePeers.set(key, mergePeerPresence(existing, peer));
       this.emitPeers();
     };
 
@@ -280,7 +281,8 @@ export class WallRealtimeSession {
       .on("presence", { event: "leave" }, ({ leftPresences }) => {
         const departed = Object.values(leftPresences ?? {}).flat() as unknown as PresenceRosterState[];
         for (const peer of departed) {
-          if (peer?.userId) this.livePeers.delete(peer.userId);
+          if (!peer?.userId) continue;
+          this.livePeers.delete(presencePeerKey(peer));
         }
         this.emitPeers();
       });
@@ -423,15 +425,16 @@ export class WallRealtimeSession {
     if (!this.channel) return;
 
     const channelState = this.channel.presenceState<PresenceRosterState>();
-    const onlineUserIds = new Set<string>();
+    const onlineKeys = new Set<string>();
 
     for (const entries of Object.values(channelState)) {
       for (const peer of entries as PresenceRosterState[]) {
         if (!peer?.userId || peer.sessionId === this.options.sessionId) continue;
 
-        onlineUserIds.add(peer.userId);
-        const existing = this.livePeers.get(peer.userId);
-        this.livePeers.set(peer.userId, {
+        const key = presencePeerKey(peer);
+        onlineKeys.add(key);
+        const existing = this.livePeers.get(key);
+        this.livePeers.set(key, {
           userId: peer.userId,
           sessionId: peer.sessionId,
           displayName: peer.displayName,
@@ -446,9 +449,9 @@ export class WallRealtimeSession {
       }
     }
 
-    for (const userId of [...this.livePeers.keys()]) {
-      if (!onlineUserIds.has(userId)) {
-        this.livePeers.delete(userId);
+    for (const key of [...this.livePeers.keys()]) {
+      if (!onlineKeys.has(key)) {
+        this.livePeers.delete(key);
       }
     }
 
