@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import KonvaWallStageClient from "@/components/wall/konva";
-import Toolbar from "@/components/wall/Toolbar";
-import LayerPanel from "@/components/wall/LayerPanel";
-import EditorToolDock, { HomeIcon, MenuIcon } from "@/components/wall/EditorToolDock";
+import EditorAssetsPanel from "@/components/wall/EditorAssetsPanel";
+import EditorToolDock, { MenuIcon } from "@/components/wall/EditorToolDock";
+import EditorToolRail from "@/components/wall/EditorToolRail";
+import EditorPropertiesSidebar from "@/components/wall/EditorPropertiesSidebar";
+import EditorMenuDrawer from "@/components/wall/EditorMenuDrawer";
+import EditorSelectionSheet from "@/components/wall/EditorSelectionSheet";
 import AuthButton from "@/components/auth/AuthButton";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { WallThemeId } from "@/types/wall";
@@ -51,7 +53,6 @@ import WallContextMenu from "@/components/wall/WallContextMenu";
 import TextStyleBar from "@/components/wall/TextStyleBar";
 import WallQuotaHint from "@/components/wall/WallQuotaHint";
 import ZoomResetButton from "@/components/wall/ZoomResetButton";
-import WallObjectInspector from "@/components/wall/WallObjectInspector";
 import PhotoCropToolbar from "@/components/wall/PhotoCropToolbar";
 import PhotoColorToolbar from "@/components/wall/PhotoColorToolbar";
 import { usePhotoCrop } from "@/hooks/usePhotoCrop";
@@ -86,8 +87,8 @@ export default function PersonalWallKonvaEditor() {
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [isAssetsOpen, setIsAssetsOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
   const [autoSaved, setAutoSaved] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
@@ -1045,7 +1046,7 @@ export default function PersonalWallKonvaEditor() {
   }
 
   return (
-    <div className={`relative h-[100dvh] w-screen overflow-hidden bg-white ${wallTextFontVariables}`}>
+    <div className={`flex h-[100dvh] w-screen flex-col overflow-hidden bg-neutral-100 ${wallTextFontVariables}`}>
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-50 px-3"
         style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
@@ -1055,29 +1056,301 @@ export default function PersonalWallKonvaEditor() {
         </div>
       </div>
 
-      <KonvaWallStageClient
-        themeId={themeId}
-        initialJson={loadedCanvasJson}
-        wallId={wallId}
-        resolvePhotoSrc={resolvePhotoSrc}
-        onDocumentChange={handleDocumentChange}
-        onReady={handleReady}
-        wallStageRef={wallStageRef}
-        konvaStageRef={konvaStageRef}
-        editorMode={mode}
-        drawColor={mode === "pen" ? penColor : tapeColor}
-        highlighterMaxLength={highlighterMaxLength}
-        penStyleId={penStyleId}
-        penStrokeWidth={penStrokeWidth}
-        onGuardQuotaAdd={guardAdd}
-        onQuotaBlocked={() => showToast(limitMessage)}
-        onRequestSelectMode={() => setMode("select")}
-        onEditText={setEditingTextId}
-        onStartPhotoCrop={handleStartCrop}
-        onContextMenuRequest={handleContextMenuRequest}
-        interactionLockId={colorEditPhotoId}
-        {...konvaCropProps}
+      <header
+        className="relative z-30 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-3"
+        style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
+      >
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-800 transition hover:bg-neutral-100"
+            aria-label="메뉴 열기"
+          >
+            <MenuIcon />
+          </button>
+          <span className="hidden text-xs font-medium text-neutral-600 sm:inline">내 벽</span>
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <ZoomResetButton />
+          <WallQuotaHint usage={sceneUsage} plan={wallPlan} />
+          {autoSaved && !saveMessage && (
+            <div className="pointer-events-none hidden rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-500 sm:block">
+              {user ? "클라우드 자동 저장됨" : "자동 저장됨"}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleShare()}
+            disabled={isSharing}
+            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:opacity-40 sm:inline"
+          >
+            {isSharing ? "공유 중…" : "공유"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={isExporting}
+            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:opacity-40 sm:inline"
+          >
+            {isExporting ? "저장 중…" : "이미지"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            className="rounded-lg bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-neutral-800"
+          >
+            저장
+          </button>
+          <AuthButton compact />
+        </div>
+      </header>
+
+      <EditorMenuDrawer
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        wallTitle="내 벽"
+        onInvite={() => void handleInvite()}
+        isInviting={isInviting}
+        inviteLabel="친구 초대"
+        onShare={() => void handleShare()}
+        isSharing={isSharing}
+        onExport={() => void handleExport()}
+        isExporting={isExporting}
+        onSave={() => void handleSave()}
+        onOpenAssets={() => setIsAssetsOpen(true)}
       />
+
+      <div className="flex min-h-0 flex-1">
+        <div className="hidden md:flex">
+          <EditorToolRail
+            mode={mode}
+            onModeChange={handleModeChange}
+            onPhotoUpload={handlePhotoUpload}
+            onToggleAssets={() => setIsAssetsOpen((v) => !v)}
+            assetsOpen={isAssetsOpen}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+          />
+          <EditorAssetsPanel
+            variant="docked"
+            isOpen={isAssetsOpen}
+            onClose={() => setIsAssetsOpen(false)}
+            themeId={themeId}
+            onThemeChange={handleThemeChange}
+            onPhotoUpload={handlePhotoUpload}
+            onAddSticker={handleAddSticker}
+          />
+        </div>
+
+        <div className="relative min-h-0 min-w-0 flex-1 bg-neutral-200">
+          <KonvaWallStageClient
+            themeId={themeId}
+            initialJson={loadedCanvasJson}
+            wallId={wallId}
+            resolvePhotoSrc={resolvePhotoSrc}
+            onDocumentChange={handleDocumentChange}
+            onReady={handleReady}
+            wallStageRef={wallStageRef}
+            konvaStageRef={konvaStageRef}
+            editorMode={mode}
+            drawColor={mode === "pen" ? penColor : tapeColor}
+            highlighterMaxLength={highlighterMaxLength}
+            penStyleId={penStyleId}
+            penStrokeWidth={penStrokeWidth}
+            onGuardQuotaAdd={guardAdd}
+            onQuotaBlocked={() => showToast(limitMessage)}
+            onRequestSelectMode={() => setMode("select")}
+            onEditText={setEditingTextId}
+            onStartPhotoCrop={handleStartCrop}
+            onContextMenuRequest={handleContextMenuRequest}
+            interactionLockId={colorEditPhotoId}
+            {...konvaCropProps}
+          />
+
+          {editingTextObject && mode === "select" && (
+            <div className="md:hidden">
+              <TextStyleBar object={editingTextObject} onClose={() => setEditingTextId(null)} />
+            </div>
+          )}
+
+          {selectedIds.length > 0 &&
+            mode === "select" &&
+            !editingTextObject &&
+            !cropPhotoId &&
+            !colorEditPhotoId && (
+              <EditorSelectionSheet
+                object={inspectorObject}
+                selectionCount={selectedIds.length}
+                onClose={() => useWallSceneStore.getState().setSelectedIds([])}
+                onCopy={handleCopy}
+                onPaste={handlePaste}
+                onDuplicate={handleDuplicate}
+                onDelete={handleDelete}
+                onBringForward={handleBringForward}
+                onSendBackward={handleSendBackward}
+                onBringToFront={handleBringToFront}
+                onSendToBack={handleSendToBack}
+                onAlignLeft={handleAlignLeft}
+                onAlignCenterH={handleAlignCenterH}
+                onAlignRight={handleAlignRight}
+                onAlignTop={handleAlignTop}
+                onAlignMiddle={handleAlignMiddle}
+                onAlignBottom={handleAlignBottom}
+                onCenterOnWall={handleCenterOnWall}
+                canAlign={selectedIds.length >= 2}
+                onSelectAll={handleSelectAll}
+                onNudge={nudgeSelection}
+                onStartCrop={
+                  inspectorObject?.type === "photo" ? handleStartCrop : undefined
+                }
+                onStartColorEdit={
+                  inspectorObject?.type === "photo" ? handleStartColorEdit : undefined
+                }
+                onUpscalePhoto={
+                  inspectorObject?.type === "photo"
+                    ? (id) => void handleUpscalePhoto(id)
+                    : undefined
+                }
+                upscaleBusy={upscaleBusy}
+                onToast={showToast}
+              />
+            )}
+
+          {cropPhotoId && (
+            <PhotoCropToolbar
+              aspectPreset={cropAspectPreset}
+              onAspectChange={setCropAspectPreset}
+              onApply={handleCropApply}
+              onCancel={handleCropCancel}
+              onReset={handleCropReset}
+              canReset={canResetCrop}
+              showRecoveryHint={canResetCrop}
+            />
+          )}
+
+          {colorEditPhoto && (
+            <PhotoColorToolbar
+              photoSrc={colorEditPhoto.src}
+              resolvePhotoSrc={resolvePhotoSrc}
+              params={colorParams}
+              onParamsChange={setColorParams}
+              busy={colorBusy}
+              errorMessage={colorError}
+              onCancel={handleColorCancel}
+              onApply={() => {
+                void handleColorApply({
+                  wallId,
+                  userId: user?.id,
+                  plan: wallPlan,
+                  resolvePhotoSrc,
+                }).then((ok) => {
+                  if (ok) showToast("색 보정을 적용했어요");
+                });
+              }}
+            />
+          )}
+
+          <div className="md:hidden">
+            <EditorToolDock
+              mode={mode}
+              onModeChange={handleModeChange}
+              onPhotoUpload={handlePhotoUpload}
+              onOpenDecorate={() => setIsAssetsOpen(true)}
+              onUndo={undo}
+              onRedo={redo}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              penColor={penColor}
+              penStyleId={penStyleId}
+              penStrokeWidth={penStrokeWidth}
+              tapeColor={tapeColor}
+              tapeMaxLength={highlighterMaxLength}
+              onPenColorChange={setPenColor}
+              onPenStyleIdChange={setPenStyleId}
+              onPenStrokeWidthChange={setPenStrokeWidth}
+              onTapeColorChange={setTapeColor}
+              onTapeMaxLengthChange={setHighlighterMaxLength}
+            />
+          </div>
+
+          <GuestSaveBanner hasObjects={sceneObjects.length > 0} />
+
+          {saveMessage && (
+            <div
+              className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm text-white shadow-lg"
+              style={{ bottom: "max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))" }}
+            >
+              {saveMessage}
+            </div>
+          )}
+
+          {(!isReady || isCloudSyncing) && (
+            <WallLoadingOverlay
+              mode="overlay"
+              title={isCloudSyncing ? "내 벽 불러오는 중..." : "편집 화면 준비 중..."}
+            />
+          )}
+        </div>
+
+        <div className="hidden md:flex">
+          <EditorPropertiesSidebar
+            mode={mode}
+            inspectorObject={inspectorObject}
+            editingTextObject={editingTextObject}
+            cropActive={!!cropPhotoId}
+            colorEditActive={!!colorEditPhotoId}
+            onStartCrop={handleStartCrop}
+            onStartColorEdit={handleStartColorEdit}
+            onUpscalePhoto={(id) => void handleUpscalePhoto(id)}
+            upscaleBusy={upscaleBusy}
+            onCloseSelection={() => useWallSceneStore.getState().setSelectedIds([])}
+            onCloseTextEdit={() => setEditingTextId(null)}
+            penColor={penColor}
+            penStyleId={penStyleId}
+            penStrokeWidth={penStrokeWidth}
+            tapeColor={tapeColor}
+            tapeMaxLength={highlighterMaxLength}
+            onPenColorChange={setPenColor}
+            onPenStyleIdChange={setPenStyleId}
+            onPenStrokeWidthChange={setPenStrokeWidth}
+            onTapeColorChange={setTapeColor}
+            onTapeMaxLengthChange={setHighlighterMaxLength}
+            selectionCount={selectedIds.length}
+            showGrid={showGrid}
+            snapToGrid={snapToGrid}
+            canAlignSelection={selectedIds.length >= 2}
+            canDistributeSelection={selectedIds.length >= 3}
+            canGroupSelection={canGroupSelection(selectedIds)}
+            canUngroupSelection={selectionHasGroup(selectedIds, sceneObjects)}
+            onSelectAll={handleSelectAll}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onGroup={handleGroup}
+            onUngroup={handleUngroup}
+            onBringForward={handleBringForward}
+            onSendBackward={handleSendBackward}
+            onBringToFront={handleBringToFront}
+            onSendToBack={handleSendToBack}
+            onAlignLeft={handleAlignLeft}
+            onAlignCenterH={handleAlignCenterH}
+            onAlignRight={handleAlignRight}
+            onAlignTop={handleAlignTop}
+            onAlignMiddle={handleAlignMiddle}
+            onAlignBottom={handleAlignBottom}
+            onCenterOnWall={handleCenterOnWall}
+            onDistributeHorizontal={onDistributeHorizontal}
+            onDistributeVertical={onDistributeVertical}
+            onFlipHorizontal={onFlipHorizontal}
+            onFlipVertical={onFlipVertical}
+            onToggleGrid={toggleShowGrid}
+            onToggleSnapToGrid={toggleSnapToGrid}
+            onClear={handleClear}
+          />
+        </div>
+      </div>
 
       <WallContextMenu
         isOpen={isContextMenuOpen}
@@ -1086,213 +1359,15 @@ export default function PersonalWallKonvaEditor() {
         onClose={closeContextMenu}
       />
 
-      <button
-        type="button"
-        onClick={() => setIsMenuOpen(true)}
-        className="absolute left-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-white text-neutral-900 shadow-md ring-1 ring-black/8 sm:left-5"
-        style={{ top: "max(1rem, env(safe-area-inset-top))" }}
-        aria-label="꾸미기 메뉴 열기"
-      >
-        <MenuIcon />
-      </button>
-
-      <Link
-        href="/walls"
-        className="absolute left-[4.5rem] z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-neutral-500 shadow-sm ring-1 ring-black/8 sm:left-[5.5rem]"
-        style={{ top: "max(1.25rem, env(safe-area-inset-top))" }}
-        aria-label="벽 목록으로"
-      >
-        <HomeIcon />
-      </Link>
-
-      <div
-        className="absolute right-4 z-30 flex items-center gap-2 sm:right-5"
-        style={{ top: "max(1rem, env(safe-area-inset-top))" }}
-      >
-        <ZoomResetButton />
-        <WallQuotaHint usage={sceneUsage} plan={wallPlan} />
-        {autoSaved && !saveMessage && (
-          <div className="pointer-events-none hidden rounded-full bg-white/90 px-3 py-1.5 text-xs text-muted shadow-sm sm:block">
-            {user ? "클라우드 자동 저장됨" : "자동 저장됨"}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setIsLayerPanelOpen(true)}
-          className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8"
-        >
-          레이어
-        </button>
-        <AuthButton compact />
-      </div>
-
-      {editingTextObject && mode === "select" && (
-        <TextStyleBar object={editingTextObject} onClose={() => setEditingTextId(null)} />
-      )}
-
-      {inspectorObject &&
-        mode === "select" &&
-        !editingTextObject &&
-        !cropPhotoId &&
-        !colorEditPhotoId && (
-        <div
-          className="absolute left-3 z-30 sm:left-4"
-          style={{ bottom: "max(6rem, calc(env(safe-area-inset-bottom) + 5rem))" }}
-        >
-          <WallObjectInspector
-            object={inspectorObject}
-            onStartCrop={inspectorObject.type === "photo" ? handleStartCrop : undefined}
-            onStartColorEdit={
-              inspectorObject.type === "photo" ? handleStartColorEdit : undefined
-            }
-            onUpscalePhoto={
-              inspectorObject.type === "photo" ? (id) => void handleUpscalePhoto(id) : undefined
-            }
-            upscaleBusy={upscaleBusy}
-          />
-        </div>
-      )}
-
-      {cropPhotoId && (
-        <PhotoCropToolbar
-          aspectPreset={cropAspectPreset}
-          onAspectChange={setCropAspectPreset}
-          onApply={handleCropApply}
-          onCancel={handleCropCancel}
-          onReset={handleCropReset}
-          canReset={canResetCrop}
-          showRecoveryHint={canResetCrop}
-        />
-      )}
-
-      {colorEditPhoto && (
-        <PhotoColorToolbar
-          photoSrc={colorEditPhoto.src}
-          resolvePhotoSrc={resolvePhotoSrc}
-          params={colorParams}
-          onParamsChange={setColorParams}
-          busy={colorBusy}
-          errorMessage={colorError}
-          onCancel={handleColorCancel}
-          onApply={() => {
-            void handleColorApply({
-              wallId,
-              userId: user?.id,
-              plan: wallPlan,
-              resolvePhotoSrc,
-            }).then((ok) => {
-              if (ok) showToast("색 보정을 적용했어요");
-            });
-          }}
-        />
-      )}
-
-      <EditorToolDock
-        mode={mode}
-        onModeChange={handleModeChange}
-        onPhotoUpload={handlePhotoUpload}
-        onOpenDecorate={() => setIsMenuOpen(true)}
-        onUndo={undo}
-        onRedo={redo}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        penColor={penColor}
-        penStyleId={penStyleId}
-        penStrokeWidth={penStrokeWidth}
-        tapeColor={tapeColor}
-        tapeMaxLength={highlighterMaxLength}
-        onPenColorChange={setPenColor}
-        onPenStyleIdChange={setPenStyleId}
-        onPenStrokeWidthChange={setPenStrokeWidth}
-        onTapeColorChange={setTapeColor}
-        onTapeMaxLengthChange={setHighlighterMaxLength}
-      />
-
-      <GuestSaveBanner hasObjects={sceneObjects.length > 0} />
-
-      {saveMessage && (
-        <div
-          className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background shadow-lg"
-          style={{ bottom: "max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))" }}
-        >
-          {saveMessage}
-        </div>
-      )}
-
-      {(!isReady || isCloudSyncing) && (
-        <WallLoadingOverlay
-          mode="overlay"
-          title={isCloudSyncing ? "내 벽 불러오는 중..." : "편집 화면 준비 중..."}
-        />
-      )}
-
-      <Toolbar
-        isOpen={isMenuOpen}
-        onClose={() => setIsMenuOpen(false)}
+      <EditorAssetsPanel
+        variant="drawer"
+        isOpen={isAssetsOpen}
+        onClose={() => setIsAssetsOpen(false)}
         themeId={themeId}
-        mode={mode}
-        drawColor={mode === "pen" ? penColor : tapeColor}
-        drawColors={mode === "pen" ? PEN_DRAW_COLORS : TAPE_DRAW_COLORS}
-        highlighterMaxLength={highlighterMaxLength}
-        highlighterLengthPresets={HIGHLIGHTER_LENGTH_PRESETS}
-        penStyleId={penStyleId}
-        penStrokeWidth={penStrokeWidth}
-        hasSelection={selectedIds.length > 0}
-        selectionCount={selectedIds.length}
-        canUndo={canUndo}
-        canRedo={canRedo}
         onThemeChange={handleThemeChange}
         onPhotoUpload={handlePhotoUpload}
         onAddSticker={handleAddSticker}
-        onShare={handleShare}
-        onExport={handleExport}
-        onInvite={handleInvite}
-        isSharing={isSharing}
-        isExporting={isExporting}
-        isInviting={isInviting}
-        onModeChange={handleModeChange}
-        onDrawColorChange={(color) => {
-          if (mode === "pen") setPenColor(color);
-          else setTapeColor(color);
-        }}
-        onHighlighterMaxLengthChange={setHighlighterMaxLength}
-        onPenStyleIdChange={setPenStyleId}
-        onPenStrokeWidthChange={setPenStrokeWidth}
-        onUndo={undo}
-        onRedo={redo}
-        onSelectAll={handleSelectAll}
-        onBringForward={handleBringForward}
-        onSendBackward={handleSendBackward}
-        onBringToFront={handleBringToFront}
-        onSendToBack={handleSendToBack}
-        onAlignLeft={handleAlignLeft}
-        onAlignCenterH={handleAlignCenterH}
-        onAlignRight={handleAlignRight}
-        onAlignTop={handleAlignTop}
-        onAlignMiddle={handleAlignMiddle}
-        onAlignBottom={handleAlignBottom}
-        onCenterOnWall={handleCenterOnWall}
-        onDistributeHorizontal={onDistributeHorizontal}
-        onDistributeVertical={onDistributeVertical}
-        onFlipHorizontal={onFlipHorizontal}
-        onFlipVertical={onFlipVertical}
-        onDuplicate={handleDuplicate}
-        onGroup={handleGroup}
-        onUngroup={handleUngroup}
-        onToggleGrid={toggleShowGrid}
-        onToggleSnapToGrid={toggleSnapToGrid}
-        canGroupSelection={canGroupSelection(selectedIds)}
-        canUngroupSelection={selectionHasGroup(selectedIds, sceneObjects)}
-        showGrid={showGrid}
-        snapToGrid={snapToGrid}
-        canAlignSelection={selectedIds.length >= 2}
-        canDistributeSelection={selectedIds.length >= 3}
-        onDelete={handleDelete}
-        onSave={handleSave}
-        onClear={handleClear}
       />
-
-      <LayerPanel isOpen={isLayerPanelOpen} onClose={() => setIsLayerPanelOpen(false)} />
     </div>
   );
 }

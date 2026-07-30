@@ -38,3 +38,23 @@ export async function saveSharedWallToCloud(
   if (!res.ok) return null;
   return (await res.json()) as PublishedWall;
 }
+
+/** Rename a shared wall title (editor must already have edit access). */
+export async function updateSharedWallTitle(wallId: string, title: string): Promise<string> {
+  const trimmed = title.trim();
+  if (!trimmed) throw new Error("이름을 입력해 주세요");
+
+  const res = await authFetch(`/api/shared-walls/${wallId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: trimmed }),
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+    throw new Error(body.message || body.error || "이름 저장에 실패했어요");
+  }
+
+  const data = (await res.json()) as { title?: string };
+  return data.title ?? trimmed;
+}

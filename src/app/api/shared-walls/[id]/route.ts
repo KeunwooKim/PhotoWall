@@ -58,7 +58,43 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json()) as { themeId?: string; canvasJson?: object };
+  const body = (await request.json()) as {
+    themeId?: string;
+    canvasJson?: object;
+    title?: string;
+  };
+
+  // Title-only update (벽 설정)
+  if (typeof body.title === "string" && body.themeId === undefined && body.canvasJson === undefined) {
+    const trimmed = body.title.trim();
+    if (!trimmed) {
+      return NextResponse.json({ error: "Invalid title" }, { status: 400 });
+    }
+
+    const access = await resolveSharedWallEditAccess(supabase, id, user.id);
+    if (access.status !== "ok") {
+      return applyCookies(
+        NextResponse.json({ error: access.status, message: "이름을 바꿀 수 없어요" }, { status: 403 }),
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("walls")
+      .update({ title: trimmed.slice(0, 40), updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("is_shared", true)
+      .select("id, title")
+      .maybeSingle();
+
+    if (error || !data) {
+      return applyCookies(
+        NextResponse.json({ error: "Failed to rename wall" }, { status: 500 }),
+      );
+    }
+
+    return applyCookies(NextResponse.json({ id: data.id, title: data.title ?? trimmed }));
+  }
+
   if (!body.themeId || !body.canvasJson) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }

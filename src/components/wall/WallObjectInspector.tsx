@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getObjectDisplayDimensions,
   objectSupportsSizeEdit,
@@ -14,6 +14,9 @@ interface WallObjectInspectorProps {
   onStartColorEdit?: (id: string) => void;
   onUpscalePhoto?: (id: string) => void;
   upscaleBusy?: boolean;
+  onClose?: () => void;
+  /** sidebar = always expanded in properties column; floating = chip then expand */
+  variant?: "floating" | "sidebar";
 }
 
 function NumField({
@@ -31,7 +34,7 @@ function NumField({
 }) {
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[10px] font-medium text-muted">{label}</span>
+      <span className="text-[10px] font-medium text-neutral-500">{label}</span>
       <input
         type="number"
         value={Math.round(value)}
@@ -41,7 +44,7 @@ function NumField({
           const next = Number(e.target.value);
           if (Number.isFinite(next)) onChange(next);
         }}
-        className="w-full rounded-lg border border-foreground/10 bg-background px-2 py-1.5 text-xs tabular-nums outline-none focus:border-foreground/30"
+        className="w-full rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-xs tabular-nums text-neutral-900 outline-none focus:border-neutral-400"
       />
     </label>
   );
@@ -53,10 +56,18 @@ export default function WallObjectInspector({
   onStartColorEdit,
   onUpscalePhoto,
   upscaleBusy = false,
+  onClose,
+  variant = "floating",
 }: WallObjectInspectorProps) {
   const patchObject = useWallSceneStore((s) => s.patchObject);
   const recordHistory = useWallSceneStore((s) => s.recordHistory);
   const bumpRevision = useWallSceneStore((s) => s.bumpRevision);
+  const [expanded, setExpanded] = useState(variant === "sidebar");
+
+  // New selection starts collapsed so the canvas stays visible (floating only)
+  useEffect(() => {
+    setExpanded(variant === "sidebar");
+  }, [object.id, variant]);
 
   const dims = getObjectDisplayDimensions(object);
   const canEditSize = objectSupportsSizeEdit(object);
@@ -101,12 +112,64 @@ export default function WallObjectInspector({
     [applyPatch, object],
   );
 
+  if (variant === "floating" && !expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="pointer-events-auto rounded-full bg-white px-3.5 py-2 text-xs font-medium text-neutral-800 shadow-lg ring-1 ring-black/10 backdrop-blur-sm transition active:scale-[0.98]"
+        aria-expanded={false}
+      >
+        속성
+      </button>
+    );
+  }
+
+  const panelClass =
+    variant === "sidebar"
+      ? "pointer-events-auto w-full space-y-2 text-neutral-800"
+      : "pointer-events-auto w-44 space-y-2 rounded-2xl bg-white p-3 text-neutral-800 shadow-lg ring-1 ring-black/10 backdrop-blur-sm";
+
   return (
-    <div
-      className="pointer-events-auto w-44 space-y-2 rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm"
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <p className="text-[11px] font-medium text-muted">속성</p>
+    <div className={panelClass} onPointerDown={(e) => e.stopPropagation()}>
+      {variant === "floating" && (
+        <div className="flex items-center justify-between gap-1">
+          <p className="text-[11px] font-medium text-neutral-500">속성</p>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+              aria-label="속성 최소화"
+              title="최소화"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                <path d="M3 7h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </button>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+                aria-label="속성 닫기"
+                title="닫기"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                  <path
+                    d="M3.5 3.5l7 7M10.5 3.5l-7 7"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <NumField label="X" value={object.x} onChange={(x) => applyPosition(x, object.y)} />
         <NumField label="Y" value={object.y} onChange={(y) => applyPosition(object.x, y)} />
@@ -135,40 +198,43 @@ export default function WallObjectInspector({
           />
         </div>
       </div>
+
       {object.type === "photo" &&
         (onStartCrop || onStartColorEdit || onUpscalePhoto) && (
-        <div className="flex flex-col gap-1.5">
-          {onStartCrop && (
-            <button
-              type="button"
-              onClick={() => onStartCrop(object.id)}
-              className="w-full rounded-xl bg-foreground px-3 py-2 text-xs font-medium text-background transition active:scale-[0.98]"
-            >
-              자르기
-            </button>
-          )}
-          {onStartColorEdit && (
-            <button
-              type="button"
-              onClick={() => onStartColorEdit(object.id)}
-              className="w-full rounded-xl border border-foreground/15 bg-surface px-3 py-2 text-xs font-medium transition hover:bg-foreground/5 active:scale-[0.98]"
-            >
-              색 보정
-            </button>
-          )}
-          {onUpscalePhoto && (
-            <button
-              type="button"
-              disabled={upscaleBusy}
-              onClick={() => onUpscalePhoto(object.id)}
-              className="w-full rounded-xl border border-foreground/15 bg-surface px-3 py-2 text-xs font-medium transition hover:bg-foreground/5 active:scale-[0.98] disabled:opacity-40"
-            >
-              {upscaleBusy ? "업스케일 중…" : "화질 업스케일"}
-            </button>
-          )}
-        </div>
+          <div className="flex flex-col gap-1.5">
+            {onStartCrop && (
+              <button
+                type="button"
+                onClick={() => onStartCrop(object.id)}
+                className="w-full rounded-xl bg-neutral-900 px-3 py-2 text-xs font-medium text-white transition active:scale-[0.98]"
+              >
+                자르기
+              </button>
+            )}
+            {onStartColorEdit && (
+              <button
+                type="button"
+                onClick={() => onStartColorEdit(object.id)}
+                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-medium text-neutral-800 transition hover:bg-neutral-100 active:scale-[0.98]"
+              >
+                색 보정
+              </button>
+            )}
+            {onUpscalePhoto && (
+              <button
+                type="button"
+                disabled={upscaleBusy}
+                onClick={() => onUpscalePhoto(object.id)}
+                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-medium text-neutral-800 transition hover:bg-neutral-100 active:scale-[0.98] disabled:opacity-40"
+              >
+                {upscaleBusy ? "업스케일 중…" : "화질 업스케일"}
+              </button>
+            )}
+          </div>
+        )}
+      {object.type === "photo" && (
+        <p className="text-[10px] text-neutral-500">더블탭으로도 자를 수 있어요</p>
       )}
-      <p className="text-[10px] text-muted">더블탭/더블클릭으로도 자를 수 있어요</p>
     </div>
   );
 }
