@@ -60,18 +60,13 @@ import {
 
 /** Client-px movement below this counts as a tap (clear selection). */
 const TAP_CLEAR_PX = 10;
+
 function isStrokeMode(mode: EditorMode) {
   return mode === "pen" || mode === "tape";
 }
 
-function clientPointFromEvent(evt: MouseEvent | TouchEvent): { x: number; y: number } | null {
-  if ("touches" in evt && evt.touches.length > 0) {
-    return { x: evt.touches[0].clientX, y: evt.touches[0].clientY };
-  }
-  if ("clientX" in evt) {
-    return { x: evt.clientX, y: evt.clientY };
-  }
-  return null;
+function isHandMode(mode: EditorMode) {
+  return mode === "hand";
 }
 
 export interface KonvaWallStageProps {
@@ -171,7 +166,6 @@ export default function KonvaWallStage({
 
   const document = useWallSceneStore((s) => s.document);
   const selectedIds = useWallSceneStore((s) => s.selectedIds);
-  const multiSelectMode = useWallSceneStore((s) => s.multiSelectMode);
   const snapGuides = useWallSceneStore((s) => s.snapGuides);
   const showGrid = useWallSceneStore((s) => s.showGrid);
   const gridSize = useWallSceneStore((s) => s.gridSize);
@@ -335,13 +329,7 @@ export default function KonvaWallStage({
   const pinchMidpointRef = useRef<{ x: number; y: number } | null>(null);
   const spaceHeldRef = useRef(false);
   const containerPanRef = useRef<{ x: number; y: number } | null>(null);
-  /** Empty-stage pan while zoomed; `origin*` used to detect tap-to-deselect. */
-  const stagePanRef = useRef<{
-    x: number;
-    y: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
 
   const getContainerCenter = useCallback(() => {
     const el = containerRef.current;
@@ -435,12 +423,13 @@ export default function KonvaWallStage({
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       spaceHeldRef.current = true;
+      setIsPanning(true);
       e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
       spaceHeldRef.current = false;
-      containerPanRef.current = null;
+      if (!containerPanRef.current) setIsPanning(false);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -450,14 +439,19 @@ export default function KonvaWallStage({
     };
   }, []);
 
+  // Space + drag (temporary hand) or hand tool — pan anywhere on the workspace.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || readOnly) return;
 
+    const canPan = () =>
+      isHandMode(editorModeRef.current) || spaceHeldRef.current;
+
     const onMouseDown = (e: MouseEvent) => {
-      if (!spaceHeldRef.current || isStrokeMode(editorModeRef.current)) return;
+      if (!canPan() || isStrokeMode(editorModeRef.current)) return;
       if (e.button !== 0) return;
       containerPanRef.current = { x: e.clientX, y: e.clientY };
+      setIsPanning(true);
       e.preventDefault();
     };
     const onMouseMove = (e: MouseEvent) => {
@@ -469,6 +463,7 @@ export default function KonvaWallStage({
     };
     const onMouseUp = () => {
       containerPanRef.current = null;
+      setIsPanning(false);
     };
 
     el.addEventListener("mousedown", onMouseDown);
@@ -481,13 +476,18 @@ export default function KonvaWallStage({
     };
   }, [addPan, readOnly]);
 
-  // One-finger pan on the gray workspace (outside the wall stage) — blocks page rubber-band.
+  // Touch: hand tool pans anywhere; select mode on gray area only clears selection on tap.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || readOnly) return;
 
-    let panStart: { x: number; y: number; originX: number; originY: number } | null =
-      null;
+    let panStart: {
+      x: number;
+      y: number;
+      originX: number;
+      originY: number;
+      allowPan: boolean;
+    } | null = null;
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) {
@@ -495,17 +495,31 @@ export default function KonvaWallStage({
         return;
       }
       if (isStrokeMode(editorModeRef.current)) return;
+
+      const mode = editorModeRef.current;
       const target = e.target as Node | null;
       const wallEl = wallStageRef?.current;
-      if (wallEl && target && wallEl.contains(target)) return;
-      const x = e.touches[0].clientX;
-      const y = e.touches[0].clientY;
-      panStart = { x, y, originX: x, originY: y };
+      const onWall = !!(wallEl && target && wallEl.contains(target));
+
+      if (isHandMode(mode)) {
+        const x = e.touches[0].clientX;
+        const y = e.touches[0].clientY;
+        panStart = { x, y, originX: x, originY: y, allowPan: true };
+        setIsPanning(true);
+        return;
+      }
+
+      if (mode === "select" && !onWall) {
+        const x = e.touches[0].clientX;
+        const y = e.touches[0].clientY;
+        panStart = { x, y, originX: x, originY: y, allowPan: false };
+      }
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (!panStart || e.touches.length !== 1) return;
       if (e.cancelable) e.preventDefault();
+      if (!panStart.allowPan) return;
       const x = e.touches[0].clientX;
       const y = e.touches[0].clientY;
       const dx = x - panStart.x;
@@ -515,17 +529,18 @@ export default function KonvaWallStage({
     };
 
     const onTouchEnd = () => {
-      if (panStart) {
+      if (panStart && !panStart.allowPan && editorModeRef.current === "select") {
         const moved = Math.hypot(
           panStart.x - panStart.originX,
           panStart.y - panStart.originY,
         );
-        if (moved < TAP_CLEAR_PX && editorModeRef.current === "select") {
+        if (moved < TAP_CLEAR_PX) {
           clearSelection();
           onPresenceSelection?.(null);
         }
       }
       panStart = null;
+      setIsPanning(false);
     };
 
     el.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -567,7 +582,7 @@ export default function KonvaWallStage({
     if (!tr) return;
 
     const canTransform =
-      editorMode === "select" &&
+      (editorMode === "select" || editorMode === "hand") &&
       !cropPhotoId &&
       !interactionLockId &&
       transformableSelectedIds.length > 0;
@@ -617,7 +632,7 @@ export default function KonvaWallStage({
     (object: WallSceneObject) => {
       const select = (additive = false) => {
         if (peerLockedIds.has(object.id)) return;
-        handleObjectSelect(object.id, additive || multiSelectMode);
+        handleObjectSelect(object.id, additive);
       };
 
       const isSelected = selectedIds.includes(object.id);
@@ -731,7 +746,6 @@ export default function KonvaWallStage({
       readOnly,
       editorMode,
       selectedIds,
-      multiSelectMode,
       peerLockedIds,
       cropPhotoId,
       resolvePhotoSrc,
@@ -1016,51 +1030,22 @@ export default function KonvaWallStage({
     ) => {
       reportPointer(stage);
 
-      if (readOnly || editorModeRef.current !== "select" || !isStageTarget || !stage) return;
-
-      const { userZoom: zoom, multiSelectMode: multi } = useWallSceneStore.getState();
-      const pt = clientPointFromEvent(nativeEvt);
-      if (!shiftKey && !multi && Math.abs(zoom - 1) > 0.01 && pt) {
-        stagePanRef.current = {
-          x: pt.x,
-          y: pt.y,
-          originX: pt.x,
-          originY: pt.y,
-        };
-        return;
-      }
+      if (readOnly || !isStageTarget || !stage) return;
+      if (isHandMode(editorModeRef.current)) return;
+      if (editorModeRef.current !== "select") return;
 
       const pos = stage.getPointerPosition();
       if (!pos) return;
 
-      marqueeStartRef.current = {
-        x1: pos.x,
-        y1: pos.y,
-        shiftKey: shiftKey || multi,
-      };
+      marqueeStartRef.current = { x1: pos.x, y1: pos.y, shiftKey };
       setMarqueeRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
     },
     [readOnly, reportPointer],
   );
 
   const handleStagePointerMove = useCallback(
-    (stage: Konva.Stage | null, nativeEvt?: MouseEvent | TouchEvent) => {
+    (stage: Konva.Stage | null, _nativeEvt?: MouseEvent | TouchEvent) => {
       reportPointer(stage);
-
-      if (stagePanRef.current && nativeEvt) {
-        const pt = clientPointFromEvent(nativeEvt);
-        if (pt) {
-          const dx = pt.x - stagePanRef.current.x;
-          const dy = pt.y - stagePanRef.current.y;
-          if (dx !== 0 || dy !== 0) addPan(dx, dy);
-          stagePanRef.current = {
-            ...stagePanRef.current,
-            x: pt.x,
-            y: pt.y,
-          };
-          return;
-        }
-      }
 
       const start = marqueeStartRef.current;
       if (!stage || !start) return;
@@ -1074,23 +1059,11 @@ export default function KonvaWallStage({
       const height = Math.abs(pos.y - start.y1);
       setMarqueeRect({ x, y, width, height });
     },
-    [addPan, reportPointer],
+    [reportPointer],
   );
 
   const handleStagePointerUp = useCallback(
     (stage: Konva.Stage | null) => {
-      const pan = stagePanRef.current;
-      stagePanRef.current = null;
-
-      if (pan) {
-        const moved = Math.hypot(pan.x - pan.originX, pan.y - pan.originY);
-        if (moved < TAP_CLEAR_PX) {
-          clearSelection();
-          broadcastSelection(null);
-        }
-        return;
-      }
-
       if (drawingRef.current || freehandRef.current) {
         finishDrawing();
         return;
@@ -1100,7 +1073,7 @@ export default function KonvaWallStage({
         finishMarquee(stage);
       }
     },
-    [broadcastSelection, clearSelection, finishDrawing, finishMarquee],
+    [finishDrawing, finishMarquee],
   );
 
   useEffect(() => {
@@ -1111,10 +1084,18 @@ export default function KonvaWallStage({
     }
   }, [editorMode]);
 
+  const workspaceCursor = isHandMode(editorMode) || isPanning
+    ? isPanning
+      ? "cursor-grabbing"
+      : "cursor-grab"
+    : editorMode === "pen" || editorMode === "tape" || editorMode === "text"
+      ? "cursor-crosshair"
+      : "cursor-default";
+
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full touch-none overflow-hidden overscroll-none bg-neutral-200"
+      className={`relative h-full w-full touch-none overflow-hidden overscroll-none bg-neutral-200 ${workspaceCursor}`}
     >
       <div
         ref={wallStageRef}
@@ -1193,11 +1174,20 @@ export default function KonvaWallStage({
               wallWidth={wallBounds.width}
               wallHeight={wallBounds.height}
             />
-            {!readOnly && editorMode === "select" && !cropPhotoId && !interactionLockId && (
+            {!readOnly &&
+              (editorMode === "select" || editorMode === "hand") &&
+              !cropPhotoId &&
+              !interactionLockId && (
               <Transformer
                 ref={transformerRef}
-                rotateEnabled
-                enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+                rotateEnabled={editorMode === "select"}
+                resizeEnabled={editorMode === "select"}
+                enabledAnchors={
+                  editorMode === "select"
+                    ? ["top-left", "top-right", "bottom-left", "bottom-right"]
+                    : []
+                }
+                listening={editorMode === "select"}
                 boundBoxFunc={(oldBox, newBox) => {
                   if (newBox.width < 24 || newBox.height < 24) return oldBox;
                   return newBox;

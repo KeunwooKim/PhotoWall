@@ -133,13 +133,17 @@ export default function EditorPropertiesSidebar({
 }: EditorPropertiesSidebarProps) {
   const hasSelection = selectionCount > 0;
   const showArrange =
-    !cropActive && !colorEditActive && mode === "select" && !editingTextObject;
+    !cropActive &&
+    !colorEditActive &&
+    (mode === "select" || mode === "hand") &&
+    !editingTextObject;
 
   const panelTitle = (() => {
     if (cropActive) return "자르기";
     if (colorEditActive) return "색 보정";
     if (mode === "pen") return "펜";
     if (mode === "tape") return "테이프";
+    if (mode === "hand") return "이동";
     if (mode === "text" || editingTextObject) return "텍스트";
     if (selectionCount > 1) return `선택 (${selectionCount})`;
     switch (inspectorObject?.type) {
@@ -344,7 +348,7 @@ export default function EditorPropertiesSidebar({
 
         {!cropActive &&
           !colorEditActive &&
-          mode === "select" &&
+          (mode === "select" || mode === "hand") &&
           !editingTextObject &&
           hasSelection && (
             <div className="mb-3 grid grid-cols-4 gap-1.5">
@@ -357,7 +361,7 @@ export default function EditorPropertiesSidebar({
 
         {!cropActive &&
           !colorEditActive &&
-          mode === "select" &&
+          (mode === "select" || mode === "hand") &&
           !editingTextObject &&
           inspectorObject && (
             <WallObjectInspector
@@ -373,11 +377,13 @@ export default function EditorPropertiesSidebar({
 
         {!cropActive &&
           !colorEditActive &&
-          mode === "select" &&
+          (mode === "select" || mode === "hand") &&
           !editingTextObject &&
           !inspectorObject && (
             <p className="text-[11px] leading-relaxed text-neutral-500">
-              캔버스에서 사진·스티커·텍스트를 선택하면 속성이 여기에 표시됩니다.
+              {mode === "hand"
+                ? "손 도구로 화면을 이동할 수 있어요. 선택(V)으로 객체를 고르세요."
+                : "캔버스에서 사진·스티커·텍스트를 선택하면 속성이 여기에 표시됩니다."}
             </p>
           )}
 

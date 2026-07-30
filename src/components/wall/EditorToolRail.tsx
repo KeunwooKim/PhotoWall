@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { RedoIcon, UndoIcon } from "@/components/wall/EditorToolDock";
+import {
+  HandIcon,
+  RedoIcon,
+  SelectCursorIcon,
+  UndoIcon,
+} from "@/components/wall/EditorToolDock";
 import type { EditorMode } from "./editor-types";
 
 interface EditorToolRailProps {
@@ -20,14 +25,6 @@ const railBtn =
   "flex h-10 w-10 flex-col items-center justify-center rounded-lg text-[10px] font-medium transition active:scale-95";
 const idle = `${railBtn} text-neutral-600 hover:bg-neutral-100`;
 const active = `${railBtn} bg-neutral-900 text-white`;
-
-function IconSelect({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M4 4l7.5 16 1.8-6.7L20 11.5 4 4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function IconPen({ className }: { className?: string }) {
   return (
@@ -104,10 +101,21 @@ export default function EditorToolRail({
         onClick={() => onModeChange("select")}
         className={mode === "select" ? active : idle}
         aria-pressed={mode === "select"}
-        title="선택"
+        title="선택 (V)"
       >
-        <IconSelect />
+        <SelectCursorIcon />
         <span className="mt-0.5">선택</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onModeChange("hand")}
+        className={mode === "hand" ? active : idle}
+        aria-pressed={mode === "hand"}
+        title="이동 (H)"
+      >
+        <HandIcon />
+        <span className="mt-0.5">이동</span>
       </button>
 
       <label className={`${idle} cursor-pointer`} title="사진">

@@ -79,8 +79,6 @@ export default function EditorSelectionSheet({
   const patchObject = useWallSceneStore((s) => s.patchObject);
   const recordHistory = useWallSceneStore((s) => s.recordHistory);
   const bumpRevision = useWallSceneStore((s) => s.bumpRevision);
-  const multiSelectMode = useWallSceneStore((s) => s.multiSelectMode);
-  const setMultiSelectMode = useWallSceneStore((s) => s.setMultiSelectMode);
 
   useEffect(() => {
     setExpand(null);
@@ -113,15 +111,6 @@ export default function EditorSelectionSheet({
         {/* Floating quick actions (above selection in reference → sits above property bar) */}
         <div className="flex justify-center">
           <div className="flex items-center gap-0.5 rounded-xl bg-white px-1 py-1 shadow-lg ring-1 ring-black/10">
-            {multiSelectMode && (
-              <button
-                type="button"
-                onClick={() => setMultiSelectMode(false)}
-                className="mx-0.5 rounded-lg bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-white"
-              >
-                완료
-              </button>
-            )}
             <IconBtn label="복제" onClick={onDuplicate}>
               <path
                 d="M9 9h8v8H9V9zm-3-3h8v2H8v6H6V6z"
@@ -177,13 +166,6 @@ export default function EditorSelectionSheet({
             </div>
             <div className="mt-1.5 divide-y divide-neutral-100 rounded-xl border border-neutral-100">
               <ListRow label="위치 이동" onClick={() => setExpand("position")} />
-              <ListRow
-                label={multiSelectMode ? "여러 선택 완료" : "여러 요소 선택"}
-                onClick={() => {
-                  setMultiSelectMode(!multiSelectMode);
-                  setExpand(null);
-                }}
-              />
               {onSelectAll && <ListRow label="전체 선택" onClick={onSelectAll} />}
               {onBringOntoWall && (
                 <ListRow
