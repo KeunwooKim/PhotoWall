@@ -130,10 +130,35 @@ export async function DELETE(
   const { id } = await params;
   const { admin, applyCookies } = auth.ctx;
 
+  const { data: wall } = await admin
+    .from("walls")
+    .select("id, owner_id, canvas_json, preview_path")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await admin.from("walls").delete().eq("id", id);
 
   if (error) {
     return adminDbErrorResponse(applyCookies, error, "벽 삭제에 실패했어요");
+  }
+
+  // Best-effort storage cleanup for photos referenced by this wall
+  if (wall) {
+    try {
+      const { collectWallPhotoPathsFromCanvas, WALL_PHOTOS_BUCKET } = await import(
+        "@/lib/storage/wall-photos"
+      );
+      const paths = new Set(collectWallPhotoPathsFromCanvas(wall.canvas_json));
+      if (typeof wall.preview_path === "string" && wall.preview_path) {
+        paths.add(wall.preview_path);
+      }
+      const list = [...paths];
+      for (let i = 0; i < list.length; i += 100) {
+        await admin.storage.from(WALL_PHOTOS_BUCKET).remove(list.slice(i, i + 100));
+      }
+    } catch {
+      /* wall row already deleted */
+    }
   }
 
   return applyCookies(NextResponse.json({ ok: true }));

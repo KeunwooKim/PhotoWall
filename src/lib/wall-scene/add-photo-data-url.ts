@@ -1,3 +1,6 @@
+import { cachePhotoDisplayUrl } from "@/lib/storage/photo-display-cache";
+import { isGuestPhotoRef } from "@/lib/storage/guest-photo-refs";
+import { dataUrlToBlob, putGuestPhoto } from "@/lib/storage/guest-photos";
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
@@ -10,7 +13,22 @@ export async function addPhotoDataUrlToWallScene(
     position?: { x: number; y: number };
   },
 ): Promise<void> {
-  const { width: naturalW, height: naturalH } = await loadHtmlImage(dataUrl).then((img) => ({
+  const blob = dataUrlToBlob(dataUrl);
+  let src = dataUrl;
+  let displaySrc = dataUrl;
+
+  if (blob) {
+    try {
+      src = await putGuestPhoto(blob);
+      displaySrc = URL.createObjectURL(blob);
+      cachePhotoDisplayUrl(src, displaySrc);
+    } catch {
+      src = dataUrl;
+      displaySrc = dataUrl;
+    }
+  }
+
+  const { width: naturalW, height: naturalH } = await loadHtmlImage(displaySrc).then((img) => ({
     width: img.naturalWidth,
     height: img.naturalHeight,
   }));
@@ -39,7 +57,7 @@ export async function addPhotoDataUrlToWallScene(
     scaleX: 1,
     scaleY: 1,
     zIndex: maxZ + 1,
-    src: dataUrl,
+    src: isGuestPhotoRef(src) ? src : dataUrl,
     width,
     height,
   };

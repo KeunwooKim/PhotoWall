@@ -24,6 +24,7 @@ import {
   prefetchWallScenePhotoUrls,
   resolveWallPhotoSrc,
 } from "@/lib/storage/resolve-wall-photos";
+import { migrateDataUrlsToGuestPhotos } from "@/lib/storage/migrate-guest-photos";
 import { addPhotoDataUrlToWallScene } from "@/lib/wall-scene/add-photo-data-url";
 import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
 import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
@@ -261,7 +262,14 @@ export default function PersonalWallKonvaEditor() {
             json,
             wallIdRef.current,
             serverRevisionRef.current,
+            userRef.current?.id,
           ).then((result) => {
+            if (result.migratedDocument) {
+              useWallSceneStore.getState().loadDocument(result.migratedDocument);
+              lastSavedFingerprintRef.current = fingerprintPersistableScene(
+                result.migratedDocument,
+              );
+            }
             if (result.restricted) {
               showToast(result.message || "활동이 제한된 계정이에요");
               return;
@@ -393,9 +401,17 @@ export default function PersonalWallKonvaEditor() {
       const saved = loadWall();
       if (saved) {
         setThemeId(resolveWallThemeId(saved.themeId));
-        const doc = parseWallScene(saved.canvasJson);
+        let doc = parseWallScene(saved.canvasJson);
+        const legacy = await migrateDataUrlsToGuestPhotos(doc);
+        if (legacy.migrated > 0) {
+          doc = legacy.document;
+          const json = serializeWallScene(doc);
+          saveWall(saved.themeId, json);
+          setLoadedCanvasJson(json);
+        } else {
+          setLoadedCanvasJson(saved.canvasJson);
+        }
         await prefetchWallScenePhotoUrls(doc, wallId);
-        setLoadedCanvasJson(saved.canvasJson);
         return;
       }
 
@@ -425,7 +441,11 @@ export default function PersonalWallKonvaEditor() {
             json,
             cloud.id,
             cloudDoc.meta.revision ?? 0,
+            user.id,
           );
+          if (saved.migratedDocument) {
+            useWallSceneStore.getState().loadDocument(saved.migratedDocument);
+          }
           if (saved.wall) {
             saveWall(saved.wall.themeId, saved.wall.canvasJson);
             adoptWallId(saved.wall.id);
@@ -465,7 +485,11 @@ export default function PersonalWallKonvaEditor() {
               json,
               cloud.id,
               cloudRev,
+              user.id,
             );
+            if (saved.migratedDocument) {
+              useWallSceneStore.getState().loadDocument(saved.migratedDocument);
+            }
             if (saved.wall) {
               saveWall(saved.wall.themeId, saved.wall.canvasJson);
               adoptWallId(saved.wall.id);
@@ -499,7 +523,11 @@ export default function PersonalWallKonvaEditor() {
           json,
           local.id,
           localDoc.meta.revision ?? 0,
+          user.id,
         );
+        if (saved.migratedDocument) {
+          useWallSceneStore.getState().loadDocument(saved.migratedDocument);
+        }
         if (saved.wall) {
           saveWall(saved.wall.themeId, saved.wall.canvasJson);
           adoptWallId(saved.wall.id);
@@ -601,7 +629,11 @@ export default function PersonalWallKonvaEditor() {
               json,
               wallIdRef.current,
               serverRevisionRef.current,
+              user.id,
             ).then((result) => {
+              if (result.migratedDocument) {
+                useWallSceneStore.getState().loadDocument(result.migratedDocument);
+              }
               if (result.wall) {
                 adoptWallId(result.wall.id);
                 serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
@@ -910,7 +942,16 @@ export default function PersonalWallKonvaEditor() {
       persistLocal(json);
       markPreviewDirty();
       if (userRef.current) {
-        void saveWallToCloud(next, json, wallIdRef.current, serverRevisionRef.current).then((result) => {
+        void saveWallToCloud(
+          next,
+          json,
+          wallIdRef.current,
+          serverRevisionRef.current,
+          userRef.current.id,
+        ).then((result) => {
+          if (result.migratedDocument) {
+            useWallSceneStore.getState().loadDocument(result.migratedDocument);
+          }
           if (result.wall) {
             adoptWallId(result.wall.id);
             serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
@@ -932,7 +973,12 @@ export default function PersonalWallKonvaEditor() {
         json,
         wallIdRef.current,
         serverRevisionRef.current,
+        user.id,
       );
+      if (result.migratedDocument) {
+        useWallSceneStore.getState().loadDocument(result.migratedDocument);
+        lastSavedFingerprintRef.current = fingerprintPersistableScene(result.migratedDocument);
+      }
       if (result.conflictWall) {
         const doc = parseWallScene(result.conflictWall.canvasJson);
         useWallSceneStore.getState().loadDocument(doc);
@@ -974,6 +1020,7 @@ export default function PersonalWallKonvaEditor() {
         json,
         wallIdRef.current,
         serverRevisionRef.current,
+        userRef.current.id,
       ).then((result) => {
         if (result.wall) {
           adoptWallId(result.wall.id);

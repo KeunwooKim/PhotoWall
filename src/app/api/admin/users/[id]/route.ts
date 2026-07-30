@@ -41,6 +41,13 @@ export async function PATCH(
     return adminDbErrorResponse(applyCookies, error ?? {}, "계정 상태 변경에 실패했어요");
   }
 
+  const { notifyAccountRestricted } = await import("@/lib/discord/notify");
+  notifyAccountRestricted({
+    userId: data.id,
+    restricted: !!data.restricted_at,
+    reason: data.restrict_reason,
+  });
+
   return applyCookies(
     NextResponse.json({
       id: data.id,

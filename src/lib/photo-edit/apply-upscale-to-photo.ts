@@ -1,6 +1,7 @@
 import { cachePhotoDisplayUrl } from "@/lib/storage/photo-display-cache";
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
 import { resolvePhotoUrl } from "@/lib/storage/upload-photo";
+import { isGuestPhotoRef } from "@/lib/storage/guest-photo-refs";
 import { isWallPhotoRef } from "@/lib/storage/wall-photos";
 import { imageToCanvas } from "@/lib/photo-edit/color-adjust";
 import { canvasToJpegFile } from "@/lib/photo-scan/perspective";
@@ -63,7 +64,7 @@ export async function applyUpscaleToWallPhoto(
 
     const plan = options.plan ?? "free";
     const ref = await resolvePhotoUrl(file, options.userId, plan);
-    if (isWallPhotoRef(ref)) {
+    if (isWallPhotoRef(ref) || isGuestPhotoRef(ref)) {
       cachePhotoDisplayUrl(ref, URL.createObjectURL(file));
     }
 

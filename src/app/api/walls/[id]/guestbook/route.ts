@@ -38,6 +38,13 @@ export async function POST(
   const blocked = await restrictedResponse(routeClient.supabase, user.id);
   if (blocked) return routeClient.applyCookies(blocked);
 
+  const { checkRateLimitAsync } = await import("@/lib/rate-limit");
+  if (!(await checkRateLimitAsync(`guestbook:${user.id}`, 20, 60 * 60 * 1000))) {
+    return routeClient.applyCookies(
+      NextResponse.json({ error: "Too many guestbook posts. Try again later." }, { status: 429 }),
+    );
+  }
+
   let authorName = (formData.get("authorName") as string | null) ?? "익명";
   const profile = await ensureProfile(routeClient.supabase, user);
   if (profile?.displayName) authorName = profile.displayName;

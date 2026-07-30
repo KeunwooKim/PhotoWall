@@ -79,6 +79,40 @@ export function collectWallPhotoPaths(fabricJson: object): string[] {
   return [...paths];
 }
 
+/** Collect storage paths from packed canvas_json (v2 scene or legacy Fabric). */
+export function collectWallPhotoPathsFromCanvas(canvasJson: unknown): string[] {
+  if (!canvasJson || typeof canvasJson !== "object") return [];
+
+  const record = canvasJson as Record<string, unknown>;
+
+  const scene =
+    record.photowallScene && typeof record.photowallScene === "object"
+      ? (record.photowallScene as Record<string, unknown>)
+      : record;
+
+  if (Array.isArray(scene.objects)) {
+    const paths = new Set<string>();
+    for (const raw of scene.objects) {
+      if (!raw || typeof raw !== "object") continue;
+      const obj = raw as { type?: string; src?: string };
+      if (
+        (obj.type === "photo" || obj.type === "Image") &&
+        typeof obj.src === "string"
+      ) {
+        const fromRef = wallPhotoRefToPath(obj.src);
+        if (fromRef) paths.add(fromRef);
+        else {
+          const fromUrl = extractWallPhotoPathFromUrl(obj.src);
+          if (fromUrl) paths.add(fromUrl);
+        }
+      }
+    }
+    if (paths.size > 0) return [...paths];
+  }
+
+  return collectWallPhotoPaths(canvasJson as object);
+}
+
 function mapFabricObjects(
   objects: FabricObjectJson[],
   mapSrc: (src: string) => string,

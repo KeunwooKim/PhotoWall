@@ -51,6 +51,47 @@ async function deleteUserStorage(admin: SupabaseClient, userId: string) {
 }
 
 /**
+ * Wipe app content for a user but keep auth + profile (restricted).
+ * Used by admin moderation — does not call auth.admin.deleteUser.
+ */
+export async function wipeUserContent(userId: string): Promise<DeleteAccountResult> {
+  const admin = createAdminClient();
+  if (!admin) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Wipe requires SUPABASE_SERVICE_ROLE_KEY",
+    };
+  }
+
+  await admin.from("wall_likes").delete().eq("user_id", userId);
+  await admin.from("wall_guestbook").delete().eq("user_id", userId);
+  await admin.from("wall_members").delete().eq("user_id", userId);
+  await admin
+    .from("friendships")
+    .delete()
+    .or(`user_a.eq.${userId},user_b.eq.${userId}`);
+  await admin
+    .from("wall_member_invites")
+    .delete()
+    .or(`inviter_id.eq.${userId},invitee_id.eq.${userId}`);
+
+  await admin.from("walls").delete().eq("owner_id", userId);
+  await deleteUserStorage(admin, userId);
+
+  await admin
+    .from("profiles")
+    .update({
+      restricted_at: new Date().toISOString(),
+      restrict_reason: "관리자에 의한 콘텐츠 삭제",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId);
+
+  return { ok: true };
+}
+
+/**
  * Permanently delete the signed-in user's account and associated app data.
  * Requires SUPABASE_SERVICE_ROLE_KEY for Auth admin delete + Storage cleanup.
  */
@@ -68,8 +109,14 @@ export async function deleteUserAccount(userId: string): Promise<DeleteAccountRe
   await admin.from("wall_likes").delete().eq("user_id", userId);
   await admin.from("wall_guestbook").delete().eq("user_id", userId);
   await admin.from("wall_members").delete().eq("user_id", userId);
-  await admin.from("friendships").delete().or(`user_id.eq.${userId},friend_id.eq.${userId}`);
-  await admin.from("wall_member_invites").delete().or(`inviter_id.eq.${userId},invitee_id.eq.${userId}`);
+  await admin
+    .from("friendships")
+    .delete()
+    .or(`user_a.eq.${userId},user_b.eq.${userId}`);
+  await admin
+    .from("wall_member_invites")
+    .delete()
+    .or(`inviter_id.eq.${userId},invitee_id.eq.${userId}`);
   await admin.from("inquiries").delete().eq("user_id", userId);
 
   // Owned walls (personal + shared). Cascades may cover children depending on schema.
