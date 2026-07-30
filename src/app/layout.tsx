@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import ThemeScript from "@/providers/ThemeScript";
 import SyncLegalConsent from "@/components/auth/SyncLegalConsent";
+import { Analytics } from "@vercel/analytics/next";
 
 const notoSansKr = Noto_Sans_KR({
   subsets: ["latin"],
@@ -38,6 +39,7 @@ export default function RootLayout({
           <SyncLegalConsent />
           {children}
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
