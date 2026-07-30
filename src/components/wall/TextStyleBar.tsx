@@ -14,6 +14,10 @@ interface TextStyleBarProps {
   onClose?: () => void;
 }
 
+const idleChip =
+  "bg-neutral-900/8 text-neutral-800 hover:bg-neutral-900/12";
+const activeChip = "bg-neutral-900 text-white";
+
 /** Style panel for selected text — opens via double-click / long-press / place. */
 export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
   const [open, setOpen] = useState(true);
@@ -28,21 +32,21 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
       style={{ bottom: "max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))" }}
     >
       {open ? (
-        <div className="pointer-events-auto max-h-[38vh] w-full max-w-lg space-y-2 overflow-y-auto rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
+        <div className="pointer-events-auto max-h-[38vh] w-full max-w-lg space-y-2 overflow-y-auto rounded-2xl bg-white p-3 text-neutral-800 shadow-lg ring-1 ring-black/10 backdrop-blur-sm">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-medium text-muted">텍스트 스타일</p>
+            <p className="text-[11px] font-medium text-neutral-500">텍스트 스타일</p>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-full bg-foreground/6 px-2.5 py-1 text-[10px] font-medium text-muted transition hover:bg-foreground/10"
+                className="rounded-full bg-neutral-900/8 px-2.5 py-1 text-[10px] font-medium text-neutral-600 transition hover:bg-neutral-900/12"
               >
                 접기
               </button>
               <button
                 type="button"
                 onClick={() => onClose?.()}
-                className="rounded-full bg-foreground px-2.5 py-1 text-[10px] font-medium text-background transition"
+                className="rounded-full bg-neutral-900 px-2.5 py-1 text-[10px] font-medium text-white transition"
               >
                 완료
               </button>
@@ -52,12 +56,12 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
           <input
             value={object.text}
             onChange={(e) => updateTextObject(object.id, { text: e.target.value || " " })}
-            className="w-full rounded-xl border border-foreground/10 bg-background px-3 py-2 text-sm outline-none focus:border-foreground/30"
+            className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
             placeholder="텍스트 입력"
             aria-label="텍스트 내용"
           />
 
-          <p className="text-[11px] font-medium text-muted">글꼴</p>
+          <p className="text-[11px] font-medium text-neutral-500">글꼴</p>
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {TEXT_FONT_FAMILIES.map((font) => (
               <button
@@ -65,9 +69,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
                 type="button"
                 onClick={() => updateTextObject(object.id, { fontFamily: font.value })}
                 className={`rounded-xl px-2.5 py-2 text-left text-[12px] transition ${
-                  object.fontFamily === font.value
-                    ? "bg-foreground text-background"
-                    : "bg-foreground/6 hover:bg-foreground/10"
+                  object.fontFamily === font.value ? activeChip : idleChip
                 }`}
                 style={{ fontFamily: font.value }}
               >
@@ -77,7 +79,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
             ))}
           </div>
 
-          <p className="text-[11px] font-medium text-muted">크기</p>
+          <p className="text-[11px] font-medium text-neutral-500">크기</p>
           <div className="flex flex-wrap gap-1.5">
             {TEXT_SIZE_PRESETS.map((size) => (
               <button
@@ -85,9 +87,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
                 type="button"
                 onClick={() => updateTextObject(object.id, { fontSize: size })}
                 className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
-                  object.fontSize === size
-                    ? "bg-foreground text-background"
-                    : "bg-foreground/6 hover:bg-foreground/10"
+                  object.fontSize === size ? activeChip : idleChip
                 }`}
               >
                 {size}
@@ -95,7 +95,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
             ))}
           </div>
 
-          <p className="text-[11px] font-medium text-muted">색상</p>
+          <p className="text-[11px] font-medium text-neutral-500">색상</p>
           <div className="flex flex-wrap gap-2">
             {TEXT_COLORS.map((color) => (
               <button
@@ -103,7 +103,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
                 type="button"
                 onClick={() => updateTextObject(object.id, { fill: color })}
                 className={`h-7 w-7 rounded-full ring-2 transition ${
-                  object.fill === color ? "ring-foreground" : "ring-transparent"
+                  object.fill === color ? "ring-neutral-900" : "ring-transparent"
                 }`}
                 style={{
                   background: color,
@@ -114,7 +114,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
             ))}
           </div>
 
-          <p className="text-[11px] font-medium text-muted">스타일</p>
+          <p className="text-[11px] font-medium text-neutral-500">스타일</p>
           <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
@@ -124,9 +124,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
                 })
               }
               className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${
-                object.fontWeight === "bold"
-                  ? "bg-foreground text-background"
-                  : "bg-foreground/6 hover:bg-foreground/10"
+                object.fontWeight === "bold" ? activeChip : idleChip
               }`}
             >
               B
@@ -137,9 +135,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
                 type="button"
                 onClick={() => updateTextObject(object.id, { textAlign: align })}
                 className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-                  (object.textAlign ?? "left") === align
-                    ? "bg-foreground text-background"
-                    : "bg-foreground/6 hover:bg-foreground/10"
+                  (object.textAlign ?? "left") === align ? activeChip : idleChip
                 }`}
               >
                 {align === "left" ? "왼쪽" : align === "center" ? "가운데" : "오른쪽"}
@@ -147,7 +143,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
             ))}
           </div>
 
-          <p className="text-[10px] text-muted">
+          <p className="text-[10px] text-neutral-500">
             선택 후 드래그로 이동 · 더블탭으로 다시 편집 · 길게 누르면 메뉴
           </p>
         </div>
@@ -155,7 +151,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="pointer-events-auto rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium text-muted shadow-md ring-1 ring-black/8 backdrop-blur-sm"
+          className="pointer-events-auto rounded-full bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-700 shadow-md ring-1 ring-black/10 backdrop-blur-sm"
         >
           텍스트 설정
         </button>

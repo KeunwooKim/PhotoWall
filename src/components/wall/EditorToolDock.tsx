@@ -38,7 +38,12 @@ const dockBtn =
   "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2.5 text-[11px] font-medium transition active:scale-95 sm:px-3 sm:text-xs";
 const dockBtnIdle = `${dockBtn} text-neutral-600 hover:bg-black/5`;
 const dockBtnActive = `${dockBtn} bg-neutral-900 text-white`;
-const dockBtnScan = `${dockBtn} border border-foreground/20 bg-foreground/5 text-neutral-800 hover:bg-foreground/10`;
+const dockBtnScan = `${dockBtn} border border-neutral-300 bg-neutral-50 text-neutral-800 hover:bg-neutral-100`;
+const panelShell =
+  "pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white p-3 text-neutral-800 shadow-lg ring-1 ring-black/10 backdrop-blur-sm";
+const panelLabel = "text-[11px] font-medium text-neutral-500";
+const idleChip = "bg-neutral-900/8 text-neutral-800 hover:bg-neutral-900/12";
+const activeChip = "bg-neutral-900 text-white";
 
 /**
  * Bottom tools. Pen/tape: first tap enters mode + opens settings;
@@ -100,13 +105,13 @@ export default function EditorToolDock({
       style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
     >
       {showPenPicker && (
-        <div className="pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
+        <div className={panelShell}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-medium text-muted">펜 종류</p>
+            <p className={panelLabel}>펜 종류</p>
             <button
               type="button"
               onClick={() => setSettingsOpen(false)}
-              className="rounded-full bg-foreground/6 px-2.5 py-1 text-[10px] font-medium text-muted transition hover:bg-foreground/10"
+              className="rounded-full bg-neutral-900/8 px-2.5 py-1 text-[10px] font-medium text-neutral-600 transition hover:bg-neutral-900/12"
             >
               접기
             </button>
@@ -118,15 +123,13 @@ export default function EditorToolDock({
                 type="button"
                 onClick={() => onPenStyleIdChange?.(style.id)}
                 className={`rounded-xl px-2.5 py-2 text-left transition ${
-                  penStyleId === style.id
-                    ? "bg-foreground text-background"
-                    : "bg-foreground/6 hover:bg-foreground/10"
+                  penStyleId === style.id ? activeChip : idleChip
                 }`}
               >
                 <span className="block text-[11px] font-medium">{style.label}</span>
                 <span
                   className={`mt-0.5 block text-[10px] ${
-                    penStyleId === style.id ? "text-background/70" : "text-muted"
+                    penStyleId === style.id ? "text-white/70" : "text-neutral-500"
                   }`}
                 >
                   {style.hint}
@@ -134,14 +137,14 @@ export default function EditorToolDock({
               </button>
             ))}
           </div>
-          <p className="text-[11px] font-medium text-muted">크기</p>
+          <p className={panelLabel}>크기</p>
           <PenStrokeWidthControl
             styleId={penStyleId}
             value={penStrokeWidth}
             onChange={(width) => onPenStrokeWidthChange?.(width)}
             compact
           />
-          <p className="text-[11px] font-medium text-muted">색상</p>
+          <p className={panelLabel}>색상</p>
           <div className="flex flex-wrap gap-2">
             {PEN_COLORS.map((color) => (
               <button
@@ -149,25 +152,25 @@ export default function EditorToolDock({
                 type="button"
                 onClick={() => onPenColorChange?.(color)}
                 className={`h-8 w-8 rounded-full ring-2 transition ${
-                  penColor === color ? "ring-foreground scale-110" : "ring-transparent"
+                  penColor === color ? "ring-neutral-900 scale-110" : "ring-transparent"
                 }`}
                 style={{ background: color }}
                 aria-label={`펜 색 ${color}`}
               />
             ))}
           </div>
-          <p className="text-[10px] text-muted">펜을 다시 누르면 설정을 접고 그릴 수 있어요</p>
+          <p className="text-[10px] text-neutral-500">펜을 다시 누르면 설정을 접고 그릴 수 있어요</p>
         </div>
       )}
 
       {showTapePicker && (
-        <div className="pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-black/8 backdrop-blur-sm">
+        <div className={panelShell}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-medium text-muted">테이프 길이</p>
+            <p className={panelLabel}>테이프 길이</p>
             <button
               type="button"
               onClick={() => setSettingsOpen(false)}
-              className="rounded-full bg-foreground/6 px-2.5 py-1 text-[10px] font-medium text-muted transition hover:bg-foreground/10"
+              className="rounded-full bg-neutral-900/8 px-2.5 py-1 text-[10px] font-medium text-neutral-600 transition hover:bg-neutral-900/12"
             >
               접기
             </button>
@@ -179,16 +182,14 @@ export default function EditorToolDock({
                 type="button"
                 onClick={() => onTapeMaxLengthChange?.(length)}
                 className={`flex h-9 flex-1 items-center justify-center rounded-full text-[11px] font-medium transition ${
-                  tapeMaxLength === length
-                    ? "bg-foreground text-background"
-                    : "bg-foreground/6 hover:bg-foreground/10"
+                  tapeMaxLength === length ? activeChip : idleChip
                 }`}
               >
                 {length < 100 ? "짧게" : length < 200 ? "보통" : "길게"}
               </button>
             ))}
           </div>
-          <p className="text-[11px] font-medium text-muted">색상</p>
+          <p className={panelLabel}>색상</p>
           <div className="flex flex-wrap gap-2">
             {TAPE_COLORS.map((tape) => (
               <button
@@ -197,14 +198,14 @@ export default function EditorToolDock({
                 title={tape.label}
                 onClick={() => onTapeColorChange?.(tape.color)}
                 className={`h-8 w-10 rounded-md ring-2 transition ${
-                  tapeColor === tape.color ? "ring-foreground scale-105" : "ring-black/10"
+                  tapeColor === tape.color ? "ring-neutral-900 scale-105" : "ring-black/10"
                 }`}
                 style={{ background: tape.color }}
                 aria-label={`테이프 ${tape.label}`}
               />
             ))}
           </div>
-          <p className="text-[10px] text-muted">테이프를 다시 누르면 설정을 접을 수 있어요</p>
+          <p className="text-[10px] text-neutral-500">테이프를 다시 누르면 설정을 접을 수 있어요</p>
         </div>
       )}
 
@@ -212,7 +213,7 @@ export default function EditorToolDock({
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="pointer-events-auto rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium text-muted shadow-md ring-1 ring-black/8 backdrop-blur-sm"
+          className="pointer-events-auto rounded-full bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-700 shadow-md ring-1 ring-black/10 backdrop-blur-sm"
         >
           펜 설정
         </button>
@@ -222,7 +223,7 @@ export default function EditorToolDock({
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="pointer-events-auto rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-medium text-muted shadow-md ring-1 ring-black/8 backdrop-blur-sm"
+          className="pointer-events-auto rounded-full bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-700 shadow-md ring-1 ring-black/10 backdrop-blur-sm"
         >
           테이프 설정
         </button>
@@ -286,7 +287,7 @@ export default function EditorToolDock({
         </button>
 
         <button type="button" onClick={onOpenDecorate} className={dockBtnIdle}>
-          꾸미기
+          에셋
         </button>
 
         <span className="mx-0.5 h-5 w-px shrink-0 bg-black/10" aria-hidden />
