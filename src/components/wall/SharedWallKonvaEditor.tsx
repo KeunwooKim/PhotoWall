@@ -17,6 +17,7 @@ import {
   resolveWallPhotoSrc,
 } from "@/lib/storage/resolve-wall-photos";
 import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
+import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
 import {
   countSelectedQuotaObjects,
@@ -173,6 +174,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     [handleCropCancel, startColorEdit],
   );
 
+  const [upscaleBusy, setUpscaleBusy] = useState(false);
+
   useEffect(() => {
     if (!colorEditPhotoId) return;
     if (selectedIds.length !== 1 || selectedIds[0] !== colorEditPhotoId) {
@@ -286,6 +289,36 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const resolvePhotoSrc = useCallback(
     (src: string) => resolveWallPhotoSrc(src, sharedId),
     [sharedId],
+  );
+
+  const handleUpscalePhoto = useCallback(
+    async (id: string) => {
+      if (upscaleBusy) return;
+      const photo = sceneObjects.find((item) => item.id === id);
+      if (!photo || photo.type !== "photo") return;
+
+      setUpscaleBusy(true);
+      try {
+        const displaySrc = await resolvePhotoSrc(photo.src);
+        const result = await applyUpscaleToWallPhoto(photo, {
+          displaySrc,
+          userId: user?.id,
+          plan: wallPlan,
+        });
+        if (result.status === "applied") {
+          showToast("화질을 업스케일했어요");
+        } else if (result.status === "skipped") {
+          showToast("이미 충분히 큰 사진이에요");
+        } else {
+          showToast(result.message);
+        }
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "업스케일에 실패했어요");
+      } finally {
+        setUpscaleBusy(false);
+      }
+    },
+    [upscaleBusy, sceneObjects, resolvePhotoSrc, user?.id, wallPlan, showToast],
   );
 
   useEffect(() => {
@@ -947,6 +980,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onStartColorEdit={
               inspectorObject.type === "photo" ? handleStartColorEdit : undefined
             }
+            onUpscalePhoto={
+              inspectorObject.type === "photo" ? (id) => void handleUpscalePhoto(id) : undefined
+            }
+            upscaleBusy={upscaleBusy}
           />
         </div>
       )}
