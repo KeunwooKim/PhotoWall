@@ -1004,7 +1004,6 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           <EditorToolRail
             mode={mode}
             onModeChange={handleModeChange}
-            onPhotoUpload={handlePhotoUpload}
             onToggleAssets={() => setIsAssetsOpen((v) => !v)}
             assetsOpen={isAssetsOpen}
             onUndo={undo}
@@ -1142,7 +1141,6 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             <EditorToolDock
               mode={mode}
               onModeChange={handleModeChange}
-              onPhotoUpload={handlePhotoUpload}
               onOpenDecorate={() => setIsAssetsOpen(true)}
               onUndo={undo}
               onRedo={redo}

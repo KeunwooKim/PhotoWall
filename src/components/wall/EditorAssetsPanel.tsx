@@ -43,7 +43,7 @@ export default function EditorAssetsPanel({
       <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5">
         <div>
           <p className="text-[11px] font-semibold tracking-wide text-neutral-500">에셋</p>
-          <p className="text-[10px] text-neutral-400">사진 · 벽지 · 스티커</p>
+          <p className="text-[10px] text-neutral-400">사진 · 스캔 · 벽지 · 스티커</p>
         </div>
         <button
           type="button"
@@ -82,7 +82,7 @@ export default function EditorAssetsPanel({
             onClick={() => fileInputRef.current?.click()}
             className="w-full rounded-xl bg-neutral-900 px-3 py-2.5 text-xs font-medium text-white transition active:scale-[0.98]"
           >
-            네컷 사진 올리기
+            사진 올리기
           </button>
           <Link
             href="/import"
@@ -96,7 +96,7 @@ export default function EditorAssetsPanel({
             onClick={onClose}
             className="block w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-xs font-medium text-neutral-800 transition hover:bg-neutral-100"
           >
-            AI로 스캔하기
+            AI 스캔
           </Link>
         </section>
 

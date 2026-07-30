@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   HandIcon,
   RedoIcon,
@@ -12,7 +11,6 @@ import type { EditorMode } from "./editor-types";
 interface EditorToolRailProps {
   mode: EditorMode;
   onModeChange: (mode: EditorMode) => void;
-  onPhotoUpload: (file: File) => void;
   onToggleAssets: () => void;
   assetsOpen?: boolean;
   onUndo: () => void;
@@ -55,24 +53,6 @@ function IconText({ className }: { className?: string }) {
   );
 }
 
-function IconPhoto({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="9" cy="10" r="1.5" fill="currentColor" />
-      <path d="M3 16l5-4 4 3 3-2 6 4" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconScan({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M7 4H5a1 1 0 00-1 1v2M17 4h2a1 1 0 011 1v2M7 20H5a1 1 0 01-1-1v-2M17 20h2a1 1 0 001-1v-2M4 12h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function IconAssets({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -86,7 +66,6 @@ function IconAssets({ className }: { className?: string }) {
 export default function EditorToolRail({
   mode,
   onModeChange,
-  onPhotoUpload,
   onToggleAssets,
   assetsOpen = false,
   onUndo,
@@ -117,27 +96,6 @@ export default function EditorToolRail({
         <HandIcon />
         <span className="mt-0.5">이동</span>
       </button>
-
-      <label className={`${idle} cursor-pointer`} title="사진">
-        <IconPhoto />
-        <span className="mt-0.5">사진</span>
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const files = e.target.files;
-            if (files) [...files].forEach((file) => onPhotoUpload(file));
-            e.target.value = "";
-          }}
-        />
-      </label>
-
-      <Link href="/capture" className={idle} title="AI 스캔" aria-label="AI 스캔">
-        <IconScan />
-        <span className="mt-0.5">스캔</span>
-      </Link>
 
       <button
         type="button"

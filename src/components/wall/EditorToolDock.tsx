@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import type { EditorMode } from "./editor-types";
 import {
   DEFAULT_PEN_STYLE_ID,
@@ -16,7 +15,6 @@ import PenStrokeWidthControl from "./PenStrokeWidthControl";
 interface EditorToolDockProps {
   mode: EditorMode;
   onModeChange: (mode: EditorMode) => void;
-  onPhotoUpload: (file: File) => void;
   onOpenDecorate: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -52,7 +50,6 @@ const activeChip = "bg-neutral-900 text-white";
 export default function EditorToolDock({
   mode,
   onModeChange,
-  onPhotoUpload,
   onOpenDecorate,
   onUndo,
   onRedo,
@@ -250,27 +247,6 @@ export default function EditorToolDock({
         >
           <HandIcon />
         </button>
-
-        <label className={`${dockBtnIdle} cursor-pointer`}>
-          사진
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = e.target.files;
-              if (files) {
-                [...files].forEach((file) => onPhotoUpload(file));
-              }
-              e.target.value = "";
-            }}
-          />
-        </label>
-
-        <Link href="/capture" className={dockBtnIdle} aria-label="AI 스캔">
-          스캔
-        </Link>
 
         <button
           type="button"

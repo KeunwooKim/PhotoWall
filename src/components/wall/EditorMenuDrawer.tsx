@@ -239,7 +239,7 @@ export default function EditorMenuDrawer({
                   }}
                 >
                   <AssetsIcon />
-                  벽지 · 스티커 열기
+                  에셋 열기
                 </button>
               )}
 
