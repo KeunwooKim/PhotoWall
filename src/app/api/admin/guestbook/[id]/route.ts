@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute, adminDbErrorResponse } from "@/lib/admin/require-admin-route";
 
+/**
+ * Deletes the guestbook DB row only.
+ * Embedded canvas guestbook photos are not linked by id, so they may remain on the wall
+ * until the wall is edited/hidden — prefer wall hide for visual spam.
+ */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

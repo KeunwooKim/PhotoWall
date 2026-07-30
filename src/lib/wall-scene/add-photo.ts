@@ -2,6 +2,7 @@ import { cachePhotoDisplayUrl } from "@/lib/storage/photo-display-cache";
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
 import { resolvePhotoUrl } from "@/lib/storage/upload-photo";
 import { resolveWallPhotoSrc } from "@/lib/storage/resolve-wall-photos";
+import { isGuestPhotoRef } from "@/lib/storage/guest-photo-refs";
 import { isWallPhotoRef } from "@/lib/storage/wall-photos";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
@@ -26,13 +27,14 @@ export async function addPhotoToWallScene(
   const plan = options.plan ?? "free";
   const ref = await resolvePhotoUrl(file, options.userId, plan);
 
-  if (isWallPhotoRef(ref)) {
+  if (isWallPhotoRef(ref) || isGuestPhotoRef(ref)) {
     cachePhotoDisplayUrl(ref, URL.createObjectURL(file));
   }
 
-  const displaySrc = isWallPhotoRef(ref)
-    ? await resolveWallPhotoSrc(ref, options.wallId)
-    : ref;
+  const displaySrc =
+    isWallPhotoRef(ref) || isGuestPhotoRef(ref)
+      ? await resolveWallPhotoSrc(ref, options.wallId)
+      : ref;
 
   const { width: naturalW, height: naturalH } = await loadImageSize(displaySrc);
   const maxWidth = Math.min(220, options.wallWidth * 0.35);

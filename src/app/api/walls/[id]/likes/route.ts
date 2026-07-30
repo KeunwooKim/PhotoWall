@@ -58,6 +58,13 @@ export async function POST(
   const blocked = await restrictedResponse(routeClient.supabase, user.id);
   if (blocked) return routeClient.applyCookies(blocked);
 
+  const { checkRateLimitAsync } = await import("@/lib/rate-limit");
+  if (!(await checkRateLimitAsync(`likes:${user.id}`, 60, 60 * 1000))) {
+    return routeClient.applyCookies(
+      NextResponse.json({ error: "Too many likes. Slow down." }, { status: 429 }),
+    );
+  }
+
   const likes = await toggleWallLike(routeClient.supabase, id, user.id);
   if (!likes) {
     return NextResponse.json({ error: "Failed to toggle like" }, { status: 500 });

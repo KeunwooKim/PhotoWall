@@ -70,5 +70,14 @@ export async function POST(request: NextRequest) {
     return applyCookies(NextResponse.json({ error: "Failed to submit inquiry" }, { status: 500 }));
   }
 
+  if (category === "abuse") {
+    const { notifyAbuseReport } = await import("@/lib/discord/notify");
+    notifyAbuseReport({
+      subject,
+      wallId: body.relatedWallId,
+      reporterId: user.id,
+    });
+  }
+
   return applyCookies(NextResponse.json({ id: data.id }, { status: 201 }));
 }

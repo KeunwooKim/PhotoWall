@@ -99,6 +99,37 @@ export default function AdminUsersPage() {
     }
   };
 
+  const wipeUser = async (user: AdminUser) => {
+    if (
+      !confirm(
+        `${user.displayName}의 벽·사진·소셜 데이터를 삭제하고 계정을 제한할까요? (로그인은 유지)`,
+      )
+    ) {
+      return;
+    }
+    setActingId(user.id);
+    try {
+      const res = await authFetch(`/api/admin/users/${user.id}/wipe`, {
+        method: "POST",
+        headers: { "X-Confirm-Wipe": "WIPE" },
+      });
+      if (!res.ok) throw new Error();
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === user.id
+            ? { ...u, restrictedAt: new Date().toISOString(), wallCount: 0 }
+            : u,
+        ),
+      );
+      setMessage("콘텐츠를 삭제하고 제한했어요");
+      setTimeout(() => setMessage(null), 2000);
+    } catch {
+      setMessage("삭제에 실패했어요");
+    } finally {
+      setActingId(null);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <section className="space-y-1">
@@ -166,6 +197,14 @@ export default function AdminUsersPage() {
                       : user.restrictedAt
                         ? "제한 해제"
                         : "제한"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actingId === user.id}
+                    onClick={() => void wipeUser(user)}
+                    className="rounded-full bg-red-600/10 px-3 py-1.5 text-xs font-medium text-red-800 disabled:opacity-50"
+                  >
+                    콘텐츠 삭제
                   </button>
                   <span className="font-mono text-[11px] text-muted">{user.id.slice(0, 8)}…</span>
                 </div>

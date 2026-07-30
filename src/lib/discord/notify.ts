@@ -36,3 +36,29 @@ export function notifyNewUser(input: {
   const shortId = input.userId.slice(0, 8);
   void postDiscordMessage(`🆕 신규 가입 · **${name}** (\`${shortId}…\`)`);
 }
+
+export function notifyAbuseReport(input: {
+  subject: string;
+  wallId?: string | null;
+  reporterId: string;
+}): void {
+  const subject = escapeMd(input.subject);
+  const wall = input.wallId ? ` · wall \`${input.wallId.slice(0, 8)}…\`` : "";
+  const who = input.reporterId.slice(0, 8);
+  void postDiscordMessage(`🚨 신고 · **${subject}**${wall} (by \`${who}…\`)`);
+}
+
+export function notifyAccountRestricted(input: {
+  userId: string;
+  restricted: boolean;
+  reason?: string | null;
+}): void {
+  const id = input.userId.slice(0, 8);
+  if (input.restricted) {
+    const reason = input.reason ? ` · ${escapeMd(input.reason)}` : "";
+    void postDiscordMessage(`⛔ 계정 제한 · \`${id}…\`${reason}`);
+  } else {
+    void postDiscordMessage(`✅ 계정 제한 해제 · \`${id}…\``);
+  }
+}
+

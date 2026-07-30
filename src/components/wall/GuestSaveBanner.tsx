@@ -57,7 +57,7 @@ export default function GuestSaveBanner({ hasObjects }: GuestSaveBannerProps) {
       <p className="min-w-0 flex-1 text-xs leading-snug text-background/80">
         {quotaHit
           ? "이 기기 저장 공간이 가득 찼어요. 로그인하면 클라우드에 안전하게 보관돼요"
-          : "지금 로그인하면 이 벽이 자동으로 저장돼요. 브라우저 데이터를 지우면 사라질 수 있어요"}
+          : "로그인하면 클라우드에 저장돼요. 브라우저 데이터를 지우면 이 기기 작업도 사라질 수 있어요"}
       </p>
       <button
         type="button"

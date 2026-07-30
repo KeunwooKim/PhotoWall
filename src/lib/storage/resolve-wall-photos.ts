@@ -1,9 +1,12 @@
 import { authFetch } from "@/lib/auth/api-fetch";
 import {
   cachePhotoDisplayUrl,
+  collectGuestPhotoRefsFromScene,
   collectWallPhotoRefsFromScene,
   getCachedPhotoDisplayUrl,
 } from "@/lib/storage/photo-display-cache";
+import { isGuestPhotoRef } from "@/lib/storage/guest-photo-refs";
+import { getGuestPhotoBlob } from "@/lib/storage/guest-photos";
 import {
   applySignedUrlsToFabricJson,
   collectWallPhotoPaths,
@@ -84,7 +87,24 @@ function queueSignedUrl(wallId: string, path: string): Promise<string | undefine
   });
 }
 
+async function resolveGuestPhotoSrc(src: string): Promise<string> {
+  const cached = getCachedPhotoDisplayUrl(src);
+  if (cached) return cached;
+
+  const blob = await getGuestPhotoBlob(src);
+  if (!blob) return src;
+
+  const url = URL.createObjectURL(blob);
+  cachePhotoDisplayUrl(src, url);
+  void loadHtmlImage(url);
+  return url;
+}
+
 export async function resolveWallPhotoSrc(src: string, wallId: string): Promise<string> {
+  if (isGuestPhotoRef(src)) {
+    return resolveGuestPhotoSrc(src);
+  }
+
   if (!isWallPhotoRef(src)) return src;
 
   const cached = getCachedPhotoDisplayUrl(src);
@@ -107,21 +127,28 @@ export async function prefetchWallScenePhotoUrls(
   doc: WallSceneDocument,
   wallId: string,
 ): Promise<void> {
+  const guestRefs = collectGuestPhotoRefsFromScene(doc.objects);
+  const guestUrls: string[] = [];
+  for (const ref of guestRefs) {
+    const url = await resolveGuestPhotoSrc(ref);
+    if (url !== ref) guestUrls.push(url);
+  }
+
   const refs = collectWallPhotoRefsFromScene(doc.objects);
   const paths = refs
     .map((ref) => wallPhotoRefToPath(ref))
     .filter((path): path is string => !!path);
 
-  if (paths.length === 0) return;
+  const displayUrls = [...guestUrls];
 
-  const signedUrls = await fetchSignedUrls(wallId, paths);
-
-  const displayUrls: string[] = [];
-  for (const ref of refs) {
-    const path = wallPhotoRefToPath(ref);
-    if (path && signedUrls[path]) {
-      cachePhotoDisplayUrl(ref, signedUrls[path]);
-      displayUrls.push(signedUrls[path]);
+  if (paths.length > 0) {
+    const signedUrls = await fetchSignedUrls(wallId, paths);
+    for (const ref of refs) {
+      const path = wallPhotoRefToPath(ref);
+      if (path && signedUrls[path]) {
+        cachePhotoDisplayUrl(ref, signedUrls[path]);
+        displayUrls.push(signedUrls[path]);
+      }
     }
   }
 
