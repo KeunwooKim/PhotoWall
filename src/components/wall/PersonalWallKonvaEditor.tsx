@@ -52,7 +52,9 @@ import WallQuotaHint from "@/components/wall/WallQuotaHint";
 import ZoomResetButton from "@/components/wall/ZoomResetButton";
 import WallObjectInspector from "@/components/wall/WallObjectInspector";
 import PhotoCropToolbar from "@/components/wall/PhotoCropToolbar";
+import PhotoColorToolbar from "@/components/wall/PhotoColorToolbar";
 import { usePhotoCrop } from "@/hooks/usePhotoCrop";
+import { usePhotoColorEdit } from "@/hooks/usePhotoColorEdit";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import GuestSaveBanner from "@/components/wall/GuestSaveBanner";
@@ -152,13 +154,48 @@ export default function PersonalWallKonvaEditor() {
     cropPhotoId,
     cropAspectPreset,
     setCropAspectPreset,
-    handleStartCrop,
+    handleStartCrop: startCrop,
     handleCropApply,
     handleCropCancel,
     handleCropReset,
     canResetCrop,
     konvaCropProps,
   } = usePhotoCrop(sceneObjects);
+
+  const {
+    colorEditPhotoId,
+    colorEditPhoto,
+    params: colorParams,
+    setParams: setColorParams,
+    busy: colorBusy,
+    errorMessage: colorError,
+    handleStartColorEdit: startColorEdit,
+    handleColorCancel,
+    handleColorApply,
+  } = usePhotoColorEdit(sceneObjects);
+
+  const handleStartCrop = useCallback(
+    (id: string) => {
+      handleColorCancel();
+      startCrop(id);
+    },
+    [handleColorCancel, startCrop],
+  );
+
+  const handleStartColorEdit = useCallback(
+    (id: string) => {
+      handleCropCancel();
+      startColorEdit(id);
+    },
+    [handleCropCancel, startColorEdit],
+  );
+
+  useEffect(() => {
+    if (!colorEditPhotoId) return;
+    if (selectedIds.length !== 1 || selectedIds[0] !== colorEditPhotoId) {
+      handleColorCancel();
+    }
+  }, [colorEditPhotoId, selectedIds, handleColorCancel]);
 
   useEffect(() => {
     if (!editingTextId) return;
@@ -1005,6 +1042,7 @@ export default function PersonalWallKonvaEditor() {
         onEditText={setEditingTextId}
         onStartPhotoCrop={handleStartCrop}
         onContextMenuRequest={handleContextMenuRequest}
+        interactionLockId={colorEditPhotoId}
         {...konvaCropProps}
       />
 
@@ -1059,7 +1097,11 @@ export default function PersonalWallKonvaEditor() {
         <TextStyleBar object={editingTextObject} onClose={() => setEditingTextId(null)} />
       )}
 
-      {inspectorObject && mode === "select" && !editingTextObject && !cropPhotoId && (
+      {inspectorObject &&
+        mode === "select" &&
+        !editingTextObject &&
+        !cropPhotoId &&
+        !colorEditPhotoId && (
         <div
           className="absolute left-3 z-30 sm:left-4"
           style={{ bottom: "max(6rem, calc(env(safe-area-inset-bottom) + 5rem))" }}
@@ -1067,6 +1109,9 @@ export default function PersonalWallKonvaEditor() {
           <WallObjectInspector
             object={inspectorObject}
             onStartCrop={inspectorObject.type === "photo" ? handleStartCrop : undefined}
+            onStartColorEdit={
+              inspectorObject.type === "photo" ? handleStartColorEdit : undefined
+            }
           />
         </div>
       )}
@@ -1080,6 +1125,28 @@ export default function PersonalWallKonvaEditor() {
           onReset={handleCropReset}
           canReset={canResetCrop}
           showRecoveryHint={canResetCrop}
+        />
+      )}
+
+      {colorEditPhoto && (
+        <PhotoColorToolbar
+          photoSrc={colorEditPhoto.src}
+          resolvePhotoSrc={resolvePhotoSrc}
+          params={colorParams}
+          onParamsChange={setColorParams}
+          busy={colorBusy}
+          errorMessage={colorError}
+          onCancel={handleColorCancel}
+          onApply={() => {
+            void handleColorApply({
+              wallId,
+              userId: user?.id,
+              plan: wallPlan,
+              resolvePhotoSrc,
+            }).then((ok) => {
+              if (ok) showToast("색 보정을 적용했어요");
+            });
+          }}
         />
       )}
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { autoLevelCanvas } from "@/lib/photo-scan/auto-level";
 import { detectDocumentCorners, loadCornerDetector } from "@/lib/photo-scan/detect-corners";
 import { enhanceScannedCanvas } from "@/lib/photo-scan/filters";
 import {
@@ -10,6 +11,7 @@ import {
   defaultPhotoQuad,
   warpPerspective,
 } from "@/lib/photo-scan/perspective";
+import { resampleCanvas } from "@/lib/photo-scan/resample";
 import { savePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import type { Point2, QuadPoints, ScanEnhanceMode } from "@/lib/photo-scan/types";
 
@@ -29,6 +31,8 @@ export default function PhotoScanClient() {
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [enhanceMode, setEnhanceMode] = useState<ScanEnhanceMode>("photo");
+  const [autoLevel, setAutoLevel] = useState(true);
+  const [upscale, setUpscale] = useState(true);
   const [detectMs, setDetectMs] = useState<number | null>(null);
   const [modelReady, setModelReady] = useState(false);
 
@@ -117,6 +121,21 @@ export default function PhotoScanClient() {
     [loadFileForReview],
   );
 
+  const finishScanCanvas = useCallback(
+    (warped: HTMLCanvasElement) => {
+      enhanceScannedCanvas(warped, enhanceMode);
+      let out = warped;
+      if (autoLevel) {
+        out = autoLevelCanvas(out).canvas;
+      }
+      if (upscale) {
+        out = resampleCanvas(out, { scale: 1.5, maxSide: 2400 });
+      }
+      return out;
+    },
+    [enhanceMode, autoLevel, upscale],
+  );
+
   const applyScan = useCallback(async () => {
     if (!sourceUrl || !reviewQuad) return;
     setPhase("processing");
@@ -130,12 +149,14 @@ export default function PhotoScanClient() {
         img.src = sourceUrl;
       });
 
-      let warped = warpPerspective(img, reviewQuad, 1400);
-      enhanceScannedCanvas(warped, enhanceMode);
+      let warped = finishScanCanvas(warpPerspective(img, reviewQuad, 1400));
       let file = await canvasToJpegFile(warped, 0.82);
       if (file.size > 6 * 1024 * 1024) {
-        warped = warpPerspective(img, reviewQuad, 1000);
-        enhanceScannedCanvas(warped, enhanceMode);
+        let retry = warpPerspective(img, reviewQuad, 1000);
+        enhanceScannedCanvas(retry, enhanceMode);
+        if (autoLevel) retry = autoLevelCanvas(retry).canvas;
+        if (upscale) retry = resampleCanvas(retry, { scale: 1.25, maxSide: 1800 });
+        warped = retry;
         file = await canvasToJpegFile(warped, 0.72);
       }
 
@@ -145,7 +166,7 @@ export default function PhotoScanClient() {
       setPhase("review");
       setErrorMessage("평탄화에 실패했어요. 모서리를 다시 맞춰 보세요");
     }
-  }, [sourceUrl, reviewQuad, enhanceMode, router]);
+  }, [sourceUrl, reviewQuad, finishScanCanvas, enhanceMode, autoLevel, upscale, router]);
 
   const retake = useCallback(() => {
     revokeSource();
@@ -328,7 +349,7 @@ export default function PhotoScanClient() {
             <p className="px-4 text-center text-sm text-red-300">{errorMessage}</p>
           )}
 
-          <div className="flex justify-center gap-2 px-4 pt-2">
+          <div className="flex flex-wrap justify-center gap-2 px-4 pt-2">
             <button
               type="button"
               onClick={() => setEnhanceMode("photo")}
@@ -346,6 +367,24 @@ export default function PhotoScanClient() {
               }`}
             >
               스캐너 느낌
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutoLevel((v) => !v)}
+              className={`rounded-full px-3 py-1.5 text-xs ${
+                autoLevel ? "bg-white text-neutral-900" : "bg-white/15"
+              }`}
+            >
+              자동 수평
+            </button>
+            <button
+              type="button"
+              onClick={() => setUpscale((v) => !v)}
+              className={`rounded-full px-3 py-1.5 text-xs ${
+                upscale ? "bg-white text-neutral-900" : "bg-white/15"
+              }`}
+            >
+              화질 업스케일
             </button>
           </div>
 
@@ -367,7 +406,7 @@ export default function PhotoScanClient() {
               disabled={phase === "processing"}
               className="flex-1 rounded-2xl bg-white py-3.5 text-sm font-medium text-neutral-900 disabled:opacity-40"
             >
-              {phase === "processing" ? "평탄화·보정 중…" : "평탄화 후 붙이기"}
+              {phase === "processing" ? "보정·업스케일 중…" : "평탄화 후 붙이기"}
             </button>
           </div>
         </div>
