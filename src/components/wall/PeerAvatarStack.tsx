@@ -44,7 +44,7 @@ function AvatarCircle({
   return (
     <span
       title={title}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-white text-[9px] font-semibold text-white shadow-sm"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-background text-[9px] font-semibold text-background shadow-sm"
       style={{ backgroundColor: color, zIndex, marginLeft: zIndex === 0 ? 0 : -8 }}
     >
       {initials(name)}
@@ -106,7 +106,7 @@ export default function PeerAvatarStack({
       ))}
       {overflow > 0 && (
         <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-white bg-neutral-200 text-[9px] font-semibold text-neutral-700 shadow-sm"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-background bg-foreground/10 text-[9px] font-semibold text-foreground/90 shadow-sm"
           style={{ marginLeft: -8, zIndex: visible.length }}
         >
           +{overflow}

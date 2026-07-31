@@ -40,7 +40,7 @@ export default function EditorMenuDrawer({
   onSave,
   onOpenAssets,
   onBringOntoWall,
-  homeHref = "/walls",
+  homeHref = "/",
 }: EditorMenuDrawerProps) {
   const [panel, setPanel] = useState<Panel>("menu");
   const [draftTitle, setDraftTitle] = useState(wallTitle ?? "");
@@ -90,7 +90,7 @@ export default function EditorMenuDrawer({
   };
 
   const itemClass =
-    "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-100";
+    "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-foreground transition hover:bg-foreground/5";
 
   return (
     <div className="fixed inset-0 z-[60] flex" role="dialog" aria-modal="true" aria-label="메뉴">
@@ -100,12 +100,12 @@ export default function EditorMenuDrawer({
         aria-label="메뉴 닫기"
         onClick={onClose}
       />
-      <aside className="relative flex h-full w-[min(20rem,88vw)] flex-col bg-white shadow-xl">
+      <aside className="relative flex h-full w-[min(20rem,88vw)] flex-col bg-surface shadow-xl">
         <div
-          className="flex items-center justify-between border-b border-neutral-200 px-4 py-3"
+          className="flex items-center justify-between border-b border-foreground/10 px-4 py-3"
           style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
         >
-          <div className="flex items-center gap-2 text-neutral-800">
+          <div className="flex items-center gap-2 text-foreground">
             <MenuIcon />
             <span className="text-sm font-semibold">
               {panel === "settings" ? "벽 설정" : "메뉴"}
@@ -114,7 +114,7 @@ export default function EditorMenuDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-foreground/5 hover:text-foreground"
             aria-label="닫기"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -153,7 +153,7 @@ export default function EditorMenuDrawer({
                 벽 설정
               </button>
 
-              <div className="my-2 border-t border-neutral-100" />
+              <div className="my-2 border-t border-foreground/8" />
 
               {onShare && (
                 <button
@@ -194,7 +194,7 @@ export default function EditorMenuDrawer({
             <div className="space-y-4">
               <button
                 type="button"
-                className="text-xs font-medium text-neutral-500 transition hover:text-neutral-800"
+                className="text-xs font-medium text-muted transition hover:text-foreground"
                 onClick={() => setPanel("menu")}
               >
                 ← 메뉴로
@@ -202,7 +202,7 @@ export default function EditorMenuDrawer({
 
               {onRenameTitle ? (
                 <div className="space-y-2">
-                  <label className="block text-[11px] font-medium text-neutral-500" htmlFor="wall-title">
+                  <label className="block text-[11px] font-medium text-muted" htmlFor="wall-title">
                     벽 이름
                   </label>
                   <input
@@ -210,21 +210,21 @@ export default function EditorMenuDrawer({
                     value={draftTitle}
                     onChange={(e) => setDraftTitle(e.target.value)}
                     maxLength={40}
-                    className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+                    className="w-full rounded-xl border border-foreground/10 bg-surface px-3 py-2.5 text-sm text-foreground outline-none ring-foreground focus:ring-2"
                     placeholder="벽 이름"
                   />
-                  {titleError && <p className="text-xs text-red-600">{titleError}</p>}
+                  {titleError && <p className="text-xs text-red-600 dark:text-red-400">{titleError}</p>}
                   <button
                     type="button"
                     disabled={isSavingTitle}
                     onClick={() => void saveTitle()}
-                    className="w-full rounded-xl bg-neutral-900 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-40"
+                    className="w-full rounded-xl bg-foreground px-3 py-2.5 text-sm font-medium text-background transition hover:bg-foreground/90 disabled:opacity-40"
                   >
                     {isSavingTitle ? "저장 중…" : "이름 저장"}
                   </button>
                 </div>
               ) : (
-                <p className="rounded-xl bg-neutral-50 px-3 py-3 text-sm text-neutral-600">
+                <p className="rounded-xl bg-foreground/[0.04] px-3 py-3 text-sm text-muted">
                   {wallTitle?.trim() || "내 벽"}
                 </p>
               )}

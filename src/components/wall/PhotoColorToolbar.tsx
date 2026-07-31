@@ -35,7 +35,7 @@ function SliderRow({
 }) {
   return (
     <label className="flex w-full items-center gap-2">
-      <span className="w-12 shrink-0 text-[10px] font-medium text-neutral-500">{label}</span>
+      <span className="w-12 shrink-0 text-[10px] font-medium text-muted">{label}</span>
       <input
         type="range"
         min={-100}
@@ -46,7 +46,7 @@ function SliderRow({
         onChange={(e) => onChange(Number(e.target.value))}
         className="h-1.5 flex-1 accent-neutral-900 disabled:opacity-40"
       />
-      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-neutral-500">
+      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-muted">
         {value}
       </span>
     </label>
@@ -127,19 +127,19 @@ export default function PhotoColorToolbar({
       style={{ bottom: "max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))" }}
     >
       <div
-        className="pointer-events-auto flex w-full max-w-md flex-col gap-2 rounded-2xl bg-white p-3 text-neutral-800 shadow-lg ring-1 ring-black/10 backdrop-blur-sm"
+        className="pointer-events-auto flex w-full max-w-md flex-col gap-2 rounded-2xl bg-surface p-3 text-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-sm"
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <p className="text-center text-[11px] font-medium text-neutral-500">색 보정</p>
+        <p className="text-center text-[11px] font-medium text-muted">색 보정</p>
 
-        <div className="relative mx-auto flex max-h-36 w-full items-center justify-center overflow-hidden rounded-xl bg-neutral-100">
+        <div className="relative mx-auto flex max-h-36 w-full items-center justify-center overflow-hidden rounded-xl bg-foreground/[0.06]">
           <canvas
             ref={previewCanvasRef}
             className="max-h-36 max-w-full object-contain"
             aria-label="색 보정 미리보기"
           />
           {!previewReady && (
-            <p className="absolute text-[11px] text-neutral-500">미리보기 준비 중…</p>
+            <p className="absolute text-[11px] text-muted">미리보기 준비 중…</p>
           )}
         </div>
 
@@ -155,8 +155,8 @@ export default function PhotoColorToolbar({
               }}
               className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition disabled:opacity-40 ${
                 activePreset === preset.id
-                  ? "bg-neutral-900 text-white"
-                  : "bg-neutral-900/8 text-neutral-800 hover:bg-neutral-900/12"
+                  ? "bg-foreground text-background"
+                  : "bg-foreground/10 text-foreground hover:bg-foreground/15"
               }`}
             >
               {preset.label}
@@ -192,7 +192,7 @@ export default function PhotoColorToolbar({
         </div>
 
         {errorMessage && (
-          <p className="text-center text-[11px] text-red-600">{errorMessage}</p>
+          <p className="text-center text-[11px] text-red-600 dark:text-red-400">{errorMessage}</p>
         )}
 
         <div className="flex w-full flex-wrap justify-center gap-2 pt-1">
@@ -203,7 +203,7 @@ export default function PhotoColorToolbar({
               setActivePreset("original");
               onParamsChange({ ...DEFAULT_COLOR_ADJUST });
             }}
-            className="rounded-xl bg-neutral-900/8 px-4 py-2 text-xs font-medium text-neutral-800 transition hover:bg-neutral-900/12 disabled:opacity-40"
+            className="rounded-xl bg-foreground/10 px-4 py-2 text-xs font-medium text-foreground transition hover:bg-foreground/15 disabled:opacity-40"
           >
             초기화
           </button>
@@ -211,7 +211,7 @@ export default function PhotoColorToolbar({
             type="button"
             disabled={busy}
             onClick={onCancel}
-            className="rounded-xl bg-neutral-900/8 px-4 py-2 text-xs font-medium text-neutral-800 transition hover:bg-neutral-900/12 disabled:opacity-40"
+            className="rounded-xl bg-foreground/10 px-4 py-2 text-xs font-medium text-foreground transition hover:bg-foreground/15 disabled:opacity-40"
           >
             취소
           </button>
@@ -219,7 +219,7 @@ export default function PhotoColorToolbar({
             type="button"
             disabled={busy}
             onClick={onApply}
-            className="rounded-xl bg-neutral-900 px-4 py-2 text-xs font-medium text-white transition active:scale-[0.98] disabled:opacity-40"
+            className="rounded-xl bg-foreground px-4 py-2 text-xs font-medium text-background transition active:scale-[0.98] disabled:opacity-40"
           >
             {busy ? "적용 중…" : "적용"}
           </button>

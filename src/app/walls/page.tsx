@@ -3,7 +3,7 @@ import WallsHub from "@/components/social/WallsHub";
 
 export default function WallsPage() {
   return (
-    <AppShell>
+    <AppShell tone="hub">
       <WallsHub />
     </AppShell>
   );

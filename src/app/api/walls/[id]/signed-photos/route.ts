@@ -21,8 +21,13 @@ export async function POST(
   const { supabase, applyCookies } = routeClient;
   const user = await getRouteUser(supabase, request);
 
-  const body = (await request.json()) as { paths?: string[] };
-  const paths = Array.isArray(body.paths) ? body.paths.slice(0, MAX_PATHS) : [];
+  let paths: string[] = [];
+  try {
+    const body = (await request.json()) as { paths?: string[] };
+    paths = Array.isArray(body?.paths) ? body.paths.slice(0, MAX_PATHS) : [];
+  } catch {
+    // Empty or non-JSON body — treat as no paths
+  }
 
   if (paths.length === 0) {
     return applyCookies(NextResponse.json({ signedUrls: {} }));

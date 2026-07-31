@@ -27,8 +27,8 @@ export default function WallQuotaHint({ usage, plan }: WallQuotaHintProps) {
     <div
       className={`pointer-events-none max-w-[min(18rem,70vw)] rounded-full px-3 py-1.5 text-[11px] font-medium shadow-sm ring-1 ${
         critical
-          ? "bg-rose-50 text-rose-800 ring-rose-200/80"
-          : "bg-amber-50 text-amber-900 ring-amber-200/80"
+          ? "bg-foreground text-background ring-foreground"
+          : "bg-surface text-foreground ring-foreground/15"
       }`}
       role="status"
     >

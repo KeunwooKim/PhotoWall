@@ -40,15 +40,15 @@ export default function EditorAssetsPanel({
 
   const body = (
     <>
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5">
+      <div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2.5">
         <div>
-          <p className="text-[11px] font-semibold tracking-wide text-neutral-500">에셋</p>
-          <p className="text-[10px] text-neutral-400">사진 · 스캔 · 벽지 · 스티커</p>
+          <p className="text-[11px] font-semibold tracking-wide text-muted">에셋</p>
+          <p className="text-[10px] text-muted">사진 · 스캔 · 벽지 · 스티커</p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-800"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-foreground/5 hover:text-foreground"
           aria-label="에셋 닫기"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -64,7 +64,7 @@ export default function EditorAssetsPanel({
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium text-neutral-500">사진</h3>
+          <h3 className="text-[11px] font-medium text-muted">사진</h3>
           <input
             ref={fileInputRef}
             type="file"
@@ -80,28 +80,28 @@ export default function EditorAssetsPanel({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full rounded-xl bg-neutral-900 px-3 py-2.5 text-xs font-medium text-white transition active:scale-[0.98]"
+            className="w-full rounded-xl bg-foreground px-3 py-2.5 text-xs font-medium text-background transition active:scale-[0.98]"
           >
             사진 올리기
           </button>
           <Link
             href="/import"
             onClick={onClose}
-            className="block w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-xs font-medium text-neutral-800 transition hover:bg-neutral-100"
+            className="block w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2.5 text-center text-xs font-medium text-foreground transition hover:bg-foreground/5"
           >
             QR로 네컷 가져오기
           </Link>
           <Link
             href="/capture"
             onClick={onClose}
-            className="block w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-center text-xs font-medium text-neutral-800 transition hover:bg-neutral-100"
+            className="block w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2.5 text-center text-xs font-medium text-foreground transition hover:bg-foreground/5"
           >
             AI 스캔
           </Link>
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium text-neutral-500">벽지</h3>
+          <h3 className="text-[11px] font-medium text-muted">벽지</h3>
           <div className="grid max-h-44 grid-cols-1 gap-1.5 overflow-y-auto pr-0.5">
             {WALL_THEMES.map((theme) => (
               <button
@@ -110,12 +110,12 @@ export default function EditorAssetsPanel({
                 onClick={() => onThemeChange(theme.id)}
                 className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs transition ${
                   themeId === theme.id
-                    ? "border-neutral-900 bg-neutral-900/5 font-medium text-neutral-900"
-                    : "border-neutral-200 text-neutral-700 hover:border-neutral-300"
+                    ? "border-foreground bg-foreground/5 font-medium text-foreground"
+                    : "border-foreground/10 text-foreground/90 hover:border-foreground/20"
                 }`}
               >
                 <span
-                  className="h-5 w-5 shrink-0 rounded-md ring-1 ring-black/10"
+                  className="h-5 w-5 shrink-0 rounded-md ring-1 ring-foreground/10"
                   style={{ background: theme.preview }}
                 />
                 {theme.name}
@@ -125,7 +125,7 @@ export default function EditorAssetsPanel({
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium text-neutral-500">스티커</h3>
+          <h3 className="text-[11px] font-medium text-muted">스티커</h3>
           <StickerPicker onSelect={onAddSticker} />
         </section>
       </div>
@@ -135,7 +135,7 @@ export default function EditorAssetsPanel({
   if (variant === "docked") {
     if (!isOpen) return null;
     return (
-      <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-200 bg-white text-neutral-800">
+      <aside className="flex w-64 shrink-0 flex-col border-r border-foreground/10 bg-surface text-foreground">
         {body}
       </aside>
     );
@@ -154,7 +154,7 @@ export default function EditorAssetsPanel({
         role="dialog"
         aria-modal="true"
         aria-label="에셋"
-        className={`fixed left-0 top-0 z-50 flex h-full w-80 max-w-[85vw] flex-col bg-white text-neutral-800 shadow-2xl transition-transform duration-300 ease-out md:hidden ${
+        className={`fixed left-0 top-0 z-50 flex h-full w-80 max-w-[85vw] flex-col bg-surface text-foreground shadow-2xl transition-transform duration-300 ease-out md:hidden ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{

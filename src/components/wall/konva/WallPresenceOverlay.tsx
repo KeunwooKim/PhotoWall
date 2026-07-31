@@ -55,7 +55,7 @@ export default function WallPresenceOverlay({
               style={{ backgroundColor: peer.color }}
             />
             <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-medium text-white shadow-sm"
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium text-background shadow-sm"
               style={{ backgroundColor: peer.color }}
             >
               {peer.displayName}

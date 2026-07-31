@@ -958,7 +958,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }
 
   return (
-    <div className={`flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-neutral-100 ${wallTextFontVariables}`}>
+    <div className={`flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-background ${wallTextFontVariables}`}>
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-50 px-3"
         style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
@@ -969,28 +969,28 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       </div>
 
       <header
-        className="relative z-30 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-3"
+        className="relative z-30 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-foreground/10 bg-surface px-3"
         style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
       >
         <div className="flex min-w-0 items-center gap-1.5">
           <button
             type="button"
             onClick={() => setIsMenuOpen(true)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-800 transition hover:bg-neutral-100"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-foreground transition hover:bg-foreground/5"
             aria-label="메뉴 열기"
           >
             <MenuIcon />
           </button>
-          <div className="min-w-0 truncate text-xs font-medium text-neutral-700">
+          <div className="min-w-0 truncate text-xs font-medium text-foreground/90">
             {sharedWallTitle ?? "공동 벽"}
             {isConnected ? (
-              <span className="ml-1.5 font-normal text-emerald-600">실시간</span>
+              <span className="ml-1.5 font-normal text-emerald-600 dark:text-emerald-400">실시간</span>
             ) : connectError ? (
-              <span className="ml-1.5 font-normal text-red-600" title={connectError}>
+              <span className="ml-1.5 font-normal text-red-600 dark:text-red-400" title={connectError}>
                 연결 실패
               </span>
             ) : isReady ? (
-              <span className="ml-1.5 font-normal text-neutral-400">연결 중…</span>
+              <span className="ml-1.5 font-normal text-muted">연결 중…</span>
             ) : null}
           </div>
         </div>
@@ -1004,7 +1004,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           <ZoomResetButton />
           <WallQuotaHint usage={sceneUsage} plan={wallPlan} />
           {autoSaved && !saveMessage && (
-            <div className="pointer-events-none hidden rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-500 sm:block">
+            <div className="pointer-events-none hidden rounded-full bg-foreground/[0.06] px-3 py-1 text-xs text-muted sm:block">
               자동 저장됨
             </div>
           )}
@@ -1012,7 +1012,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             type="button"
             onClick={() => void handleShare()}
             disabled={isSharing}
-            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:opacity-40 sm:inline"
+            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 disabled:opacity-40 sm:inline"
           >
             {isSharing ? "공유 중…" : "공유"}
           </button>
@@ -1020,7 +1020,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             type="button"
             onClick={() => void handleExport()}
             disabled={isExporting}
-            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:opacity-40 sm:inline"
+            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 disabled:opacity-40 sm:inline"
           >
             {isExporting ? "저장 중…" : "이미지"}
           </button>
@@ -1067,7 +1067,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           />
         </div>
 
-        <div className="relative min-h-0 min-w-0 flex-1 bg-neutral-200">
+        <div className="relative min-h-0 min-w-0 flex-1 bg-surface">
           <KonvaWallStageClient
             themeId={themeId}
             initialJson={loadedCanvasJson}
@@ -1206,7 +1206,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
           {saveMessage && (
             <div
-              className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm text-white shadow-lg"
+              className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full bg-foreground px-5 py-2.5 text-sm text-background shadow-lg"
               style={{ bottom: "max(5.5rem, calc(env(safe-area-inset-bottom) + 4.5rem))" }}
             >
               {saveMessage}

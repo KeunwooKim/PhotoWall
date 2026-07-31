@@ -1,8 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Friend, Profile } from "@/types/profile";
 import { parseUserPlan } from "@/lib/auth/user-plan";
-import { fetchPersonalWallIdForOwner } from "@/lib/supabase/walls";
+import {
+  fetchPersonalWallIdForOwner,
+  fetchPersonalWallMetaForOwner,
+} from "@/lib/supabase/walls";
 import { notifyNewUser } from "@/lib/discord/notify";
+import {
+  parseColorPalette,
+  parseThemeMode,
+  type ColorPaletteId,
+  type ThemeMode,
+} from "@/lib/settings-storage";
 
 function generateFriendCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -20,9 +29,11 @@ function mapProfile(row: {
   friend_code: string;
   allow_wall_visits?: boolean;
   plan?: string | null;
+  theme_mode?: string | null;
+  color_palette?: string | null;
   legal_consented_at?: string | null;
   legal_version?: string | null;
-}): Omit<Profile, "wallId"> {
+}): Omit<Profile, "wallId" | "wallTitle"> {
   return {
     id: row.id,
     displayName: row.display_name ?? "친구",
@@ -30,14 +41,34 @@ function mapProfile(row: {
     friendCode: row.friend_code,
     allowWallVisits: row.allow_wall_visits ?? false,
     plan: parseUserPlan(row.plan),
+    themeMode: parseThemeMode(row.theme_mode),
+    colorPalette: parseColorPalette(row.color_palette),
     legalConsentedAt: row.legal_consented_at ?? null,
     legalVersion: row.legal_version ?? null,
   };
 }
 
+async function withWallMeta(
+  supabase: SupabaseClient,
+  base: Omit<Profile, "wallId" | "wallTitle">,
+): Promise<Profile> {
+  const meta = await fetchPersonalWallMetaForOwner(supabase, base.id);
+  return {
+    ...base,
+    wallId: meta?.id ?? null,
+    wallTitle: meta?.title ?? null,
+  };
+}
+
 const PROFILE_SELECT =
+  "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, theme_mode, color_palette, legal_consented_at, legal_version";
+
+const PROFILE_SELECT_LEGACY =
   "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, legal_consented_at, legal_version";
 
+function isMissingColumnError(message: string | undefined, column: string): boolean {
+  return !!message && message.includes(column);
+}
 
 export async function ensureProfile(
   supabase: SupabaseClient,
@@ -49,22 +80,25 @@ export async function ensureProfile(
     .eq("id", user.id)
     .maybeSingle();
 
-  // Column may be missing before profiles-plan-migration.sql
-  if (existingError?.message?.includes("plan")) {
+  if (
+    existingError &&
+    (isMissingColumnError(existingError.message, "theme_mode") ||
+      isMissingColumnError(existingError.message, "color_palette") ||
+      isMissingColumnError(existingError.message, "plan"))
+  ) {
+    const legacySelect = isMissingColumnError(existingError.message, "plan")
+      ? "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version"
+      : PROFILE_SELECT_LEGACY;
     const legacy = await supabase
       .from("profiles")
-      .select(
-        "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version",
-      )
+      .select(legacySelect)
       .eq("id", user.id)
       .maybeSingle();
     if (legacy.data) {
-      const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
-      return { ...mapProfile(legacy.data), wallId };
+      return withWallMeta(supabase, mapProfile(legacy.data));
     }
   } else if (existing) {
-    const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
-    return { ...mapProfile(existing), wallId };
+    return withWallMeta(supabase, mapProfile(existing));
   }
 
   const meta = user.user_metadata ?? {};
@@ -91,11 +125,14 @@ export async function ensureProfile(
         displayName: data.display_name ?? displayName,
         userId: data.id,
       });
-      const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
-      return { ...mapProfile(data), wallId };
+      return withWallMeta(supabase, mapProfile(data));
     }
 
-    if (error?.message?.includes("plan")) {
+    if (
+      error?.message?.includes("plan") ||
+      error?.message?.includes("theme_mode") ||
+      error?.message?.includes("color_palette")
+    ) {
       const legacyInsert = await supabase
         .from("profiles")
         .insert({
@@ -113,8 +150,7 @@ export async function ensureProfile(
           displayName: legacyInsert.data.display_name ?? displayName,
           userId: legacyInsert.data.id,
         });
-        const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
-        return { ...mapProfile(legacyInsert.data), wallId };
+        return withWallMeta(supabase, mapProfile(legacyInsert.data));
       }
     }
   }
@@ -154,8 +190,7 @@ export async function saveLegalConsent(
 
   if (error || !data) return null;
 
-  const wallId = await fetchPersonalWallIdForOwner(supabase, userId);
-  return { ...mapProfile(data), wallId };
+  return withWallMeta(supabase, mapProfile(data));
 }
 
 export async function getProfileByFriendCode(
@@ -170,8 +205,7 @@ export async function getProfileByFriendCode(
 
   if (error || !data) return null;
 
-  const wallId = await fetchPersonalWallIdForOwner(supabase, data.id);
-  return { ...mapProfile(data), wallId };
+  return withWallMeta(supabase, mapProfile(data));
 }
 
 export async function addFriendship(
@@ -259,5 +293,37 @@ export async function updateAllowWallVisits(
     .update({ allow_wall_visits: allowWallVisits, updated_at: new Date().toISOString() })
     .eq("id", userId);
 
+  return !error;
+}
+
+export async function updateDisplayName(
+  supabase: SupabaseClient,
+  userId: string,
+  displayName: string,
+): Promise<boolean> {
+  const trimmed = displayName.trim().slice(0, 40);
+  if (!trimmed) return false;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ display_name: trimmed, updated_at: new Date().toISOString() })
+    .eq("id", userId);
+
+  return !error;
+}
+
+export async function updateThemePreferences(
+  supabase: SupabaseClient,
+  userId: string,
+  prefs: { themeMode?: ThemeMode; colorPalette?: ColorPaletteId },
+): Promise<boolean> {
+  const patch: Record<string, string> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (prefs.themeMode) patch.theme_mode = prefs.themeMode;
+  if (prefs.colorPalette) patch.color_palette = prefs.colorPalette;
+  if (!prefs.themeMode && !prefs.colorPalette) return false;
+
+  const { error } = await supabase.from("profiles").update(patch).eq("id", userId);
   return !error;
 }
