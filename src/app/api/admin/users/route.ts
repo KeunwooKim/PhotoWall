@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute } from "@/lib/admin/require-admin-route";
+import { parseUserPlan } from "@/lib/auth/user-plan";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminRoute(request);
@@ -26,7 +27,9 @@ export async function GET(request: NextRequest) {
 
   let query = admin
     .from("profiles")
-    .select("id, display_name, friend_code, created_at, restricted_at, legal_consented_at, legal_version")
+    .select(
+      "id, display_name, friend_code, created_at, restricted_at, legal_consented_at, legal_version, plan",
+    )
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -38,11 +41,15 @@ export async function GET(request: NextRequest) {
 
   if (profilesError) {
     // Columns may be missing before migrations
-    const legacy = await admin
+    let legacyQuery = admin
       .from("profiles")
       .select("id, display_name, friend_code, created_at")
       .order("created_at", { ascending: false })
       .limit(50);
+    if (q) {
+      legacyQuery = legacyQuery.or(`display_name.ilike.%${q}%,friend_code.ilike.%${q}%`);
+    }
+    const legacy = await legacyQuery;
     if (legacy.error) {
       return applyCookies(
         NextResponse.json(
@@ -66,6 +73,7 @@ export async function GET(request: NextRequest) {
           restrictedAt: null as string | null,
           legalConsentedAt: null as string | null,
           legalVersion: null as string | null,
+          plan: "free" as const,
         };
       }),
     );
@@ -88,6 +96,7 @@ export async function GET(request: NextRequest) {
         restrictedAt: profile.restricted_at ?? null,
         legalConsentedAt: profile.legal_consented_at ?? null,
         legalVersion: profile.legal_version ?? null,
+        plan: parseUserPlan(profile.plan),
       };
     }),
   );

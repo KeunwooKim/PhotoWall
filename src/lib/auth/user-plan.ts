@@ -1,13 +1,26 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UserPlan } from "@/lib/wall-quotas";
 
+export function parseUserPlan(value: unknown): UserPlan {
+  return value === "premium" ? "premium" : "free";
+}
+
 /**
- * Resolve billing plan for wall quotas.
- * Premium is stubbed until subscriptions ship — always free for now.
+ * Resolve billing plan for wall quotas from `profiles.plan`.
+ * Falls back to free if the column is missing or the row is absent.
  */
 export async function getUserPlan(
-  _userId: string,
-  _supabase?: SupabaseClient,
+  userId: string,
+  supabase?: SupabaseClient,
 ): Promise<UserPlan> {
-  return "free";
+  if (!supabase || !userId) return "free";
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error || !data) return "free";
+  return parseUserPlan((data as { plan?: string | null }).plan);
 }

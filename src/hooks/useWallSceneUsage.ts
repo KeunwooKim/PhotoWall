@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { UserPlan } from "@/lib/wall-quotas";
 import {
   getDocumentSceneUsage,
@@ -9,10 +9,28 @@ import {
 } from "@/lib/wall-quotas";
 import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
+import { authFetch } from "@/lib/auth/api-fetch";
+import type { Profile } from "@/types/profile";
 
-/** Client plan until billing ships — always free / 기본. */
+/** Client plan from profile; defaults to free until loaded. */
 export function useClientWallPlan(): UserPlan {
-  return "free";
+  const [plan, setPlan] = useState<UserPlan>("free");
+
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Profile | null) => {
+        if (cancelled || !data) return;
+        setPlan(data.plan === "premium" ? "premium" : "free");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return plan;
 }
 
 export function useWallSceneUsage(plan: UserPlan): SceneUsage {
