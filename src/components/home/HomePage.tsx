@@ -16,6 +16,7 @@ import type { Friend, Profile } from "@/types/profile";
 import type { SharedWall, WallMemberInvite } from "@/types/shared-wall";
 import type { PublicAnnouncement } from "@/types/announcement";
 import type { PublishedWall } from "@/types/wall";
+import type { WallActivityNotice } from "@/types/wall-activity-notice";
 
 const displayFont = Jua({
   subsets: ["latin"],
@@ -35,6 +36,7 @@ export default function HomePage() {
   const [recentPhotos, setRecentPhotos] = useState<string[]>([]);
   const [invites, setInvites] = useState<WallMemberInvite[]>([]);
   const [announcements, setAnnouncements] = useState<PublicAnnouncement[]>([]);
+  const [wallActivities, setWallActivities] = useState<WallActivityNotice[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
@@ -53,17 +55,20 @@ export default function HomePage() {
       setFriends([]);
       setRecentPhotos([]);
       setInvites([]);
+      setWallActivities([]);
       return;
     }
 
     try {
-      const [mineRes, sharedRes, friendsRes, invitesRes, profileRes] = await Promise.all([
-        authFetch("/api/walls/mine"),
-        authFetch("/api/shared-walls"),
-        authFetch("/api/friends"),
-        authFetch("/api/shared-walls/invitations"),
-        authFetch("/api/profile"),
-      ]);
+      const [mineRes, sharedRes, friendsRes, invitesRes, profileRes, activityRes] =
+        await Promise.all([
+          authFetch("/api/walls/mine"),
+          authFetch("/api/shared-walls"),
+          authFetch("/api/friends"),
+          authFetch("/api/shared-walls/invitations"),
+          authFetch("/api/profile"),
+          authFetch("/api/notifications/wall-activity"),
+        ]);
 
       if (profileRes.ok) {
         const p = (await profileRes.json()) as Profile;
@@ -83,6 +88,13 @@ export default function HomePage() {
       if (invitesRes.ok) {
         const list = (await invitesRes.json()) as WallMemberInvite[];
         setInvites(Array.isArray(list) ? list : []);
+      }
+
+      if (activityRes.ok) {
+        const list = (await activityRes.json()) as WallActivityNotice[];
+        setWallActivities(Array.isArray(list) ? list : []);
+      } else {
+        setWallActivities([]);
       }
 
       if (!mineRes.ok) return;
@@ -150,12 +162,20 @@ export default function HomePage() {
       kind: "invite",
       invite,
     }));
+    const activityNotices: HomeNotice[] = wallActivities.map((activity) => ({
+      kind: "wall_activity",
+      activity,
+    }));
     const annNotices: HomeNotice[] = announcements.map((item) => ({
       kind: "announcement",
       item,
     }));
-    return [...inviteNotices, ...annNotices];
-  }, [invites, announcements]);
+    return [...inviteNotices, ...activityNotices, ...annNotices];
+  }, [invites, wallActivities, announcements]);
+
+  const dismissActivityLocal = useCallback((id: string) => {
+    setWallActivities((prev) => prev.filter((n) => n.id !== id));
+  }, []);
 
   const visitableFriends = friends.filter((f) => f.wallVisitable && f.wallId);
   const hasUnread = notices.length > 0;
@@ -255,6 +275,7 @@ export default function HomePage() {
             notices={notices}
             hasUnread={hasUnread}
             onOpenNotif={() => setNotifOpen(true)}
+            onDismissActivity={dismissActivityLocal}
           />
         </div>
 
@@ -262,6 +283,7 @@ export default function HomePage() {
           open={notifOpen}
           onClose={() => setNotifOpen(false)}
           notices={notices}
+          onDismissActivity={dismissActivityLocal}
         />
       </div>
     </AppShell>

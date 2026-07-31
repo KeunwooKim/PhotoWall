@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { resolveSharedWallEditAccess } from "@/lib/supabase/shared-walls";
 import { saveSharedWallToDb } from "@/lib/supabase/walls";
+import { scheduleWallActivityNotices } from "@/lib/supabase/wall-activity-notices";
 import { resolveWallThemeId } from "@/lib/wall-themes";
 import { getUserPlan } from "@/lib/auth/user-plan";
 import { checkSceneQuota, sceneQuotaMessage } from "@/lib/wall-quotas";
@@ -160,6 +161,9 @@ export async function PATCH(
       NextResponse.json({ error: "Failed to save shared wall" }, { status: 500 }),
     );
   }
+
+  // Coalesce activity notices; visible 3 min after last successful save.
+  await scheduleWallActivityNotices(supabase, id, user.id);
 
   return applyCookies(NextResponse.json(wall.wall));
 }

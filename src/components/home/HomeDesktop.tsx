@@ -8,6 +8,7 @@ import AppDesktopSidebar from "@/components/layout/AppDesktopSidebar";
 import type { HomeNotice } from "@/components/home/HomeNotifications";
 import type { Friend } from "@/types/profile";
 import type { SharedWall } from "@/types/shared-wall";
+import { authFetch } from "@/lib/auth/api-fetch";
 
 const displayFont = Jua({
   subsets: ["latin"],
@@ -30,6 +31,7 @@ export interface HomeDesktopProps {
   notices: HomeNotice[];
   hasUnread: boolean;
   onOpenNotif: () => void;
+  onDismissActivity?: (id: string) => void;
 }
 
 /** Desktop home — 3-column layout matching Mobile Home Screen Design mock. */
@@ -47,6 +49,7 @@ export default function HomeDesktop({
   notices,
   hasUnread,
   onOpenNotif,
+  onDismissActivity,
 }: HomeDesktopProps) {
   const visitableFriends = friends.filter((f) => f.wallVisitable && f.wallId);
 
@@ -220,6 +223,44 @@ export default function HomeDesktop({
                           {inv.wallTitle}에 초대했어요
                         </p>
                         <p className="mt-0.5 text-[10px] text-muted">공동 벽에서 확인</p>
+                      </div>
+                    </Link>
+                  );
+                }
+                if (notice.kind === "wall_activity") {
+                  const act = notice.activity;
+                  return (
+                    <Link
+                      key={`act-${act.id}`}
+                      href={`/shared/${act.wallId}`}
+                      onClick={() => {
+                        onDismissActivity?.(act.id);
+                        void authFetch("/api/notifications/wall-activity", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ ids: [act.id] }),
+                        }).catch(() => {});
+                      }}
+                      className="flex gap-2.5 rounded-[14px] border border-foreground/10 bg-foreground/[0.04] px-3 py-3"
+                    >
+                      {act.actorAvatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={act.actorAvatarUrl}
+                          alt=""
+                          className="h-[34px] w-[34px] shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-foreground/20 text-xs font-bold text-foreground">
+                          {act.actorName.charAt(0)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-[11.5px] leading-snug text-foreground">
+                          <span className="font-semibold">{act.actorName}</span>님이{" "}
+                          {act.wallTitle}을(를) 업데이트했어요
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-muted">공동 벽 열기</p>
                       </div>
                     </Link>
                   );
