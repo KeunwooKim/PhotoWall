@@ -127,8 +127,8 @@ export async function PATCH(request: NextRequest) {
 
   if (hasTheme || hasPalette) {
     const ok = await updateThemePreferences(supabase, user.id, {
-      themeMode: hasTheme ? body.themeMode : undefined,
-      colorPalette: hasPalette ? body.colorPalette : undefined,
+      ...(hasTheme ? { themeMode: body.themeMode } : {}),
+      ...(hasPalette ? { colorPalette: body.colorPalette } : {}),
     });
     if (!ok) {
       return applyCookies(
