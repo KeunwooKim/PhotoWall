@@ -40,7 +40,7 @@ export default function PenStrokeWidthControl({
         className="min-w-0 flex-1 accent-neutral-900"
         aria-label="펜 크기"
       />
-      <label className="flex shrink-0 items-center gap-1 text-[11px] text-neutral-500">
+      <label className="flex shrink-0 items-center gap-1 text-[11px] text-muted">
         <input
           type="number"
           min={range.min}
@@ -48,7 +48,7 @@ export default function PenStrokeWidthControl({
           step={range.step}
           value={value}
           onChange={(e) => applyWidth(Number(e.target.value))}
-          className="w-14 rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-center text-[12px] font-medium tabular-nums text-neutral-900 outline-none focus:border-neutral-400"
+          className="w-14 rounded-lg border border-foreground/10 bg-surface px-1.5 py-1 text-center text-[12px] font-medium tabular-nums text-foreground outline-none focus:border-foreground/30"
           aria-label="펜 크기 숫자"
         />
         <span>px</span>

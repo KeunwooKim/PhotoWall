@@ -200,13 +200,14 @@ export default function WallViewer({
   const showPreviewLoading = usePreview && previewLoading;
 
   return (
-    <div className={`relative h-[100dvh] w-screen overflow-hidden bg-white ${wallTextFontVariables}`}>
+    <div className={`relative h-[100dvh] w-screen overflow-hidden bg-background ${wallTextFontVariables}`}>
+      <div className="relative mx-auto h-full w-full max-w-lg bg-background lg:max-w-5xl lg:shadow-[0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1)]">
       {usePreview && previewUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={previewUrl}
           alt="포토월 미리보기"
-          className="absolute inset-0 h-full w-full object-contain bg-neutral-100"
+          className="absolute inset-0 h-full w-full object-contain bg-surface"
           draggable={false}
         />
       )}
@@ -231,7 +232,7 @@ export default function WallViewer({
       >
         <Link
           href="/wall/edit"
-          className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8 backdrop-blur-sm"
+          className="rounded-full bg-surface/90 px-4 py-2 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm"
         >
           나도 꾸미기
         </Link>
@@ -253,14 +254,14 @@ export default function WallViewer({
             <button
               type="button"
               onClick={() => setMoreOpen((open) => !open)}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-sm font-medium text-neutral-900 shadow-sm ring-1 ring-black/8 backdrop-blur-sm"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-surface/90 text-sm font-medium text-foreground shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm"
               aria-label="더보기"
               aria-expanded={moreOpen}
             >
               ⋯
             </button>
             {moreOpen && (
-              <div className="absolute right-0 top-full z-40 mt-2 w-44 overflow-hidden rounded-2xl bg-white py-1 shadow-lg ring-1 ring-black/10">
+              <div className="absolute right-0 top-full z-40 mt-2 w-44 overflow-hidden rounded-2xl bg-surface py-1 shadow-lg ring-1 ring-foreground/10">
                 <button
                   type="button"
                   onClick={handleExport}
@@ -286,10 +287,11 @@ export default function WallViewer({
       </div>
 
       {(showKonvaLoading || showPreviewLoading) && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-white/80 text-sm text-muted">
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background text-sm text-muted">
           벽 불러오는 중...
         </div>
       )}
+      </div>
     </div>
   );
 }

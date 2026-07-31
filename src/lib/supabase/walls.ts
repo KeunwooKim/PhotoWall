@@ -66,16 +66,50 @@ export async function fetchPersonalWallIdForOwner(
   supabase: SupabaseClient,
   ownerId: string,
 ): Promise<string | null> {
+  const meta = await fetchPersonalWallMetaForOwner(supabase, ownerId);
+  return meta?.id ?? null;
+}
+
+/** 개인 벽 id + title */
+export async function fetchPersonalWallMetaForOwner(
+  supabase: SupabaseClient,
+  ownerId: string,
+): Promise<{ id: string; title: string | null } | null> {
   const { data } = await supabase
     .from("walls")
-    .select("id")
+    .select("id, title")
     .eq("owner_id", ownerId)
     .eq("is_shared", false)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  return data?.id ?? null;
+  if (!data) return null;
+  return { id: data.id, title: data.title ?? null };
+}
+
+export async function updatePersonalWallTitle(
+  supabase: SupabaseClient,
+  ownerId: string,
+  title: string,
+): Promise<{ id: string; title: string } | null> {
+  const trimmed = title.trim().slice(0, 40);
+  if (!trimmed) return null;
+
+  const meta = await fetchPersonalWallMetaForOwner(supabase, ownerId);
+  if (!meta) return null;
+
+  const { data, error } = await supabase
+    .from("walls")
+    .update({ title: trimmed, updated_at: new Date().toISOString() })
+    .eq("id", meta.id)
+    .eq("owner_id", ownerId)
+    .eq("is_shared", false)
+    .select("id, title")
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return { id: data.id, title: data.title ?? trimmed };
 }
 
 /** 개인 벽 저장 — 소유자당 is_shared=false 벽 하나만 upsert */

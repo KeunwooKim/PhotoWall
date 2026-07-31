@@ -21,8 +21,8 @@ interface EditorToolRailProps {
 
 const railBtn =
   "flex h-10 w-10 flex-col items-center justify-center rounded-lg text-[10px] font-medium transition active:scale-95";
-const idle = `${railBtn} text-neutral-600 hover:bg-neutral-100`;
-const active = `${railBtn} bg-neutral-900 text-white`;
+const idle = `${railBtn} text-muted hover:bg-foreground/5`;
+const active = `${railBtn} bg-foreground text-background`;
 
 function IconPen({ className }: { className?: string }) {
   return (
@@ -74,7 +74,7 @@ export default function EditorToolRail({
   canRedo,
 }: EditorToolRailProps) {
   return (
-    <aside className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-neutral-200 bg-white py-2 text-neutral-800">
+    <aside className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-foreground/10 bg-surface py-2 text-foreground">
       <button
         type="button"
         onClick={() => onModeChange("select")}
@@ -141,7 +141,7 @@ export default function EditorToolRail({
         <span className="mt-0.5">에셋</span>
       </button>
 
-      <div className="my-1 h-px w-8 bg-neutral-200" aria-hidden />
+      <div className="my-1 h-px w-8 bg-foreground/10" aria-hidden />
 
       <button
         type="button"

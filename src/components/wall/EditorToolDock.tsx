@@ -34,13 +34,13 @@ interface EditorToolDockProps {
 
 const dockBtn =
   "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2.5 text-[11px] font-medium transition active:scale-95 sm:px-3 sm:text-xs";
-const dockBtnIdle = `${dockBtn} text-neutral-600 hover:bg-black/5`;
-const dockBtnActive = `${dockBtn} bg-neutral-900 text-white`;
+const dockBtnIdle = `${dockBtn} text-muted hover:bg-foreground/5`;
+const dockBtnActive = `${dockBtn} bg-foreground text-background`;
 const panelShell =
-  "pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-white p-3 text-neutral-800 shadow-lg ring-1 ring-black/10 backdrop-blur-sm";
-const panelLabel = "text-[11px] font-medium text-neutral-500";
-const idleChip = "bg-neutral-900/8 text-neutral-800 hover:bg-neutral-900/12";
-const activeChip = "bg-neutral-900 text-white";
+  "pointer-events-auto w-full max-w-md space-y-2.5 rounded-2xl bg-surface p-3 text-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-sm";
+const panelLabel = "text-[11px] font-medium text-muted";
+const idleChip = "bg-foreground/10 text-foreground hover:bg-foreground/15";
+const activeChip = "bg-foreground text-background";
 
 /**
  * Bottom tools. Pen/tape: first tap enters mode + opens settings;
@@ -107,7 +107,7 @@ export default function EditorToolDock({
             <button
               type="button"
               onClick={() => setSettingsOpen(false)}
-              className="rounded-full bg-neutral-900/8 px-2.5 py-1 text-[10px] font-medium text-neutral-600 transition hover:bg-neutral-900/12"
+              className="rounded-full bg-foreground/10 px-2.5 py-1 text-[10px] font-medium text-muted transition hover:bg-foreground/15"
             >
               접기
             </button>
@@ -125,7 +125,7 @@ export default function EditorToolDock({
                 <span className="block text-[11px] font-medium">{style.label}</span>
                 <span
                   className={`mt-0.5 block text-[10px] ${
-                    penStyleId === style.id ? "text-white/70" : "text-neutral-500"
+                    penStyleId === style.id ? "text-background/70" : "text-muted"
                   }`}
                 >
                   {style.hint}
@@ -148,14 +148,14 @@ export default function EditorToolDock({
                 type="button"
                 onClick={() => onPenColorChange?.(color)}
                 className={`h-8 w-8 rounded-full ring-2 transition ${
-                  penColor === color ? "ring-neutral-900 scale-110" : "ring-transparent"
+                  penColor === color ? "ring-foreground scale-110" : "ring-transparent"
                 }`}
                 style={{ background: color }}
                 aria-label={`펜 색 ${color}`}
               />
             ))}
           </div>
-          <p className="text-[10px] text-neutral-500">펜을 다시 누르면 설정을 접고 그릴 수 있어요</p>
+          <p className="text-[10px] text-muted">펜을 다시 누르면 설정을 접고 그릴 수 있어요</p>
         </div>
       )}
 
@@ -166,7 +166,7 @@ export default function EditorToolDock({
             <button
               type="button"
               onClick={() => setSettingsOpen(false)}
-              className="rounded-full bg-neutral-900/8 px-2.5 py-1 text-[10px] font-medium text-neutral-600 transition hover:bg-neutral-900/12"
+              className="rounded-full bg-foreground/10 px-2.5 py-1 text-[10px] font-medium text-muted transition hover:bg-foreground/15"
             >
               접기
             </button>
@@ -194,14 +194,14 @@ export default function EditorToolDock({
                 title={tape.label}
                 onClick={() => onTapeColorChange?.(tape.color)}
                 className={`h-8 w-10 rounded-md ring-2 transition ${
-                  tapeColor === tape.color ? "ring-neutral-900 scale-105" : "ring-black/10"
+                  tapeColor === tape.color ? "ring-foreground scale-105" : "ring-foreground/10"
                 }`}
                 style={{ background: tape.color }}
                 aria-label={`테이프 ${tape.label}`}
               />
             ))}
           </div>
-          <p className="text-[10px] text-neutral-500">테이프를 다시 누르면 설정을 접을 수 있어요</p>
+          <p className="text-[10px] text-muted">테이프를 다시 누르면 설정을 접을 수 있어요</p>
         </div>
       )}
 
@@ -209,7 +209,7 @@ export default function EditorToolDock({
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="pointer-events-auto rounded-full bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-700 shadow-md ring-1 ring-black/10 backdrop-blur-sm"
+          className="pointer-events-auto rounded-full bg-surface px-3 py-1.5 text-[11px] font-medium text-foreground/90 shadow-md ring-1 ring-foreground/10 backdrop-blur-sm"
         >
           펜 설정
         </button>
@@ -219,14 +219,14 @@ export default function EditorToolDock({
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="pointer-events-auto rounded-full bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-700 shadow-md ring-1 ring-black/10 backdrop-blur-sm"
+          className="pointer-events-auto rounded-full bg-surface px-3 py-1.5 text-[11px] font-medium text-foreground/90 shadow-md ring-1 ring-foreground/10 backdrop-blur-sm"
         >
           테이프 설정
         </button>
       )}
 
       <div className="pointer-events-auto relative max-w-[100vw]">
-        <div className="flex items-center gap-0.5 overflow-x-auto rounded-full bg-white/95 p-1.5 shadow-lg ring-1 ring-black/8 backdrop-blur-sm sm:gap-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex items-center gap-0.5 overflow-x-auto rounded-full bg-surface/95 p-1.5 shadow-lg ring-1 ring-foreground/10 backdrop-blur-sm sm:gap-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
           onClick={() => onModeChange("select")}
@@ -277,7 +277,7 @@ export default function EditorToolDock({
           에셋
         </button>
 
-        <span className="mx-0.5 h-5 w-px shrink-0 bg-black/10" aria-hidden />
+        <span className="mx-0.5 h-5 w-px shrink-0 bg-foreground/10" aria-hidden />
 
         <button
           type="button"
@@ -299,7 +299,7 @@ export default function EditorToolDock({
         </button>
         </div>
         <div
-          className="pointer-events-none absolute inset-y-0 right-0 w-6 rounded-r-full bg-gradient-to-l from-white/95 to-transparent sm:hidden"
+          className="pointer-events-none absolute inset-y-0 right-0 w-6 rounded-r-full bg-gradient-to-l from-surface/95 to-transparent sm:hidden"
           aria-hidden
         />
       </div>

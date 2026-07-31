@@ -110,7 +110,7 @@ export default function EditorSelectionSheet({
       <div className="mx-auto flex w-full max-w-lg flex-col items-stretch gap-2">
         {/* Floating quick actions (above selection in reference → sits above property bar) */}
         <div className="flex justify-center">
-          <div className="flex items-center gap-0.5 rounded-xl bg-white px-1 py-1 shadow-lg ring-1 ring-black/10">
+          <div className="flex items-center gap-0.5 rounded-xl bg-surface px-1 py-1 shadow-lg ring-1 ring-foreground/10">
             <IconBtn label="복제" onClick={onDuplicate}>
               <path
                 d="M9 9h8v8H9V9zm-3-3h8v2H8v6H6V6z"
@@ -141,7 +141,7 @@ export default function EditorSelectionSheet({
         </div>
 
         {expand === "more" && (
-          <div className="max-h-[40dvh] overflow-y-auto rounded-2xl bg-white p-2 shadow-lg ring-1 ring-black/10">
+          <div className="max-h-[40dvh] overflow-y-auto rounded-2xl bg-surface p-2 shadow-lg ring-1 ring-foreground/10">
             <div className="grid grid-cols-4 gap-1">
               <Chip
                 label="복사"
@@ -164,7 +164,7 @@ export default function EditorSelectionSheet({
               <Chip label="순서" onClick={() => setExpand("order")} />
               <Chip label="정렬" onClick={() => setExpand("align")} />
             </div>
-            <div className="mt-1.5 divide-y divide-neutral-100 rounded-xl border border-neutral-100">
+            <div className="mt-1.5 divide-y divide-foreground/8 rounded-xl border border-foreground/8">
               <ListRow label="위치 이동" onClick={() => setExpand("position")} />
               {onSelectAll && <ListRow label="전체 선택" onClick={onSelectAll} />}
               {onBringOntoWall && (
@@ -181,7 +181,7 @@ export default function EditorSelectionSheet({
         )}
 
         {expand === "order" && (
-          <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-white p-2 shadow-lg ring-1 ring-black/10">
+          <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-surface p-2 shadow-lg ring-1 ring-foreground/10">
             <Chip label="앞으로" onClick={onBringForward} />
             <Chip label="뒤로" onClick={onSendBackward} />
             <Chip label="맨 앞" onClick={onBringToFront} />
@@ -190,7 +190,7 @@ export default function EditorSelectionSheet({
         )}
 
         {expand === "align" && (
-          <div className="space-y-1.5 rounded-2xl bg-white p-2 shadow-lg ring-1 ring-black/10">
+          <div className="space-y-1.5 rounded-2xl bg-surface p-2 shadow-lg ring-1 ring-foreground/10">
             <div className="grid grid-cols-3 gap-1.5">
               <Chip label="왼쪽" onClick={onAlignLeft} disabled={!canAlign} />
               <Chip label="가로중앙" onClick={onAlignCenterH} disabled={!canAlign} />
@@ -204,7 +204,7 @@ export default function EditorSelectionSheet({
         )}
 
         {expand === "position" && (
-          <div className="space-y-2 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-black/10">
+          <div className="space-y-2 rounded-2xl bg-surface p-3 shadow-lg ring-1 ring-foreground/10">
             {onNudge && (
               <div className="grid grid-cols-3 gap-1.5">
                 <span />
@@ -280,7 +280,7 @@ export default function EditorSelectionSheet({
         )}
 
         {/* Horizontal property bar */}
-        <div className="flex items-center gap-1 rounded-2xl bg-white py-1.5 pl-1.5 pr-1.5 shadow-lg ring-1 ring-black/10">
+        <div className="flex items-center gap-1 rounded-2xl bg-surface py-1.5 pl-1.5 pr-1.5 shadow-lg ring-1 ring-foreground/10">
           <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {isPhoto && onStartCrop && (
               <PropChip
@@ -376,7 +376,7 @@ export default function EditorSelectionSheet({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-white transition active:scale-95"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition active:scale-95"
             aria-label="선택 해제"
           >
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -415,10 +415,10 @@ function IconBtn({
       title={label}
       className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${
         active
-          ? "bg-neutral-900 text-white"
+          ? "bg-foreground text-background"
           : danger
-            ? "text-red-600 hover:bg-red-50"
-            : "text-neutral-800 hover:bg-neutral-100"
+            ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+            : "text-foreground hover:bg-foreground/5"
       }`}
     >
       <svg width="18" height="18" viewBox="0 0 22 22" aria-hidden>
@@ -447,7 +447,7 @@ function PropChip({
       onClick={onClick}
       disabled={disabled}
       className={`flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 transition disabled:opacity-40 ${
-        active ? "bg-neutral-900 text-white" : "text-neutral-800 hover:bg-neutral-100"
+        active ? "bg-foreground text-background" : "text-foreground hover:bg-foreground/5"
       }`}
     >
       <svg width="20" height="20" viewBox="0 0 22 22" fill="none" aria-hidden>
@@ -474,7 +474,7 @@ function Chip({
       type="button"
       onClick={onClick}
       disabled={disabled || !onClick}
-      className={`rounded-lg bg-neutral-50 px-2 py-2 text-[11px] font-medium text-neutral-800 ring-1 ring-neutral-200 transition hover:bg-neutral-100 disabled:opacity-40 ${className}`}
+      className={`rounded-lg bg-foreground/[0.04] px-2 py-2 text-[11px] font-medium text-foreground ring-1 ring-foreground/15 transition hover:bg-foreground/5 disabled:opacity-40 ${className}`}
     >
       {label}
     </button>
@@ -486,10 +486,10 @@ function ListRow({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px] font-medium text-neutral-800 transition hover:bg-neutral-50"
+      className="flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px] font-medium text-foreground transition hover:bg-foreground/5"
     >
       {label}
-      <span className="text-neutral-300">›</span>
+      <span className="text-muted">›</span>
     </button>
   );
 }
@@ -507,7 +507,7 @@ function NumField({
 }) {
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[10px] font-medium text-neutral-500">{label}</span>
+      <span className="text-[10px] font-medium text-muted">{label}</span>
       <input
         type="number"
         value={Math.round(value)}
@@ -516,7 +516,7 @@ function NumField({
           const next = Number(e.target.value);
           if (Number.isFinite(next)) onChange(next);
         }}
-        className="w-full rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-xs tabular-nums text-neutral-900 outline-none focus:border-neutral-400"
+        className="w-full rounded-lg border border-foreground/10 bg-surface px-2 py-1.5 text-xs tabular-nums text-foreground outline-none focus:border-foreground/30"
       />
     </label>
   );

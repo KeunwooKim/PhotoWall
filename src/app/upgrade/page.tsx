@@ -65,8 +65,8 @@ export default function UpgradePage() {
   };
 
   return (
-    <AppShell>
-      <div className="mx-auto max-w-lg space-y-8 pb-8 pt-1">
+    <AppShell tone="hub">
+      <div className="mx-auto w-full max-w-lg space-y-8 pb-8 pt-1 lg:max-w-3xl">
         <header className="space-y-1">
           <p className="text-xs font-medium tracking-wide text-muted">요금제</p>
           <h1 className="text-2xl font-bold tracking-tight">{PLAN_UI_NAME.premium}</h1>
@@ -114,7 +114,7 @@ export default function UpgradePage() {
             </div>
 
             {isPlus ? (
-              <p className="rounded-2xl bg-amber-50 px-4 py-4 text-sm text-amber-950">
+              <p className="rounded-2xl bg-foreground/[0.05] px-4 py-4 text-sm text-foreground">
                 이미 {PLAN_UI_NAME.premium}예요. 한도가 자동으로 적용됩니다.
               </p>
             ) : (

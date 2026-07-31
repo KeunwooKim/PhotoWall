@@ -12,7 +12,7 @@ export default function WallLoadingOverlay({
 }: WallLoadingOverlayProps) {
   const base =
     mode === "overlay"
-      ? "pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-white/75 backdrop-blur-[2px]"
+      ? "pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-surface/75 backdrop-blur-[2px]"
       : "flex h-[100dvh] w-screen flex-col items-center justify-center gap-2 bg-background";
 
   return (

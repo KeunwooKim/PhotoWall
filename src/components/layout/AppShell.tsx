@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AppDesktopSidebar from "@/components/layout/AppDesktopSidebar";
 
 const NAV_ITEMS = [
   { href: "/", label: "홈", icon: HomeIcon },
@@ -13,44 +14,72 @@ const NAV_ITEMS = [
 interface AppShellProps {
   children: React.ReactNode;
   hideNav?: boolean;
-  /** Lighter chrome for branded home landing */
-  tone?: "default" | "home";
+  hideHeader?: boolean;
+  /**
+   * home — landing (full custom chrome)
+   * hub — desktop sidebar (walls/profile/settings/upgrade)
+   * default — classic mobile shell
+   */
+  tone?: "default" | "home" | "hub";
+  /** Badge on 벽꾸미기 in desktop sidebar */
+  wallsBadge?: number;
 }
 
-export default function AppShell({ children, hideNav = false, tone = "default" }: AppShellProps) {
+export default function AppShell({
+  children,
+  hideNav = false,
+  hideHeader = false,
+  tone = "default",
+  wallsBadge,
+}: AppShellProps) {
   const pathname = usePathname();
   const isHome = tone === "home";
+  const isHub = tone === "hub";
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-background text-foreground">
-      <header
-        className={`sticky top-0 z-50 border-b backdrop-blur-md ${
-          isHome
-            ? "border-transparent bg-white/40 dark:bg-black/30"
-            : "border-foreground/8 bg-surface/90"
-        }`}
-      >
-        <div
-          className="mx-auto flex h-14 max-w-lg items-center justify-between px-5"
-          style={{ paddingTop: "env(safe-area-inset-top)" }}
+      {!hideHeader && (
+        <header
+          className={`sticky top-0 z-50 border-b border-foreground/8 bg-background/90 backdrop-blur-md ${
+            isHub || isHome ? "lg:hidden" : ""
+          }`}
         >
-          <Link
-            href="/"
-            className={`tracking-tight ${isHome ? "text-sm font-semibold text-foreground/50" : "text-base font-bold"}`}
+          <div
+            className="mx-auto flex h-14 max-w-lg items-center justify-between px-5"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
-            PhotoWall
-          </Link>
-          {!isHome && <span className="text-xs text-muted">디지털 포토월</span>}
-        </div>
-      </header>
+            <Link href="/" className="text-base font-bold tracking-tight">
+              PhotoWall
+            </Link>
+            <span className="text-xs text-muted">디지털 포토월</span>
+          </div>
+        </header>
+      )}
 
-      <main className={`mx-auto w-full max-w-lg flex-1 ${isHome ? "px-5 py-0" : "px-5 py-6"}`}>
-        {children}
-      </main>
+      {isHub ? (
+        <div className="flex flex-1 lg:h-[100dvh] lg:overflow-hidden">
+          <div className="hidden shrink-0 lg:block lg:w-[240px]">
+            <AppDesktopSidebar wallsBadge={wallsBadge} />
+          </div>
+          <main className="mx-auto w-full max-w-lg flex-1 overflow-y-auto px-5 py-6 lg:max-w-none lg:px-8 lg:py-8">
+            {children}
+          </main>
+        </div>
+      ) : (
+        <main
+          className={`mx-auto w-full flex-1 ${
+            isHome ? "max-w-lg px-5 py-0 lg:max-w-none lg:px-0" : "max-w-lg px-5 py-6"
+          }`}
+        >
+          {children}
+        </main>
+      )}
 
       {!hideNav && (
         <nav
-          className="sticky bottom-0 z-50 border-t border-foreground/8 bg-surface/95 backdrop-blur-md"
+          className={`sticky bottom-0 z-50 border-t border-foreground/8 bg-surface/95 backdrop-blur-md ${
+            isHub || isHome ? "lg:hidden" : ""
+          }`}
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           <div className="mx-auto grid max-w-lg grid-cols-4">

@@ -18,7 +18,7 @@ export default function ZoomResetButton() {
     <button
       type="button"
       onClick={resetUserZoom}
-      className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm ring-1 ring-black/8 transition active:scale-95"
+      className="rounded-full bg-surface/90 px-3 py-1.5 text-xs font-medium text-foreground/90 shadow-sm ring-1 ring-foreground/10 transition active:scale-95"
       aria-label="줌 리셋"
     >
       {pct}%

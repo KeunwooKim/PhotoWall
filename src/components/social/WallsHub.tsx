@@ -2,22 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { Friend } from "@/types/profile";
+import type { Friend, Profile } from "@/types/profile";
 import type { SharedWall, SharedWallMember, WallMemberInvite } from "@/types/shared-wall";
 import { authFetch } from "@/lib/auth/api-fetch";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import AuthButton from "@/components/auth/AuthButton";
-import { WALL_QUOTAS } from "@/lib/wall-quotas";
+import { getWallQuota, type UserPlan } from "@/lib/wall-quotas";
 
 export default function WallsHub() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { flags } = useFeatureFlags();
-  // Premium plan stubbed — always free until billing ships.
-  const maxOwnedSharedWalls = WALL_QUOTAS.free.maxOwnedSharedWalls;
+  const [plan, setPlan] = useState<UserPlan>("free");
+  const maxOwnedSharedWalls = getWallQuota(plan).maxOwnedSharedWalls;
   const [walls, setWalls] = useState<SharedWall[]>([]);
   const [invites, setInvites] = useState<WallMemberInvite[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [personalWallTitle, setPersonalWallTitle] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -42,19 +43,27 @@ export default function WallsHub() {
       setWalls([]);
       setFriends([]);
       setInvites([]);
+      setPersonalWallTitle(null);
+      setPlan("free");
       return;
     }
 
     setIsLoading(true);
     try {
-      const [wallsRes, friendsRes, invitesRes] = await Promise.all([
+      const [wallsRes, friendsRes, invitesRes, profileRes] = await Promise.all([
         authFetch("/api/shared-walls"),
         authFetch("/api/friends"),
         authFetch("/api/shared-walls/invitations"),
+        authFetch("/api/profile"),
       ]);
       if (wallsRes.ok) setWalls((await wallsRes.json()) as SharedWall[]);
       if (friendsRes.ok) setFriends((await friendsRes.json()) as Friend[]);
       if (invitesRes.ok) setInvites((await invitesRes.json()) as WallMemberInvite[]);
+      if (profileRes.ok) {
+        const p = (await profileRes.json()) as Profile;
+        setPersonalWallTitle(p.wallTitle?.trim() || null);
+        setPlan(p.plan === "premium" ? "premium" : "free");
+      }
     } catch {
       showMessage("공동 벽 목록을 불러오지 못했어요");
     } finally {
@@ -147,10 +156,15 @@ export default function WallsHub() {
       });
 
       if (!res.ok) {
-        const err = (await res.json()) as { error?: string; message?: string };
+        const err = (await res.json()) as {
+          error?: string;
+          message?: string;
+          maxOwnedSharedWalls?: number;
+        };
         const detail = err.error ?? "";
         if (detail === "shared_wall_limit") {
-          showMessage(err.message ?? `공동 벽은 ${maxOwnedSharedWalls}개까지 만들 수 있어요`);
+          const max = err.maxOwnedSharedWalls ?? maxOwnedSharedWalls;
+          showMessage(err.message ?? `공동 벽은 ${max}개까지 만들 수 있어요`);
         } else if (detail.includes("create_shared_wall") || detail.includes("does not exist")) {
           showMessage("SQL 마이그레이션 필요: shared-walls-fix.sql 실행");
         } else if (detail.includes("Not authenticated")) {
@@ -234,30 +248,32 @@ export default function WallsHub() {
   };
 
   return (
-    <div className="space-y-8">
-      <header className="space-y-1">
+    <div className="space-y-8 lg:space-y-0">
+      <header className="space-y-1 lg:mb-8">
         <h1 className="text-2xl font-bold tracking-tight">벽 꾸미기</h1>
         <p className="text-sm text-muted">꾸밀 벽을 고르세요</p>
       </header>
 
+      <div className="lg:grid lg:grid-cols-[minmax(280px,360px)_1fr] lg:gap-8 lg:items-start">
+        <div className="space-y-8">
       <section className="space-y-2">
         <h2 className="text-xs font-medium tracking-wide text-muted">내 벽</h2>
         <Link
           href="/wall/edit"
-          className="flex items-center justify-between gap-3 rounded-2xl bg-foreground/[0.03] px-4 py-4 transition active:bg-foreground/[0.06]"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/10 bg-surface px-4 py-4 shadow-sm transition hover:-translate-y-0.5"
         >
           <div className="min-w-0">
-            <p className="text-sm font-semibold">내 포토월</p>
+            <p className="text-sm font-semibold">{personalWallTitle || "내 포토월"}</p>
             <p className="mt-0.5 text-xs text-muted">나만의 인생네컷 벽</p>
           </div>
-          <span className="shrink-0 rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-medium text-background">
+          <span className="shrink-0 rounded-full bg-foreground px-3 py-1.5 text-xs font-semibold text-background">
             꾸미기
           </span>
         </Link>
       </section>
 
       {!user && !isAuthLoading && (
-        <section className="space-y-3 rounded-2xl bg-foreground/[0.03] px-4 py-5 text-center">
+        <section className="space-y-3 rounded-2xl border border-foreground/10 bg-surface px-4 py-5 text-center">
           <p className="text-sm text-muted">로그인하면 공동 벽도 함께 꾸밀 수 있어요</p>
           <div className="flex justify-center">
             <AuthButton />
@@ -265,16 +281,17 @@ export default function WallsHub() {
         </section>
       )}
 
-      {user && (
-        <>
-          {invites.length > 0 && (
+      {user && invites.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-xs font-medium tracking-wide text-muted">
                 받은 초대 · {invites.length}
               </h2>
               <ul className="space-y-2">
                 {invites.map((invite) => (
-                  <li key={invite.id} className="rounded-2xl bg-foreground/[0.04] px-4 py-3">
+                  <li
+                    key={invite.id}
+                    className="rounded-2xl border border-foreground/15 bg-foreground/[0.04] px-4 py-3"
+                  >
                     <p className="text-sm font-semibold">{invite.wallTitle}</p>
                     <p className="mt-0.5 text-xs text-muted">{invite.inviterName}님의 초대</p>
                     <div className="mt-3 flex gap-2">
@@ -290,7 +307,7 @@ export default function WallsHub() {
                         type="button"
                         disabled={respondingInviteId === invite.id}
                         onClick={() => handleInviteResponse(invite.id, "decline")}
-                        className="rounded-xl bg-foreground/[0.06] px-4 py-2 text-xs font-medium disabled:opacity-50"
+                        className="rounded-xl bg-foreground/[0.06] px-4 py-2 text-xs font-medium text-muted disabled:opacity-50"
                       >
                         거절
                       </button>
@@ -301,16 +318,17 @@ export default function WallsHub() {
             </section>
           )}
 
+          {user && (
           <section className="space-y-2">
             <h2 className="text-xs font-medium tracking-wide text-muted">새 공동 벽</h2>
             {!flags.shared_walls ? (
-              <p className="rounded-2xl bg-foreground/[0.03] px-4 py-3 text-xs text-muted">
+              <p className="rounded-2xl border border-foreground/10 bg-surface px-4 py-3 text-xs text-muted">
                 공동 벽 생성이 잠시 중단되었어요. 기존 벽은 계속 쓸 수 있어요.
               </p>
             ) : ownedSharedCount >= maxOwnedSharedWalls ? (
-              <p className="rounded-2xl bg-foreground/[0.03] px-4 py-3 text-xs text-muted">
-                개발 단계에서는 공동 벽을 {maxOwnedSharedWalls}개까지 만들 수 있어요. 초대받은 벽은
-                제한에 포함되지 않아요.
+              <p className="rounded-2xl border border-foreground/10 bg-surface px-4 py-3 text-xs text-muted">
+                공동 벽을 {maxOwnedSharedWalls}개까지 만들 수 있어요. 초대받은 벽은 제한에 포함되지
+                않아요.
               </p>
             ) : (
               <form onSubmit={handleCreate} className="space-y-2">
@@ -320,7 +338,7 @@ export default function WallsHub() {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="우리 인생네컷"
                   maxLength={50}
-                  className="w-full rounded-xl bg-foreground/[0.04] px-4 py-3 text-sm outline-none ring-1 ring-transparent focus:ring-foreground/15"
+                  className="w-full rounded-xl border border-foreground/10 bg-surface px-4 py-3 text-sm outline-none focus:border-foreground/30"
                 />
                 <button
                   type="submit"
@@ -332,22 +350,27 @@ export default function WallsHub() {
               </form>
             )}
           </section>
+          )}
+        </div>
 
-          <section className="space-y-2">
+      {user && (
+          <section className="mt-8 space-y-2 lg:mt-0">
             <h2 className="text-xs font-medium tracking-wide text-muted">
               공동 벽{walls.length > 0 ? ` · ${walls.length}` : ""}
             </h2>
             {isLoading && <p className="py-6 text-center text-xs text-muted">불러오는 중...</p>}
             {!isLoading && walls.length === 0 && (
-              <p className="rounded-2xl bg-foreground/[0.03] px-4 py-6 text-center text-xs text-muted">
+              <p className="rounded-2xl border border-foreground/10 bg-surface px-4 py-6 text-center text-xs text-muted">
                 아직 공동 벽이 없어요
               </p>
             )}
-            <ul className="overflow-hidden rounded-2xl bg-foreground/[0.03]">
+            <ul className="overflow-hidden rounded-2xl border border-foreground/10 bg-surface lg:grid lg:grid-cols-2 lg:gap-3 lg:border-0 lg:bg-transparent lg:p-0">
               {walls.map((wall, index) => (
                 <li
                   key={wall.id}
-                  className={index < walls.length - 1 ? "border-b border-foreground/6" : ""}
+                  className={`${
+                    index < walls.length - 1 ? "border-b border-foreground/10 lg:border-0" : ""
+                  } lg:rounded-2xl lg:border lg:border-foreground/10 lg:bg-surface`}
                 >
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
@@ -476,8 +499,8 @@ export default function WallsHub() {
               ))}
             </ul>
           </section>
-        </>
       )}
+      </div>
 
       {message && (
         <div

@@ -57,7 +57,7 @@ export default function ReportWallButton({ wallId, variant = "chip" }: ReportWal
         className={
           variant === "menu"
             ? "w-full rounded-xl px-2 py-2 text-left text-xs font-medium text-muted transition hover:bg-foreground/5 hover:text-foreground"
-            : "rounded-full bg-white/90 px-3 py-2 text-[11px] text-muted shadow-sm ring-1 ring-black/6 backdrop-blur-sm"
+            : "rounded-full bg-surface/90 px-3 py-2 text-[11px] text-muted shadow-sm ring-1 ring-foreground/8 backdrop-blur-sm"
         }
       >
         신고

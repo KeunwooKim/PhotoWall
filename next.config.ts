@@ -20,7 +20,11 @@ export default withSentryConfig(nextConfig, {
   widenClientFileUpload: true,
   // Bypass ad-blockers for event ingest
   tunnelRoute: "/monitoring",
-  disableLogger: true,
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
   sourcemaps: {
     disable: !hasSentryAuth,
   },

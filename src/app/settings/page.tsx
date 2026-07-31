@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
 import type { Profile } from "@/types/profile";
 import type { ThemeMode } from "@/lib/settings-storage";
+import { COLOR_PALETTES } from "@/lib/color-palettes";
 import { PLAN_UI_NAME } from "@/lib/wall-quotas";
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
@@ -19,7 +20,7 @@ const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
 ];
 
 export default function SettingsPage() {
-  const { mode, setMode } = useTheme();
+  const { mode, setMode, palette, setPalette } = useTheme();
   const { user, isLoading, signOut } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
@@ -104,16 +105,16 @@ export default function SettingsPage() {
   };
 
   return (
-    <AppShell>
-      <div className="space-y-8">
+    <AppShell tone="hub">
+      <div className="mx-auto w-full max-w-lg space-y-8 lg:max-w-3xl">
         <header className="space-y-1 pt-1">
           <h1 className="text-2xl font-bold tracking-tight">설정</h1>
           <p className="text-sm text-muted">화면과 프라이버시를 맞춰 보세요</p>
         </header>
 
         <section className="space-y-3">
-          <h2 className="text-xs font-medium tracking-wide text-muted">테마</h2>
-          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-foreground/[0.04] p-1">
+          <h2 className="text-xs font-medium tracking-wide text-muted">밝기</h2>
+          <div className="grid grid-cols-3 gap-1 rounded-2xl bg-foreground/[0.05] p-1">
             {THEME_OPTIONS.map((option) => {
               const active = mode === option.value;
               return (
@@ -134,6 +135,47 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <section className="space-y-3">
+          <h2 className="text-xs font-medium tracking-wide text-muted">색 조합</h2>
+          <p className="text-xs text-muted">모노(흑백) + 파스텔 · 라이트/다크에 맞춰 적용돼요</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {COLOR_PALETTES.map((item) => {
+              const active = palette === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setPalette(item.id)}
+                  className={`flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition active:scale-[0.99] ${
+                    active
+                      ? "border-foreground/25 bg-foreground/[0.06] shadow-sm"
+                      : "border-foreground/10 bg-surface hover:border-foreground/20"
+                  }`}
+                >
+                  <span className="flex shrink-0 gap-1" aria-hidden>
+                    {item.swatches.map((color) => (
+                      <span
+                        key={color}
+                        className="h-7 w-7 rounded-full ring-1 ring-foreground/10"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{item.label}</span>
+                    <span className="block text-[11px] text-muted">{item.description}</span>
+                  </span>
+                  {active ? (
+                    <span className="ml-auto shrink-0 text-[10px] font-medium text-accent-dark">선택</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="space-y-8 lg:grid lg:grid-cols-2 lg:gap-8 lg:space-y-0">
+          <div className="space-y-8">
         <section className="space-y-3">
           <h2 className="text-xs font-medium tracking-wide text-muted">요금제</h2>
           {!user && !isLoading ? (
@@ -187,7 +229,7 @@ export default function SettingsPage() {
                 } disabled:opacity-50`}
               >
                 <span
-                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
+                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-background shadow transition ring-1 ring-foreground/10 ${
                     profile?.allowWallVisits ? "left-[22px]" : "left-0.5"
                   }`}
                 />
@@ -195,7 +237,9 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+          </div>
 
+          <div className="space-y-8">
         <section className="space-y-3">
           <h2 className="text-xs font-medium tracking-wide text-muted">문의</h2>
           {!user && !isLoading ? (
@@ -287,7 +331,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => void handleDeleteAccount()}
                     disabled={isDeleting || deleteConfirmText !== "DELETE"}
-                    className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-medium text-white disabled:opacity-40"
+                    className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-medium text-background disabled:opacity-40"
                   >
                     {isDeleting ? "탈퇴 중..." : "영구 탈퇴"}
                   </button>
@@ -296,6 +340,8 @@ export default function SettingsPage() {
             )}
           </section>
         )}
+          </div>
+        </div>
 
         <section className="space-y-3">
           <h2 className="text-xs font-medium tracking-wide text-muted">약관</h2>

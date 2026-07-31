@@ -135,7 +135,7 @@ export default function WallSocialPanel({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-neutral-900 shadow-sm ring-1 ring-black/8 backdrop-blur-sm"
+        className="rounded-full bg-surface/90 px-4 py-2 text-xs font-medium text-foreground shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm"
       >
         {likes ? `♥ ${likes.count}` : enableLikes ? "응원하기" : panelLabel}
       </button>
@@ -171,8 +171,8 @@ export default function WallSocialPanel({
                     onClick={handleToggleLike}
                     className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                       likes?.likedByMe
-                        ? "bg-rose-100 text-rose-600"
-                        : "bg-foreground/5 text-foreground hover:bg-foreground/8"
+                        ? "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"
+                        : "bg-foreground/5 text-foreground hover:bg-foreground/10"
                     }`}
                   >
                     {likes?.likedByMe ? "♥ 응원 중" : "♡ 응원하기"}
