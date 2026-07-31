@@ -86,16 +86,26 @@ export async function ensureProfile(
       isMissingColumnError(existingError.message, "color_palette") ||
       isMissingColumnError(existingError.message, "plan"))
   ) {
-    const legacySelect = isMissingColumnError(existingError.message, "plan")
-      ? "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version"
-      : PROFILE_SELECT_LEGACY;
-    const legacy = await supabase
-      .from("profiles")
-      .select(legacySelect)
-      .eq("id", user.id)
-      .maybeSingle();
-    if (legacy.data) {
-      return withWallMeta(supabase, mapProfile(legacy.data));
+    if (isMissingColumnError(existingError.message, "plan")) {
+      const legacy = await supabase
+        .from("profiles")
+        .select(
+          "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version",
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+      if (legacy.data) {
+        return withWallMeta(supabase, mapProfile(legacy.data));
+      }
+    } else {
+      const legacy = await supabase
+        .from("profiles")
+        .select(PROFILE_SELECT_LEGACY)
+        .eq("id", user.id)
+        .maybeSingle();
+      if (legacy.data) {
+        return withWallMeta(supabase, mapProfile(legacy.data));
+      }
     }
   } else if (existing) {
     return withWallMeta(supabase, mapProfile(existing));
