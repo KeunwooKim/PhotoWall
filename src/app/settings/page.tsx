@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
 import type { Profile } from "@/types/profile";
 import type { ThemeMode } from "@/lib/settings-storage";
+import { PLAN_UI_NAME } from "@/lib/wall-quotas";
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: "light", label: "라이트" },
@@ -131,6 +132,33 @@ export default function SettingsPage() {
               );
             })}
           </div>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-xs font-medium tracking-wide text-muted">요금제</h2>
+          {!user && !isLoading ? (
+            <div className="space-y-3 rounded-2xl bg-foreground/[0.03] px-4 py-4">
+              <p className="text-sm text-muted">로그인하면 플랜을 확인할 수 있어요</p>
+              <AuthButton />
+            </div>
+          ) : (
+            <Link
+              href="/upgrade"
+              className="flex items-center justify-between rounded-2xl bg-foreground/[0.03] px-4 py-4 transition active:bg-foreground/[0.05]"
+            >
+              <div>
+                <p className="text-sm font-semibold">
+                  {PLAN_UI_NAME[profile?.plan === "premium" ? "premium" : "free"]}
+                </p>
+                <p className="mt-0.5 text-xs text-muted">
+                  {profile?.plan === "premium"
+                    ? "플러스 한도가 적용 중이에요"
+                    : "플러스로 업그레이드 · 한도 확장"}
+                </p>
+              </div>
+              <Chevron />
+            </Link>
+          )}
         </section>
 
         <section className="space-y-3">

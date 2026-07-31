@@ -126,6 +126,16 @@ async function main() {
     results.push(warn("공개 Storage URL 차단", String(error)));
   }
 
+  // ── profiles-plan-migration.sql ──
+  if (admin) {
+    const { error: planErr } = await admin.from("profiles").select("plan").limit(1);
+    results.push(
+      planErr
+        ? fail("profiles.plan 컬럼", `${planErr.message} — profiles-plan-migration.sql 실행 필요`)
+        : ok("profiles.plan 컬럼", "profiles-plan-migration.sql 적용됨"),
+    );
+  }
+
   // ── walls-select-rls-migration.sql (behavioral) ──
   const { error: anonWallsErr } = await anon.from("walls").select("id").limit(1);
   results.push(

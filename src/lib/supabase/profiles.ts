@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Friend, Profile } from "@/types/profile";
+import { parseUserPlan } from "@/lib/auth/user-plan";
 import { fetchPersonalWallIdForOwner } from "@/lib/supabase/walls";
 import { notifyNewUser } from "@/lib/discord/notify";
 
@@ -18,6 +19,7 @@ function mapProfile(row: {
   avatar_url: string | null;
   friend_code: string;
   allow_wall_visits?: boolean;
+  plan?: string | null;
   legal_consented_at?: string | null;
   legal_version?: string | null;
 }): Omit<Profile, "wallId"> {
@@ -27,25 +29,40 @@ function mapProfile(row: {
     avatarUrl: row.avatar_url,
     friendCode: row.friend_code,
     allowWallVisits: row.allow_wall_visits ?? false,
+    plan: parseUserPlan(row.plan),
     legalConsentedAt: row.legal_consented_at ?? null,
     legalVersion: row.legal_version ?? null,
   };
 }
 
 const PROFILE_SELECT =
-  "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version";
+  "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, legal_consented_at, legal_version";
+
 
 export async function ensureProfile(
   supabase: SupabaseClient,
   user: { id: string; email?: string; user_metadata?: Record<string, unknown> },
 ): Promise<Profile | null> {
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("profiles")
     .select(PROFILE_SELECT)
     .eq("id", user.id)
     .maybeSingle();
 
-  if (existing) {
+  // Column may be missing before profiles-plan-migration.sql
+  if (existingError?.message?.includes("plan")) {
+    const legacy = await supabase
+      .from("profiles")
+      .select(
+        "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version",
+      )
+      .eq("id", user.id)
+      .maybeSingle();
+    if (legacy.data) {
+      const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
+      return { ...mapProfile(legacy.data), wallId };
+    }
+  } else if (existing) {
     const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
     return { ...mapProfile(existing), wallId };
   }
@@ -76,6 +93,29 @@ export async function ensureProfile(
       });
       const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
       return { ...mapProfile(data), wallId };
+    }
+
+    if (error?.message?.includes("plan")) {
+      const legacyInsert = await supabase
+        .from("profiles")
+        .insert({
+          id: user.id,
+          display_name: displayName,
+          avatar_url: (meta.avatar_url as string) ?? null,
+          friend_code: generateFriendCode(),
+        })
+        .select(
+          "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version",
+        )
+        .single();
+      if (!legacyInsert.error && legacyInsert.data) {
+        notifyNewUser({
+          displayName: legacyInsert.data.display_name ?? displayName,
+          userId: legacyInsert.data.id,
+        });
+        const wallId = await fetchPersonalWallIdForOwner(supabase, user.id);
+        return { ...mapProfile(legacyInsert.data), wallId };
+      }
     }
   }
 
@@ -178,8 +218,12 @@ export async function getFriends(
   for (const p of profiles) {
     const wallId = await fetchPersonalWallIdForOwner(supabase, p.id);
     const wallVisitable = !!p.allow_wall_visits && !!wallId;
+    const mapped = mapProfile(p);
     friends.push({
-      ...mapProfile(p),
+      id: mapped.id,
+      displayName: mapped.displayName,
+      avatarUrl: mapped.avatarUrl,
+      friendCode: mapped.friendCode,
       wallId,
       wallVisitable,
     });

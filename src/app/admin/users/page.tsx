@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { authFetch } from "@/lib/auth/api-fetch";
+import { PLAN_UI_NAME, type UserPlan } from "@/lib/wall-quotas";
 
 interface AdminUser {
   id: string;
@@ -13,6 +14,7 @@ interface AdminUser {
   restrictedAt: string | null;
   legalConsentedAt: string | null;
   legalVersion: string | null;
+  plan: UserPlan;
 }
 
 interface OrphanWall {
@@ -30,6 +32,12 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setQuery(q);
+  }, []);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -99,6 +107,38 @@ export default function AdminUsersPage() {
     }
   };
 
+  const togglePlan = async (user: AdminUser) => {
+    const next: UserPlan = user.plan === "premium" ? "free" : "premium";
+    if (
+      !confirm(
+        next === "premium"
+          ? `${user.displayName}을(를) ${PLAN_UI_NAME.premium}로 올릴까요?`
+          : `${user.displayName}을(를) ${PLAN_UI_NAME.free}(으)로 내릴까요?`,
+      )
+    ) {
+      return;
+    }
+    setActingId(user.id);
+    try {
+      const res = await authFetch(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: next }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = (await res.json()) as { plan: UserPlan };
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, plan: updated.plan } : u)),
+      );
+      setMessage(`${PLAN_UI_NAME[updated.plan]}로 변경했어요`);
+      setTimeout(() => setMessage(null), 2000);
+    } catch {
+      setMessage("플랜 변경에 실패했어요");
+    } finally {
+      setActingId(null);
+    }
+  };
+
   const wipeUser = async (user: AdminUser) => {
     if (
       !confirm(
@@ -134,7 +174,13 @@ export default function AdminUsersPage() {
     <div className="space-y-8">
       <section className="space-y-1">
         <h2 className="text-xl font-bold">유저</h2>
-        <p className="text-sm text-muted">가입자 검색 · 계정 제한 · 레거시 벽</p>
+        <p className="text-sm text-muted">
+          가입자 검색 · 계정 제한 ·{" "}
+          <Link href="/admin/plans" className="text-accent-dark underline">
+            플랜 부여
+          </Link>
+          · 레거시 벽
+        </p>
       </section>
 
       <div className="flex gap-3">
@@ -167,6 +213,15 @@ export default function AdminUsersPage() {
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                     {user.displayName}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        user.plan === "premium"
+                          ? "bg-amber-50 text-amber-800"
+                          : "bg-foreground/5 text-muted"
+                      }`}
+                    >
+                      {PLAN_UI_NAME[user.plan ?? "free"]}
+                    </span>
                     {user.restrictedAt && (
                       <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                         제한중
@@ -181,7 +236,23 @@ export default function AdminUsersPage() {
                       : " · 약관 미동의"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={actingId === user.id}
+                    onClick={() => void togglePlan(user)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                      user.plan === "premium"
+                        ? "bg-foreground/5 text-foreground"
+                        : "bg-amber-100 text-amber-900"
+                    }`}
+                  >
+                    {actingId === user.id
+                      ? "처리 중…"
+                      : user.plan === "premium"
+                        ? "기본으로"
+                        : `${PLAN_UI_NAME.premium} 부여`}
+                  </button>
                   <button
                     type="button"
                     disabled={actingId === user.id}

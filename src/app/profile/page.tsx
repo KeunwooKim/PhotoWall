@@ -8,6 +8,7 @@ import FriendsPanel from "@/components/social/FriendsPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
 import type { Profile } from "@/types/profile";
+import { PLAN_UI_NAME } from "@/lib/wall-quotas";
 
 export default function ProfilePage() {
   const { user, isLoading, isConfigured, signOut } = useAuth();
@@ -89,6 +90,7 @@ export default function ProfilePage() {
     "나";
   const avatarUrl = profile?.avatarUrl ?? (user.user_metadata?.avatar_url as string) ?? null;
   const initial = displayName.trim().charAt(0).toUpperCase() || "나";
+  const isPlus = profile?.plan === "premium";
 
   return (
     <AppShell>
@@ -116,9 +118,24 @@ export default function ProfilePage() {
                 {initial}
               </div>
             )}
-            <div className="space-y-1">
-              <h1 className="text-2xl font-bold tracking-tight">{displayName}</h1>
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight">{displayName}</h1>
+                {isPlus ? (
+                  <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-amber-900 ring-1 ring-amber-200/80">
+                    {PLAN_UI_NAME.premium}
+                  </span>
+                ) : null}
+              </div>
               <p className="text-sm text-muted">{user.email}</p>
+              {!isPlus && profile ? (
+                <Link
+                  href="/upgrade"
+                  className="inline-block text-xs font-medium text-muted underline underline-offset-2"
+                >
+                  {PLAN_UI_NAME.premium}로 업그레이드
+                </Link>
+              ) : null}
             </div>
           </div>
         </section>
