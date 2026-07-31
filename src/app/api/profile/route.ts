@@ -57,8 +57,10 @@ export async function PATCH(request: NextRequest) {
   const hasAllow = typeof body.allowWallVisits === "boolean";
   const hasName = typeof body.displayName === "string";
   const hasWallTitle = typeof body.wallTitle === "string";
-  const hasTheme = isThemeMode(body.themeMode);
-  const hasPalette = isColorPaletteId(body.colorPalette);
+  const themeMode = isThemeMode(body.themeMode) ? body.themeMode : undefined;
+  const colorPalette = isColorPaletteId(body.colorPalette) ? body.colorPalette : undefined;
+  const hasTheme = themeMode !== undefined;
+  const hasPalette = colorPalette !== undefined;
 
   if (!hasAllow && !hasName && !hasWallTitle && !hasTheme && !hasPalette) {
     return applyCookies(
@@ -127,8 +129,8 @@ export async function PATCH(request: NextRequest) {
 
   if (hasTheme || hasPalette) {
     const ok = await updateThemePreferences(supabase, user.id, {
-      ...(hasTheme ? { themeMode: body.themeMode } : {}),
-      ...(hasPalette ? { colorPalette: body.colorPalette } : {}),
+      themeMode,
+      colorPalette,
     });
     if (!ok) {
       return applyCookies(
