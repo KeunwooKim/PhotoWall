@@ -3,18 +3,39 @@
 import Link from "next/link";
 import type { PublicAnnouncement } from "@/types/announcement";
 import type { WallMemberInvite } from "@/types/shared-wall";
+import type { WallActivityNotice } from "@/types/wall-activity-notice";
+import { authFetch } from "@/lib/auth/api-fetch";
 
 export type HomeNotice =
   | { kind: "invite"; invite: WallMemberInvite }
-  | { kind: "announcement"; item: PublicAnnouncement };
+  | { kind: "announcement"; item: PublicAnnouncement }
+  | { kind: "wall_activity"; activity: WallActivityNotice };
 
 interface HomeNotificationsProps {
   open: boolean;
   onClose: () => void;
   notices: HomeNotice[];
+  onDismissActivity?: (id: string) => void;
 }
 
-export default function HomeNotifications({ open, onClose, notices }: HomeNotificationsProps) {
+async function dismissActivity(id: string) {
+  try {
+    await authFetch("/api/notifications/wall-activity", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [id] }),
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+export default function HomeNotifications({
+  open,
+  onClose,
+  notices,
+  onDismissActivity,
+}: HomeNotificationsProps) {
   if (!open) return null;
 
   return (
@@ -69,6 +90,43 @@ export default function HomeNotifications({ open, onClose, notices }: HomeNotifi
                         초대했어요
                       </p>
                       <p className="mt-1 text-[10px] text-muted">공동 벽에서 수락할 수 있어요</p>
+                    </div>
+                  </Link>
+                );
+              }
+
+              if (notice.kind === "wall_activity") {
+                const act = notice.activity;
+                return (
+                  <Link
+                    key={`act-${act.id}`}
+                    href={`/shared/${act.wallId}`}
+                    onClick={() => {
+                      onDismissActivity?.(act.id);
+                      void dismissActivity(act.id);
+                      onClose();
+                    }}
+                    className="flex gap-3 rounded-2xl border border-foreground/15 bg-foreground/[0.04] px-3.5 py-3"
+                  >
+                    {act.actorAvatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={act.actorAvatarUrl}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground/20 text-sm font-semibold text-foreground">
+                        {act.actorName.charAt(0)}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[12.5px] leading-snug text-foreground">
+                        <span className="font-semibold">{act.actorName}</span>님이{" "}
+                        <span className="font-semibold">{act.wallTitle}</span>을(를)
+                        업데이트했어요
+                      </p>
+                      <p className="mt-1 text-[10px] text-muted">공동 벽 열기</p>
                     </div>
                   </Link>
                 );

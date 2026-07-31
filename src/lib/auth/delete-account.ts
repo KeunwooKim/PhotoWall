@@ -75,6 +75,10 @@ export async function wipeUserContent(userId: string): Promise<DeleteAccountResu
     .from("wall_member_invites")
     .delete()
     .or(`inviter_id.eq.${userId},invitee_id.eq.${userId}`);
+  await admin
+    .from("wall_activity_notices")
+    .delete()
+    .or(`actor_id.eq.${userId},recipient_id.eq.${userId}`);
 
   await admin.from("walls").delete().eq("owner_id", userId);
   await deleteUserStorage(admin, userId);
@@ -117,6 +121,10 @@ export async function deleteUserAccount(userId: string): Promise<DeleteAccountRe
     .from("wall_member_invites")
     .delete()
     .or(`inviter_id.eq.${userId},invitee_id.eq.${userId}`);
+  await admin
+    .from("wall_activity_notices")
+    .delete()
+    .or(`actor_id.eq.${userId},recipient_id.eq.${userId}`);
   await admin.from("inquiries").delete().eq("user_id", userId);
 
   // Owned walls (personal + shared). Cascades may cover children depending on schema.
