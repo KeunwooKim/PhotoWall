@@ -8,6 +8,7 @@ import { authFetch } from "@/lib/auth/api-fetch";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import AuthButton from "@/components/auth/AuthButton";
+import HouseAdBanner from "@/components/HouseAdBanner";
 import { getWallQuota, type UserPlan } from "@/lib/wall-quotas";
 
 export default function WallsHub() {
@@ -253,6 +254,8 @@ export default function WallsHub() {
         <h1 className="text-2xl font-bold tracking-tight">벽 꾸미기</h1>
         <p className="text-sm text-muted">꾸밀 벽을 고르세요</p>
       </header>
+
+      <HouseAdBanner placement="walls" plan={plan} />
 
       <div className="lg:grid lg:grid-cols-[minmax(280px,360px)_1fr] lg:gap-8 lg:items-start">
         <div className="space-y-8">

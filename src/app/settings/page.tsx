@@ -5,6 +5,7 @@ import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
 import InquiryForm from "@/components/settings/InquiryForm";
+import HouseAdBanner from "@/components/HouseAdBanner";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
@@ -111,6 +112,11 @@ export default function SettingsPage() {
           <h1 className="text-2xl font-bold tracking-tight">설정</h1>
           <p className="text-sm text-muted">화면과 프라이버시를 맞춰 보세요</p>
         </header>
+
+        <HouseAdBanner
+          placement="settings"
+          plan={profile?.plan === "premium" ? "premium" : user ? "free" : null}
+        />
 
         <section className="space-y-3">
           <h2 className="text-xs font-medium tracking-wide text-muted">밝기</h2>
