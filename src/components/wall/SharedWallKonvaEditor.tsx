@@ -216,12 +216,19 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     user?.email?.split("@")[0] ??
     "친구";
 
-  const { peers, isConnected, connectError, sessionId, updatePresence, broadcastObjectPatch, broadcastClear } =
+  const handleRemoteSaved = useCallback((revision: number) => {
+    const known = serverRevisionRef.current;
+    if (typeof known === "number" && revision <= known) return;
+    serverRevisionRef.current = revision;
+  }, []);
+
+  const { peers, isConnected, connectError, sessionId, updatePresence, broadcastObjectPatch, broadcastClear, broadcastSaved } =
     useWallRealtime({
     wallId: sharedId,
     userId: user?.id ?? "",
     displayName,
     enabled: !!user && isReady && loadedCanvasJson !== null,
+    onRemoteSaved: handleRemoteSaved,
   });
 
   const showToast = useCallback((message: string) => {
@@ -251,10 +258,27 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       }
       if (result.conflictWall) {
         void import("@/lib/wall-scene/fabric-import").then(({ parseWallScene }) => {
-          const doc = parseWallScene(result.conflictWall!.canvasJson);
+          const serverRev =
+            sceneRevisionFromJson(result.conflictWall!.canvasJson);
+          // Keep OCC base fresh — stale base after a peer save is the usual cause.
+          serverRevisionRef.current = serverRev;
+
+          // Avoid re-sanitizing: it can shift homeOrigin/wallpaper and shove the wall off-screen.
+          const doc = parseWallScene(result.conflictWall!.canvasJson, {
+            sanitize: false,
+          });
+          const local = useWallSceneStore.getState().document;
+          const conflictFp = fingerprintPersistableScene(doc);
+          const localFp = fingerprintPersistableScene(local);
+
+          // Content already matches (realtime applied peer state) — no hard reload.
+          if (conflictFp === localFp) {
+            lastSavedFingerprintRef.current = localFp;
+            return;
+          }
+
+          // Real conflict: adopt server snapshot without coordinate re-bake.
           useWallSceneStore.getState().loadDocument(doc);
-          serverRevisionRef.current =
-            doc.meta.revision ?? sceneRevisionFromJson(result.conflictWall!.canvasJson);
           lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
           setThemeId(resolveWallThemeId(result.conflictWall!.themeId));
           showToast(result.message || "다른 사람 저장본으로 맞췄어요");
@@ -262,10 +286,12 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         return;
       }
       if (result.wall) {
-        serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+        const rev = sceneRevisionFromJson(result.wall.canvasJson);
+        serverRevisionRef.current = rev;
+        broadcastSaved(rev);
       }
     },
-    [showToast],
+    [showToast, broadcastSaved],
   );
 
   const autoSave = useMemo(

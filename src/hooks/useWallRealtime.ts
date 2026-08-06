@@ -14,6 +14,7 @@ import {
   applyRemotePatchToNode,
   isAnyWallNodeDragging,
 } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
 import { presenceColorForUser } from "@/lib/wall-scene/presence-colors";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { structuralSceneFingerprint } from "@/lib/wall-scene/scene-fingerprint";
@@ -24,6 +25,8 @@ interface UseWallRealtimeOptions {
   userId: string;
   displayName: string;
   enabled?: boolean;
+  /** Peer completed a DB save — keep local OCC baseRevision in sync. */
+  onRemoteSaved?: (revision: number) => void;
 }
 
 function structuralFingerprint(objects: Parameters<typeof structuralSceneFingerprint>[0]): string {
@@ -51,7 +54,10 @@ export function useWallRealtime({
   userId,
   displayName,
   enabled = true,
+  onRemoteSaved,
 }: UseWallRealtimeOptions) {
+  const onRemoteSavedRef = useRef(onRemoteSaved);
+  onRemoteSavedRef.current = onRemoteSaved;
   const [peers, setPeers] = useState<WallPresenceState[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -83,13 +89,15 @@ export function useWallRealtime({
       const entries = [...pending.entries()];
       pending.clear();
 
-      skipLocalSync.current = true;
-      const store = useWallSceneStore.getState();
-      for (const [id, patch] of entries) {
-        store.patchObject(id, patch);
-      }
-      queueMicrotask(() => {
-        skipLocalSync.current = false;
+      runWithoutWallPersist(() => {
+        skipLocalSync.current = true;
+        const store = useWallSceneStore.getState();
+        for (const [id, patch] of entries) {
+          store.patchObject(id, patch);
+        }
+        queueMicrotask(() => {
+          skipLocalSync.current = false;
+        });
       });
     }, 120),
   );
@@ -138,25 +146,29 @@ export function useWallRealtime({
           if (objects.length === 0 && localObjects.length > 0) return;
           if (isAnyWallNodeDragging()) return;
 
-          skipLocalSync.current = true;
-          // Apply wall meta before objects so sanitize does not clamp into a stale small wall.
-          if (meta?.wallBounds) {
-            useWallSceneStore.getState().syncRemoteWallMeta(meta);
-          }
-          useWallSceneStore.getState().syncRemoteObjects(objects);
-          applyRemoteObjectsToNodes(objects);
-          queueMicrotask(() => {
-            skipLocalSync.current = false;
+          runWithoutWallPersist(() => {
+            skipLocalSync.current = true;
+            // Apply wall meta before objects so sanitize does not clamp into a stale small wall.
+            if (meta?.wallBounds) {
+              useWallSceneStore.getState().syncRemoteWallMeta(meta);
+            }
+            useWallSceneStore.getState().syncRemoteObjects(objects);
+            applyRemoteObjectsToNodes(objects);
+            queueMicrotask(() => {
+              skipLocalSync.current = false;
+            });
           });
         },
         onRemoteClear: () => {
           if (isAnyWallNodeDragging()) return;
 
-          skipLocalSync.current = true;
-          useWallSceneStore.getState().syncRemoteObjects([]);
-          applyRemoteObjectsToNodes([]);
-          queueMicrotask(() => {
-            skipLocalSync.current = false;
+          runWithoutWallPersist(() => {
+            skipLocalSync.current = true;
+            useWallSceneStore.getState().syncRemoteObjects([]);
+            applyRemoteObjectsToNodes([]);
+            queueMicrotask(() => {
+              skipLocalSync.current = false;
+            });
           });
         },
         onRemotePatch: (id, patch) => {
@@ -165,6 +177,9 @@ export function useWallRealtime({
           const pending = pendingRemotePatchesRef.current;
           pending.set(id, { ...(pending.get(id) ?? {}), ...patch });
           flushRemoteStorePatchesRef.current();
+        },
+        onRemoteSaved: (revision) => {
+          onRemoteSavedRef.current?.(revision);
         },
         onPresenceChange: setPeers,
       });
@@ -265,6 +280,10 @@ export function useWallRealtime({
     sessionRef.current?.broadcastClear();
   }, []);
 
+  const broadcastSaved = useCallback((revision: number) => {
+    sessionRef.current?.broadcastSaved(revision);
+  }, []);
+
   return {
     peers,
     isConnected,
@@ -274,5 +293,6 @@ export function useWallRealtime({
     updatePresence,
     broadcastObjectPatch,
     broadcastClear,
+    broadcastSaved,
   };
 }

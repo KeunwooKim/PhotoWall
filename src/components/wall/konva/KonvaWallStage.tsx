@@ -36,6 +36,7 @@ import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-
 import { containerCenter } from "@/lib/wall-scene/viewport-zoom";
 import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
 import { setWallNodeDragging, isAnyWallNodeDragging, getWallNode, registerPeerHighlightNode } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { shouldSkipWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
@@ -323,6 +324,7 @@ export default function KonvaWallStage({
       (s) => fingerprintPersistableScene(s.document),
       () => {
         if (skipPersistRef.current) return;
+        if (shouldSkipWallPersist()) return;
         onDocumentChangeRef.current?.(
           serializeWallScene(useWallSceneStore.getState().document),
         );

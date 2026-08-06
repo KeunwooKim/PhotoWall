@@ -22,6 +22,7 @@ function isSyncPayload(value: Record<string, unknown>): boolean {
     value.kind === "hello" ||
     value.kind === "full" ||
     value.kind === "clear" ||
+    value.kind === "saved" ||
     (value.kind === "patch" && typeof value.id === "string" && !!value.patch)
   );
 }
@@ -80,6 +81,12 @@ type SyncPayload =
     }
   | { kind: "clear"; sessionId: string; userId: string }
   | {
+      kind: "saved";
+      sessionId: string;
+      userId: string;
+      revision: number;
+    }
+  | {
       kind: "patch";
       sessionId: string;
       userId: string;
@@ -103,6 +110,8 @@ export interface WallRealtimeOptions {
   onRemoteFull: (objects: WallSceneObject[], meta?: WallSyncMeta) => void;
   onRemoteClear: () => void;
   onRemotePatch: (id: string, patch: WallObjectPatch) => void;
+  /** Peer persisted successfully — keep OCC baseRevision in sync without reloading. */
+  onRemoteSaved?: (revision: number) => void;
   onPresenceChange: (peers: WallPresenceState[]) => void;
   onSyncEvent?: (kind: SyncPayload["kind"]) => void;
   getLocalObjects: () => WallSceneObject[];
@@ -155,6 +164,17 @@ export class WallRealtimeSession {
       kind: "clear",
       sessionId: this.options.sessionId,
       userId: this.options.userId,
+    });
+  }
+
+  /** Tell peers the DB revision advanced so their OCC base stays fresh. */
+  broadcastSaved(revision: number): void {
+    if (!Number.isFinite(revision)) return;
+    this.send({
+      kind: "saved",
+      sessionId: this.options.sessionId,
+      userId: this.options.userId,
+      revision,
     });
   }
 
@@ -271,6 +291,13 @@ export class WallRealtimeSession {
 
       if (msg.kind === "clear") {
         this.options.onRemoteClear();
+        return;
+      }
+
+      if (msg.kind === "saved") {
+        if (typeof msg.revision === "number" && Number.isFinite(msg.revision)) {
+          this.options.onRemoteSaved?.(msg.revision);
+        }
         return;
       }
 
