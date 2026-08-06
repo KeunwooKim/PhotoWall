@@ -13,6 +13,11 @@ export type WallSyncMeta = {
   wallpaperOffset?: { x: number; y: number };
 };
 
+/** Live wall grow/shrink while a peer is dragging (not yet committed to store on sender). */
+export type WallLiveSync = WallSyncMeta & {
+  positions?: Array<{ id: string; x: number; y: number }>;
+};
+
 function channelTopic(wallId: string): string {
   return `${CHANNEL_PREFIX}:${wallId}`;
 }
@@ -23,6 +28,7 @@ function isSyncPayload(value: Record<string, unknown>): boolean {
     value.kind === "full" ||
     value.kind === "clear" ||
     value.kind === "saved" ||
+    value.kind === "wall-live" ||
     (value.kind === "patch" && typeof value.id === "string" && !!value.patch)
   );
 }
@@ -87,6 +93,14 @@ type SyncPayload =
       revision: number;
     }
   | {
+      kind: "wall-live";
+      sessionId: string;
+      userId: string;
+      wallBounds: WallBounds;
+      wallpaperOffset?: { x: number; y: number };
+      positions?: Array<{ id: string; x: number; y: number }>;
+    }
+  | {
       kind: "patch";
       sessionId: string;
       userId: string;
@@ -110,6 +124,8 @@ export interface WallRealtimeOptions {
   onRemoteFull: (objects: WallSceneObject[], meta?: WallSyncMeta) => void;
   onRemoteClear: () => void;
   onRemotePatch: (id: string, patch: WallObjectPatch) => void;
+  /** Peer is live-expanding the wall while dragging. */
+  onRemoteWallLive?: (live: WallLiveSync) => void;
   /** Peer persisted successfully — keep OCC baseRevision in sync without reloading. */
   onRemoteSaved?: (revision: number) => void;
   onPresenceChange: (peers: WallPresenceState[]) => void;
@@ -175,6 +191,18 @@ export class WallRealtimeSession {
       sessionId: this.options.sessionId,
       userId: this.options.userId,
       revision,
+    });
+  }
+
+  /** Live wall bounds while dragging — peers see smooth expand before commit. */
+  broadcastWallLive(live: WallLiveSync): void {
+    this.send({
+      kind: "wall-live",
+      sessionId: this.options.sessionId,
+      userId: this.options.userId,
+      wallBounds: live.wallBounds,
+      wallpaperOffset: live.wallpaperOffset,
+      positions: live.positions,
     });
   }
 
@@ -298,6 +326,15 @@ export class WallRealtimeSession {
         if (typeof msg.revision === "number" && Number.isFinite(msg.revision)) {
           this.options.onRemoteSaved?.(msg.revision);
         }
+        return;
+      }
+
+      if (msg.kind === "wall-live") {
+        this.options.onRemoteWallLive?.({
+          wallBounds: msg.wallBounds,
+          wallpaperOffset: msg.wallpaperOffset,
+          positions: msg.positions,
+        });
         return;
       }
 
