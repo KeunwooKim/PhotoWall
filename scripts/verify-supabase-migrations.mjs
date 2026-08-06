@@ -229,7 +229,7 @@ async function main() {
     if (sampleWall?.id) {
       try {
         const prodRes = await fetch(
-          `https://photowall-one.vercel.app/api/walls/${sampleWall.id}/signed-photos`,
+          `${env.NEXT_PUBLIC_SITE_URL || "https://photowall.kr"}/api/walls/${sampleWall.id}/signed-photos`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
