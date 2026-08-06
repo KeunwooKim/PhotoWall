@@ -40,7 +40,7 @@ import {
 import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
-import { applyExpandWall, applyShrinkWall } from "@/lib/wall-scene/wall-resize";
+import { registerWallSizeLockBlockedHandler } from "@/lib/wall-scene/wall-size-lock";
 import { debounce } from "@/lib/debounce";
 import { useWallPreviewFlush } from "@/hooks/useWallPreviewFlush";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
@@ -227,6 +227,13 @@ export default function PersonalWallKonvaEditor() {
     setSaveMessage(message);
     setTimeout(() => setSaveMessage(null), 2000);
   }, []);
+
+  useEffect(() => {
+    registerWallSizeLockBlockedHandler(() => {
+      showToast("벽 크기가 고정되어 있어요. 설정에서 고정을 끄면 확장할 수 있어요");
+    });
+    return () => registerWallSizeLockBlockedHandler(null);
+  }, [showToast]);
 
   const wallPlan = useClientWallPlan();
   const { usage: sceneUsage, guardAdd, limitMessage } = useGuardWallObjectAdd(wallPlan);
@@ -760,22 +767,6 @@ export default function PersonalWallKonvaEditor() {
     showToast(
       moved === 1 ? "벽 안으로 가져왔어요" : `${moved}개 항목을 벽 안으로 가져왔어요`,
     );
-  }, [showToast]);
-
-  const handleExpandWall = useCallback(() => {
-    if (!applyExpandWall()) {
-      showToast("더 이상 키울 수 없어요");
-      return;
-    }
-    showToast("벽을 키웠어요");
-  }, [showToast]);
-
-  const handleShrinkWall = useCallback(() => {
-    if (!applyShrinkWall()) {
-      showToast("더 이상 줄일 수 없어요");
-      return;
-    }
-    showToast("벽을 줄였어요");
   }, [showToast]);
 
   const handleBringForward = useCallback(() => {
@@ -1319,10 +1310,6 @@ export default function PersonalWallKonvaEditor() {
         onExport={() => void handleExport()}
         isExporting={isExporting}
         onSave={() => void handleSave()}
-        onOpenAssets={() => setIsAssetsOpen(true)}
-        onBringOntoWall={handleBringOntoWall}
-        onExpandWall={handleExpandWall}
-        onShrinkWall={handleShrinkWall}
       />
 
       <div className="flex min-h-0 flex-1">

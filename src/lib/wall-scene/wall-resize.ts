@@ -15,6 +15,7 @@ import {
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
+import { allowWallSizeChange } from "@/lib/wall-scene/wall-size-lock";
 
 function safeMax(): WallBounds {
   return memorySafeWallMax();
@@ -70,6 +71,7 @@ function applyOmniGrow(grow: OmniWallGrow): void {
 
 /** Grow wall on east/south (home top-left stays fixed). */
 export function applyExpandWall(): boolean {
+  if (!allowWallSizeChange()) return false;
   const store = useWallSceneStore.getState();
   const grow = computeCenteredWallExpand(store.document.meta.wallBounds, safeMax());
   if (!grow) return false;
@@ -81,6 +83,7 @@ export function applyExpandWall(): boolean {
 
 /** Shrink wall toward default (reclaims left/up home budget when present). */
 export function applyShrinkWall(): boolean {
+  if (!allowWallSizeChange()) return false;
   const store = useWallSceneStore.getState();
   const current = store.document.meta.wallBounds;
   const objectBounds = getSceneObjectsBounds(store.document.objects);
