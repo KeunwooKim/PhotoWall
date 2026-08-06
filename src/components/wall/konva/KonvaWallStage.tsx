@@ -335,6 +335,9 @@ export default function KonvaWallStage({
 
   useEffect(() => {
     const reconcile = debounce(() => {
+      // Remote sync already brings authoritative bounds — local sanitize here
+      // would shift peers' cameras.
+      if (shouldSkipWallPersist()) return;
       useWallSceneStore.getState().reconcileWallBoundsFromObjects();
     }, 100);
 
@@ -358,6 +361,7 @@ export default function KonvaWallStage({
   );
 
   const frozenFitScaleRef = useRef<number | null>(null);
+  const prevFitScaleRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (isAnyWallNodeDragging()) {
@@ -369,6 +373,20 @@ export default function KonvaWallStage({
     }
 
     frozenFitScaleRef.current = null;
+
+    const prevFit = prevFitScaleRef.current;
+    prevFitScaleRef.current = fitScale;
+
+    // When the wall grows/shrinks, fitScale changes. Scale pan so the world
+    // point under the viewport center stays put (peers expanding the wall).
+    if (prevFit != null && prevFit > 0 && Math.abs(fitScale - prevFit) > 1e-6) {
+      const ratio = fitScale / prevFit;
+      const { panX: px, panY: py } = useWallSceneStore.getState();
+      if (px !== 0 || py !== 0) {
+        useWallSceneStore.setState({ panX: px * ratio, panY: py * ratio });
+      }
+    }
+
     setViewportScale(fitScale * userZoom);
   }, [fitScale, userZoom, setViewportScale, wallBounds.width, wallBounds.height]);
 
