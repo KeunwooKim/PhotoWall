@@ -360,9 +360,10 @@ export default function KonvaWallStage({
     [containerSize.width, containerSize.height, wallBounds.width, wallBounds.height],
   );
 
-  /** Fit used for display — ignores wall grow/shrink so peer expands don't zoom the camera. */
+  /** Fit used for display. Local expand re-fits; remote expand keeps the previous fit so peers' cameras don't zoom. */
   const layoutFitRef = useRef<number | null>(null);
   const prevContainerSizeRef = useRef({ width: 0, height: 0 });
+  const prevWallSizeRef = useRef({ width: 0, height: 0 });
   const prevUserZoomRef = useRef(userZoom);
   const frozenFitScaleRef = useRef<number | null>(null);
 
@@ -376,15 +377,29 @@ export default function KonvaWallStage({
       height: containerSize.height,
     };
 
+    const prevWall = prevWallSizeRef.current;
+    const wallSizeChanged =
+      prevWall.width > 0 &&
+      (prevWall.width !== wallBounds.width || prevWall.height !== wallBounds.height);
+    prevWallSizeRef.current = {
+      width: wallBounds.width,
+      height: wallBounds.height,
+    };
+
     // Zoom reset button → re-fit to the current wall size.
     const zoomResetToDefault = userZoom === 1 && prevUserZoomRef.current !== 1;
     prevUserZoomRef.current = userZoom;
+
+    const remoteWallLayout = shouldSkipWallPersist();
 
     if (
       containerSize.width > 0 &&
       containerSize.height > 0 &&
       (layoutFitRef.current == null || containerChanged || zoomResetToDefault)
     ) {
+      layoutFitRef.current = fitScale;
+    } else if (wallSizeChanged && !remoteWallLayout) {
+      // I expanded/shrunk — allow my viewport to re-fit. Peers keep their frozen fit.
       layoutFitRef.current = fitScale;
     }
 
