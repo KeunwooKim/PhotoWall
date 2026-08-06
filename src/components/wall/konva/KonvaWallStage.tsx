@@ -35,7 +35,7 @@ import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { containerCenter } from "@/lib/wall-scene/viewport-zoom";
 import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
-import { setWallNodeDragging, isAnyWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { setWallNodeDragging, isAnyWallNodeDragging, getWallNode, registerPeerHighlightNode } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
@@ -1284,7 +1284,20 @@ export default function KonvaWallStage({
           </Layer>
           <Layer listening={false}>
             {visibleObjects.map((object) => {
-              const layout = peerHighlightLayout(object);
+              // Prefer live Konva node transform so peer frames track remote drag
+              // at patch rate (~32ms), not the throttled Zustand store (~120ms).
+              const live = getWallNode(object.id);
+              const layoutObject = live
+                ? {
+                    ...object,
+                    x: live.x(),
+                    y: live.y(),
+                    rotation: live.rotation(),
+                    scaleX: live.scaleX(),
+                    scaleY: live.scaleY(),
+                  }
+                : object;
+              const layout = peerHighlightLayout(layoutObject);
               if (!layout) return null;
 
               const highlights = peerHighlightsByObjectId.get(object.id);
@@ -1293,6 +1306,7 @@ export default function KonvaWallStage({
               return (
                 <Group
                   key={`peer-highlight-${object.id}`}
+                  ref={(node) => registerPeerHighlightNode(object.id, node)}
                   x={layout.x}
                   y={layout.y}
                   rotation={layout.rotation}
