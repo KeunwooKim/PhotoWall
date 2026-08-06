@@ -11,17 +11,30 @@ export type DiscordPostResult = {
   error?: string;
 };
 
+type DiscordEmbed = {
+  title?: string;
+  description?: string;
+  color?: number;
+  fields?: { name: string; value: string; inline?: boolean }[];
+  footer?: { text: string };
+};
+
+type DiscordWebhookBody = {
+  content?: string;
+  embeds?: DiscordEmbed[];
+};
+
 function webhookUrl(): string | undefined {
   const url = process.env.DISCORD_WEBHOOK_URL?.trim();
   return url || undefined;
 }
 
 /** Escape Discord markdown special chars in user-controlled text. */
-function escapeMd(text: string): string {
+export function escapeMd(text: string): string {
   return text.replace(/([\\*_`~|])/g, "\\$1").slice(0, 80);
 }
 
-export async function postDiscordMessage(content: string): Promise<DiscordPostResult> {
+export async function postDiscordPayload(body: DiscordWebhookBody): Promise<DiscordPostResult> {
   const url = webhookUrl();
   if (!url) {
     return { ok: false, configured: false, error: "DISCORD_WEBHOOK_URL is not set" };
@@ -31,15 +44,15 @@ export async function postDiscordMessage(content: string): Promise<DiscordPostRe
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
+      const text = await res.text().catch(() => "");
       return {
         ok: false,
         configured: true,
         status: res.status,
-        error: body.slice(0, 200) || `HTTP ${res.status}`,
+        error: text.slice(0, 200) || `HTTP ${res.status}`,
       };
     }
     return { ok: true, configured: true, status: res.status };
@@ -50,6 +63,10 @@ export async function postDiscordMessage(content: string): Promise<DiscordPostRe
       error: err instanceof Error ? err.message : "fetch failed",
     };
   }
+}
+
+export async function postDiscordMessage(content: string): Promise<DiscordPostResult> {
+  return postDiscordPayload({ content });
 }
 
 export function notifyNewUser(input: {
