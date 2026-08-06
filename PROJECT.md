@@ -821,7 +821,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | **P1** | 에디터 크롬 (레일·햄버거·선택 바) | ✅ |
 | **P1** | Presence session + 벽 밖 복구 | ✅ |
 | **P2** | 텍스트 행간 | ⬜ |
-| **P2** | 2-browser 실시간 QA | 🔄 |
+| **P2** | 2-browser 실시간 QA | 🔄 코드 경로 smoke OK (hello/full/patch/clear·Presence session) — 브라우저 실기기 확인 남음 |
 | **P3** | QR 실부스 E2E + 홈 CTA | ⬜ *(보류)* |
 | **P3** | 3단계 수익화 | ⬜ |
 
