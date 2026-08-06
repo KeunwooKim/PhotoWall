@@ -7,10 +7,12 @@ import {
 import { memorySafeWallMax } from "@/lib/konva-device";
 import { computeOmniWallFollowFromContent } from "@/lib/wall-scene/wall-omni-expand";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
-import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
+import { broadcastWallPatch, broadcastWallLive } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 import { DD } from "konva/lib/DragAndDrop";
+import { throttle } from "@/lib/throttle";
+import { LIVE_PATCH_MS } from "@/lib/wall-scene/realtime/live-object-patch";
 
 export type LiveWallLayout = {
   bounds: WallBounds;
@@ -36,6 +38,17 @@ let contentShiftListener: ((dx: number, dy: number) => void) | null = null;
 
 /** Skip sub-pixel stage thrash. */
 const LIVE_EXPAND_MIN_DELTA = 1;
+
+const broadcastLiveWall = throttle(
+  (payload: {
+    wallBounds: WallBounds;
+    wallpaperOffset: { x: number; y: number };
+    positions?: Array<{ id: string; x: number; y: number }>;
+  }) => {
+    broadcastWallLive(payload);
+  },
+  LIVE_PATCH_MS,
+);
 
 export function registerLiveWallBoundsApplier(applier: LiveWallLayoutApplier | null): void {
   liveWallLayoutApplier = applier;
@@ -93,17 +106,36 @@ function readBaseWallpaperOffset(): { x: number; y: number } {
   return useWallSceneStore.getState().document.meta.wallpaperOffset ?? { x: 0, y: 0 };
 }
 
-function pushLiveLayout(bounds: WallBounds): void {
+function pushLiveLayout(bounds: WallBounds, includePositions = false): void {
   liveWallBoundsDuringDrag = bounds;
   const store = useWallSceneStore.getState();
   const wallpaper = readBaseWallpaperOffset();
+  const wallpaperOffset = {
+    x: wallpaper.x + liveContentShiftX,
+    y: wallpaper.y + liveContentShiftY,
+  };
   liveWallLayoutApplier?.({
     bounds,
     panX: store.panX + livePanX,
     panY: store.panY + livePanY,
-    wallpaperOffsetX: wallpaper.x + liveContentShiftX,
-    wallpaperOffsetY: wallpaper.y + liveContentShiftY,
+    wallpaperOffsetX: wallpaperOffset.x,
+    wallpaperOffsetY: wallpaperOffset.y,
     viewportScale: store.viewportScale,
+  });
+
+  let positions: Array<{ id: string; x: number; y: number }> | undefined;
+  if (includePositions) {
+    positions = objectsWithLivePositions().map((object) => ({
+      id: object.id,
+      x: object.x,
+      y: object.y,
+    }));
+  }
+
+  broadcastLiveWall({
+    wallBounds: bounds,
+    wallpaperOffset,
+    positions,
   });
 }
 
@@ -127,6 +159,7 @@ function clearLiveOffsets(): void {
   liveContentShiftY = 0;
   livePanX = 0;
   livePanY = 0;
+  broadcastLiveWall.flush();
 }
 
 /**
@@ -205,7 +238,7 @@ export function applyWallExpandDuringDrag(movingIds: Iterable<string>): boolean 
   livePanX += (dW / 2 - shiftX) * scale;
   livePanY += (dH / 2 - shiftY) * scale;
 
-  pushLiveLayout(bounds);
+  pushLiveLayout(bounds, shiftX !== 0 || shiftY !== 0);
   return true;
 }
 
@@ -296,4 +329,17 @@ export function revertLiveWallBounds(): void {
   }
   clearLiveOffsets();
   restoreLayoutFromStore();
+
+  // Tell peers to drop the live expand preview.
+  const store = useWallSceneStore.getState();
+  const wallpaper = store.document.meta.wallpaperOffset ?? { x: 0, y: 0 };
+  broadcastWallLive({
+    wallBounds: store.document.meta.wallBounds,
+    wallpaperOffset: wallpaper,
+    positions: store.document.objects.map((object) => ({
+      id: object.id,
+      x: object.x,
+      y: object.y,
+    })),
+  });
 }

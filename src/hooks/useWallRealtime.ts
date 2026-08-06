@@ -8,6 +8,7 @@ import { setActiveWallRealtimeSession } from "@/lib/wall-scene/realtime/wall-rea
 import {
   WallRealtimeSession,
   type WallObjectPatch,
+  type WallLiveSync,
 } from "@/lib/wall-scene/realtime/wall-ydoc";
 import {
   applyRemoteObjectsToNodes,
@@ -189,6 +190,47 @@ export function useWallRealtime({
           const pending = pendingRemotePatchesRef.current;
           pending.set(id, { ...(pending.get(id) ?? {}), ...patch });
           flushRemoteStorePatchesRef.current();
+        },
+        onRemoteWallLive: (live: WallLiveSync) => {
+          if (isAnyWallNodeDragging()) return;
+
+          runWithoutWallPersist(() => {
+            skipLocalSync.current = true;
+            const store = useWallSceneStore.getState();
+            const prevMeta = {
+              wallBounds: store.document.meta.wallBounds,
+              wallpaperOffset: store.document.meta.wallpaperOffset,
+            };
+            const prevScale = store.viewportScale;
+
+            store.syncRemoteWallMeta({
+              wallBounds: live.wallBounds,
+              wallpaperOffset: live.wallpaperOffset,
+            });
+            const delta = panDeltaForWallLayoutChange(
+              prevMeta,
+              {
+                wallBounds: live.wallBounds,
+                wallpaperOffset: live.wallpaperOffset,
+              },
+              prevScale,
+            );
+            if (delta.dx !== 0 || delta.dy !== 0) {
+              useWallSceneStore.getState().addPan(delta.dx, delta.dy);
+            }
+
+            if (live.positions?.length) {
+              const nextStore = useWallSceneStore.getState();
+              for (const pos of live.positions) {
+                nextStore.patchObject(pos.id, { x: pos.x, y: pos.y });
+                applyRemotePatchToNode(pos.id, { x: pos.x, y: pos.y });
+              }
+            }
+
+            queueMicrotask(() => {
+              skipLocalSync.current = false;
+            });
+          });
         },
         onRemoteSaved: (revision) => {
           onRemoteSavedRef.current?.(revision);
