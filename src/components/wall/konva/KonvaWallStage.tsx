@@ -360,35 +360,55 @@ export default function KonvaWallStage({
     [containerSize.width, containerSize.height, wallBounds.width, wallBounds.height],
   );
 
+  /** Fit used for display — ignores wall grow/shrink so peer expands don't zoom the camera. */
+  const layoutFitRef = useRef<number | null>(null);
+  const prevContainerSizeRef = useRef({ width: 0, height: 0 });
+  const prevUserZoomRef = useRef(userZoom);
   const frozenFitScaleRef = useRef<number | null>(null);
-  const prevFitScaleRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const prevContainer = prevContainerSizeRef.current;
+    const containerChanged =
+      prevContainer.width !== containerSize.width ||
+      prevContainer.height !== containerSize.height;
+    prevContainerSizeRef.current = {
+      width: containerSize.width,
+      height: containerSize.height,
+    };
+
+    // Zoom reset button → re-fit to the current wall size.
+    const zoomResetToDefault = userZoom === 1 && prevUserZoomRef.current !== 1;
+    prevUserZoomRef.current = userZoom;
+
+    if (
+      containerSize.width > 0 &&
+      containerSize.height > 0 &&
+      (layoutFitRef.current == null || containerChanged || zoomResetToDefault)
+    ) {
+      layoutFitRef.current = fitScale;
+    }
+
+    const displayFit = layoutFitRef.current ?? fitScale;
+
     if (isAnyWallNodeDragging()) {
       if (frozenFitScaleRef.current === null) {
-        frozenFitScaleRef.current = fitScale;
+        frozenFitScaleRef.current = displayFit;
       }
       setViewportScale(frozenFitScaleRef.current * userZoom);
       return;
     }
 
     frozenFitScaleRef.current = null;
-
-    const prevFit = prevFitScaleRef.current;
-    prevFitScaleRef.current = fitScale;
-
-    // When the wall grows/shrinks, fitScale changes. Scale pan so the world
-    // point under the viewport center stays put (peers expanding the wall).
-    if (prevFit != null && prevFit > 0 && Math.abs(fitScale - prevFit) > 1e-6) {
-      const ratio = fitScale / prevFit;
-      const { panX: px, panY: py } = useWallSceneStore.getState();
-      if (px !== 0 || py !== 0) {
-        useWallSceneStore.setState({ panX: px * ratio, panY: py * ratio });
-      }
-    }
-
-    setViewportScale(fitScale * userZoom);
-  }, [fitScale, userZoom, setViewportScale, wallBounds.width, wallBounds.height]);
+    setViewportScale(displayFit * userZoom);
+  }, [
+    fitScale,
+    userZoom,
+    setViewportScale,
+    containerSize.width,
+    containerSize.height,
+    wallBounds.width,
+    wallBounds.height,
+  ]);
 
   useEffect(() => {
     const el = containerRef.current;
