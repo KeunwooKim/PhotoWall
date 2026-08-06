@@ -253,7 +253,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         void import("@/lib/wall-scene/fabric-import").then(({ parseWallScene }) => {
           const doc = parseWallScene(result.conflictWall!.canvasJson);
           useWallSceneStore.getState().loadDocument(doc);
-          serverRevisionRef.current = sceneRevisionFromJson(result.conflictWall!.canvasJson);
+          serverRevisionRef.current =
+            doc.meta.revision ?? sceneRevisionFromJson(result.conflictWall!.canvasJson);
           lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
           setThemeId(resolveWallThemeId(result.conflictWall!.themeId));
           showToast(result.message || "다른 사람 저장본으로 맞췄어요");
