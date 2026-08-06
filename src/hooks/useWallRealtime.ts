@@ -211,12 +211,7 @@ export function useWallRealtime({
               live.wallSizeLocked === true ||
               store.document.meta.wallSizeLocked === true;
 
-            const nextBounds = locked
-              ? {
-                  width: Math.min(live.wallBounds.width, prevMeta.wallBounds.width),
-                  height: Math.min(live.wallBounds.height, prevMeta.wallBounds.height),
-                }
-              : live.wallBounds;
+            const nextBounds = locked ? prevMeta.wallBounds : live.wallBounds;
 
             store.syncRemoteWallMeta({
               wallBounds: nextBounds,

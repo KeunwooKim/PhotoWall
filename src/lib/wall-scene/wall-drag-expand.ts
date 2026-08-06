@@ -224,8 +224,11 @@ export function applyWallExpandDuringDrag(movingIds: Iterable<string>): boolean 
     return false;
   }
 
-  // Size lock: block grow (toast). Allow shrink-only follow so content can reclaim padding.
-  if ((dW > 0 || dH > 0) && !allowWallSizeChange()) {
+  // Size lock: freeze wall dimensions (no grow, no shrink).
+  if (
+    (Math.abs(dW) >= LIVE_EXPAND_MIN_DELTA || Math.abs(dH) >= LIVE_EXPAND_MIN_DELTA) &&
+    !allowWallSizeChange()
+  ) {
     return false;
   }
 

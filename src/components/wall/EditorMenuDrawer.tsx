@@ -254,7 +254,7 @@ export default function EditorMenuDrawer({
                 </span>
               </button>
               <p className="-mt-2 px-3 text-[11px] leading-relaxed text-muted">
-                켜면 모두가 드래그로 벽을 키울 수 없어요
+                켜면 모두가 벽을 키우거나 줄일 수 없어요
               </p>
             </div>
           )}

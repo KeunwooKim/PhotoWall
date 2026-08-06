@@ -230,7 +230,7 @@ export default function PersonalWallKonvaEditor() {
 
   useEffect(() => {
     registerWallSizeLockBlockedHandler(() => {
-      showToast("벽 크기가 고정되어 있어요. 설정에서 고정을 끄면 확장할 수 있어요");
+      showToast("벽 크기가 고정되어 있어요. 설정에서 고정을 끄면 크기를 바꿀 수 있어요");
     });
     return () => registerWallSizeLockBlockedHandler(null);
   }, [showToast]);
