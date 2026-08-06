@@ -3,7 +3,21 @@
  * falls back to per-instance memory (dev / single-instance only).
  */
 
+import type { NextRequest } from "next/server";
+
 const memoryHits = new Map<string, { count: number; resetAt: number }>();
+
+/** Prefer Cloudflare / proxy client IP; fall back to a stable unknown bucket. */
+export function getRequestIp(request: Request | NextRequest): string {
+  const headers = request.headers;
+  const cf = headers.get("cf-connecting-ip")?.trim();
+  if (cf) return cf;
+  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (forwarded) return forwarded;
+  const real = headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  return "unknown";
+}
 
 function memoryCheck(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
