@@ -5,7 +5,7 @@ import { Group, Text } from "react-konva";
 import type Konva from "konva";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
-import { applyDragSnapToNode, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
+import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
 import {
   applyGroupDrag,
   beginGroupDrag,
@@ -75,6 +75,7 @@ export default function WallEmojiNode({
   const handleDragStart = useCallback(() => {
     cancelLongPress();
     isDraggingRef.current = true;
+    beginDragSnap(objectId);
     beginGroupDrag(objectId);
     setWallNodeDragging(objectId, true);
     onInteractionStart?.();
@@ -85,7 +86,7 @@ export default function WallEmojiNode({
     (e: Konva.KonvaEventObject<DragEvent>) => {
       const node = e.target;
       applyDragSnapToNode(node, objectId);
-      applyGroupDrag(node);
+      applyGroupDrag(node, e.evt);
       broadcastLivePosition(objectId, { x: node.x(), y: node.y() });
     },
     [broadcastLivePosition, objectId],

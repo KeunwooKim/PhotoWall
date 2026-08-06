@@ -37,6 +37,7 @@ import {
 } from "@/lib/wall-scene/bring-objects-onto-wall";
 import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
+import { applyExpandWall, applyShrinkWall } from "@/lib/wall-scene/wall-resize";
 import { debounce } from "@/lib/debounce";
 import { useWallPreviewFlush } from "@/hooks/useWallPreviewFlush";
 import { createWallInvite } from "@/lib/wall-invite";
@@ -273,17 +274,24 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           themeIdRef.current,
           json,
           serverRevisionRef.current,
-        ).then((result) => {
-          applySharedSaveResult(result);
-          if (result.wall) {
-            lastSavedFingerprintRef.current = fingerprint;
-            setAutoSaved(true);
-            setTimeout(() => setAutoSaved(false), 1500);
-            markPreviewDirty();
-          }
-        });
+        )
+          .then((result) => {
+            applySharedSaveResult(result);
+            if (result.wall) {
+              lastSavedFingerprintRef.current = fingerprint;
+              setAutoSaved(true);
+              setTimeout(() => setAutoSaved(false), 1500);
+              markPreviewDirty();
+              return;
+            }
+            if (result.conflictWall) return;
+            showToast("공동 벽 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
+          })
+          .catch(() => {
+            showToast("공동 벽 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
+          });
       }, 800),
-    [sharedId, user, markPreviewDirty, applySharedSaveResult],
+    [sharedId, user, markPreviewDirty, applySharedSaveResult, showToast],
   );
 
   const broadcastPresence = useCallback(
@@ -378,6 +386,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   useEffect(() => {
     return () => {
+      autoSave.flush();
       persistEnabledRef.current = false;
       autoSave.cancel();
       useWallSceneStore.getState().reset();
@@ -436,11 +445,13 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flush);
-      // 언마운트 시에는 flush 대신 cancel — reset()이 빈 scene을 만들기 때문
-      autoSave.cancel();
+      window.removeEventListener("beforeunload", flush);
+      // Flush while pending args still hold the real scene (reset runs after)
+      flush();
     };
   }, [autoSave]);
 
@@ -499,6 +510,22 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     showToast(
       moved === 1 ? "벽 안으로 가져왔어요" : `${moved}개 항목을 벽 안으로 가져왔어요`,
     );
+  }, [showToast]);
+
+  const handleExpandWall = useCallback(() => {
+    if (!applyExpandWall()) {
+      showToast("더 이상 키울 수 없어요");
+      return;
+    }
+    showToast("벽을 키웠어요");
+  }, [showToast]);
+
+  const handleShrinkWall = useCallback(() => {
+    if (!applyShrinkWall()) {
+      showToast("더 이상 줄일 수 없어요");
+      return;
+    }
+    showToast("벽을 줄였어요");
   }, [showToast]);
 
   const handleBringForward = useCallback(() => {
@@ -1042,6 +1069,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         isExporting={isExporting}
         onOpenAssets={() => setIsAssetsOpen(true)}
         onBringOntoWall={handleBringOntoWall}
+        onExpandWall={handleExpandWall}
+        onShrinkWall={handleShrinkWall}
       />
 
       <div className="flex min-h-0 flex-1">

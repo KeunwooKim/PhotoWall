@@ -1,3 +1,4 @@
+import { randomHomePlacementPosition } from "@/lib/wall-scene/wall-home-placement";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneTape } from "@/types/wall-scene-v2";
 
@@ -12,12 +13,9 @@ export function addTapeToWallScene(
   const width = 140;
   const height = 28;
 
-  const x =
-    options.position?.x ??
-    options.wallWidth * 0.2 + Math.random() * (options.wallWidth * 0.3);
-  const y =
-    options.position?.y ??
-    options.wallHeight * 0.2 + Math.random() * (options.wallHeight * 0.3);
+  const fallback = randomHomePlacementPosition(options.wallWidth, options.wallHeight);
+  const x = options.position?.x ?? fallback.x;
+  const y = options.position?.y ?? fallback.y;
 
   const objects = useWallSceneStore.getState().document.objects;
   const maxZ = objects.reduce((max, object) => Math.max(max, object.zIndex), 0);

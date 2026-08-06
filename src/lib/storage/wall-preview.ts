@@ -1,4 +1,5 @@
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
+import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
 
 const PREVIEW_MAX_EDGE = 1600;
 const PREVIEW_MIME = "image/jpeg";
@@ -25,19 +26,32 @@ export function resolveWallpaperSrc(backgroundOrPath: string): string | null {
   return new URL(raw, window.location.origin).href;
 }
 
-function drawImageCover(
+function drawImageTiled(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  destW: number,
-  destH: number,
+  img: HTMLImageElement | HTMLCanvasElement,
+  outW: number,
+  outH: number,
+  logicalWallW: number,
+  logicalWallH: number,
+  offsetX = 0,
+  offsetY = 0,
 ) {
-  const iw = img.naturalWidth || img.width;
-  const ih = img.naturalHeight || img.height;
-  if (!iw || !ih) return;
-  const scale = Math.max(destW / iw, destH / ih);
-  const w = iw * scale;
-  const h = ih * scale;
-  ctx.drawImage(img, (destW - w) / 2, (destH - h) / 2, w, h);
+  const scaleX = outW / Math.max(1, logicalWallW);
+  const scaleY = outH / Math.max(1, logicalWallH);
+  const tileW = Math.max(1, DEFAULT_WALL_BOUNDS.width * scaleX);
+  const tileH = Math.max(1, DEFAULT_WALL_BOUNDS.height * scaleY);
+  const originX = offsetX * scaleX;
+  const originY = offsetY * scaleY;
+
+  // Walk enough tiles to cover the canvas given an arbitrary offset.
+  const startX = originX > 0 ? originX - tileW * Math.ceil(originX / tileW) : originX;
+  const startY = originY > 0 ? originY - tileH * Math.ceil(originY / tileH) : originY;
+
+  for (let y = startY; y < outH; y += tileH) {
+    for (let x = startX; x < outW; x += tileW) {
+      ctx.drawImage(img, x, y, tileW, tileH);
+    }
+  }
 }
 
 function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -57,16 +71,35 @@ function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
+function parseCssPxOffset(value: string | undefined): number {
+  if (!value) return 0;
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function wallpaperOffsetFromElement(element: HTMLElement): { x: number; y: number } {
+  const pos = getComputedStyle(element).backgroundPosition || "0px 0px";
+  const [xRaw, yRaw] = pos.trim().split(/\s+/);
+  return {
+    x: parseCssPxOffset(xRaw),
+    y: parseCssPxOffset(yRaw ?? xRaw),
+  };
+}
+
 async function paintWallpaper(
   ctx: CanvasRenderingContext2D,
   wallpaperSrc: string | null,
   outW: number,
   outH: number,
+  logicalWallW: number,
+  logicalWallH: number,
+  offsetX = 0,
+  offsetY = 0,
 ) {
   if (wallpaperSrc) {
     try {
       const img = await loadHtmlImage(wallpaperSrc);
-      drawImageCover(ctx, img, outW, outH);
+      drawImageTiled(ctx, img, outW, outH, logicalWallW, logicalWallH, offsetX, offsetY);
       return;
     } catch {
       // fall through
@@ -119,7 +152,17 @@ export async function captureWallElementPreview(
   const ctx = out.getContext("2d");
   if (!ctx) throw new Error("2d context unavailable");
 
-  await paintWallpaper(ctx, wallpaperSrc, outW, outH);
+  const wallpaperOffset = wallpaperOffsetFromElement(element);
+  await paintWallpaper(
+    ctx,
+    wallpaperSrc,
+    outW,
+    outH,
+    width,
+    height,
+    wallpaperOffset.x,
+    wallpaperOffset.y,
+  );
 
   // 1) Prefer Konva export (includes stickers/photos/drawings at correct layout)
   const stage = options?.stage;
@@ -184,7 +227,7 @@ export async function captureWallElementPreview(
     composite.height = outH;
     const cctx = composite.getContext("2d");
     if (!cctx) throw new Error("2d context unavailable");
-    await paintWallpaper(cctx, wallpaperSrc, outW, outH);
+    await paintWallpaper(cctx, wallpaperSrc, outW, outH, width, height);
     cctx.drawImage(scene, 0, 0, outW, outH);
     return await canvasToJpeg(composite);
   } catch {
@@ -194,7 +237,7 @@ export async function captureWallElementPreview(
     safe.height = outH;
     const safeCtx = safe.getContext("2d");
     if (!safeCtx) throw new Error("2d context unavailable");
-    await paintWallpaper(safeCtx, wallpaperSrc, outW, outH);
+    await paintWallpaper(safeCtx, wallpaperSrc, outW, outH, width, height);
     return canvasToJpeg(safe);
   }
 }

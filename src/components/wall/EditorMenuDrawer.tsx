@@ -22,6 +22,8 @@ interface EditorMenuDrawerProps {
   onSave?: () => void;
   onOpenAssets?: () => void;
   onBringOntoWall?: () => void;
+  onExpandWall?: () => void;
+  onShrinkWall?: () => void;
   homeHref?: string;
 }
 
@@ -40,6 +42,8 @@ export default function EditorMenuDrawer({
   onSave,
   onOpenAssets,
   onBringOntoWall,
+  onExpandWall,
+  onShrinkWall,
   homeHref = "/",
 }: EditorMenuDrawerProps) {
   const [panel, setPanel] = useState<Panel>("menu");
@@ -253,6 +257,32 @@ export default function EditorMenuDrawer({
                   벽으로 가져오기
                 </button>
               )}
+
+              {(onExpandWall || onShrinkWall) && (
+                <div className="my-2 border-t border-foreground/8" />
+              )}
+
+              {onExpandWall && (
+                <button
+                  type="button"
+                  className={itemClass}
+                  onClick={() => runAndClose(() => onExpandWall())}
+                >
+                  <ExpandWallIcon />
+                  벽 키우기
+                </button>
+              )}
+
+              {onShrinkWall && (
+                <button
+                  type="button"
+                  className={itemClass}
+                  onClick={() => runAndClose(() => onShrinkWall())}
+                >
+                  <ShrinkWallIcon />
+                  벽 줄이기
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -348,6 +378,36 @@ function BringIcon() {
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ExpandWallIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="7" y="7" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ShrinkWallIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

@@ -49,6 +49,36 @@ export function clampObjectPositionToWall(
   return { x: object.x + dx, y: object.y + dy };
 }
 
+/**
+ * Keep the full AABB inside the wall when possible.
+ * Oversized objects are centered on that axis.
+ * Returns null when already ok.
+ */
+export function hardClampObjectPositionToWall(
+  object: WallSceneObject,
+  wall: WallBounds,
+): { x: number; y: number } | null {
+  const ext = getSceneObjectExtents(object);
+  const w = Math.max(1, ext.maxX - ext.minX);
+  const h = Math.max(1, ext.maxY - ext.minY);
+  const cx = (ext.minX + ext.maxX) / 2;
+  const cy = (ext.minY + ext.maxY) / 2;
+
+  let dx = 0;
+  let dy = 0;
+
+  if (w >= wall.width) dx = wall.width / 2 - cx;
+  else if (ext.minX < 0) dx = -ext.minX;
+  else if (ext.maxX > wall.width) dx = wall.width - ext.maxX;
+
+  if (h >= wall.height) dy = wall.height / 2 - cy;
+  else if (ext.minY < 0) dy = -ext.minY;
+  else if (ext.maxY > wall.height) dy = wall.height - ext.maxY;
+
+  if (dx === 0 && dy === 0) return null;
+  return { x: object.x + dx, y: object.y + dy };
+}
+
 /** Move object so its AABB center lands on the wall center (recovery). */
 export function bringObjectOntoWall(
   object: WallSceneObject,

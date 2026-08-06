@@ -3,9 +3,9 @@ import { subscribeWithSelector } from "zustand/middleware";
 import type { WallBounds } from "@/lib/wall-bounds";
 import {
   DEFAULT_WALL_BOUNDS,
-  getSceneObjectsBounds,
-  reconcileWallBounds,
+  clampWallBounds,
 } from "@/lib/wall-bounds";
+import { memorySafeWallMax } from "@/lib/konva-device";
 import type { WallSceneDocument, WallSceneObject } from "@/types/wall-scene-v2";
 import { mergeObjectPatch } from "@/lib/wall-scene/merge-object-patch";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
@@ -13,9 +13,21 @@ import { clampUserZoom, panForZoomAtScreenPoint } from "@/lib/wall-scene/viewpor
 import { allSelectableIds, normalizeSelectedIds } from "@/lib/wall-scene/selection-utils";
 import { getGroupMemberIds } from "@/lib/wall-scene/group-objects";
 import { isCanvasSelectableObject } from "@/lib/wall-scene/selectable-objects";
+import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
 import type { SnapGuide } from "@/lib/wall-scene/snap-guides";
 
 export const DEFAULT_GRID_SIZE = 20;
+
+function snapGuidesEqual(a: SnapGuide[], b: SnapGuide[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].orientation !== b[i].orientation || a[i].position !== b[i].position) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function createEmptyWallScene(): WallSceneDocument {
   return {
@@ -74,10 +86,21 @@ export interface WallSceneStore {
   removeObject: (id: string) => void;
   reorderObject: (id: string, zIndex: number) => void;
   setWallBounds: (bounds: WallBounds) => void;
+  addWallpaperOffset: (dx: number, dy: number) => void;
+  setWallpaperOffset: (offset: { x: number; y: number } | undefined) => void;
+  /** Move wallpaper + homeOrigin together when content shifts for west/north expand. */
+  shiftWallHomeAnchors: (dx: number, dy: number) => void;
+  /** When wall is default-sized, bake homeOrigin back to (0,0). */
+  normalizeWallHomeOrigin: () => void;
   reconcileWallBoundsFromObjects: () => void;
   bumpRevision: () => void;
   /** Merge authoritative remote snapshot without replacing unrelated local state. */
   syncRemoteObjects: (objects: WallSceneObject[]) => void;
+  /** Apply remote wall meta (bounds + wallpaper offset) from peers. */
+  syncRemoteWallMeta: (meta: {
+    wallBounds: WallBounds;
+    wallpaperOffset?: { x: number; y: number };
+  }) => void;
 }
 
 function sortByZIndex(objects: WallSceneObject[]): WallSceneObject[] {
@@ -91,16 +114,9 @@ function cloneDocument(doc: WallSceneDocument): WallSceneDocument {
 }
 
 function withReconciledWallBounds(document: WallSceneDocument): WallSceneDocument {
-  const next = reconcileWallBounds(
-    document.meta.wallBounds,
-    getSceneObjectsBounds(document.objects),
-  );
-  if (!next) return document;
-
-  return {
-    ...document,
-    meta: { ...document.meta, wallBounds: next },
-  };
+  // Clamp off-canvas drift first, then fit wall size — prevents a far drag from
+  // inflating the canvas to WALL_MAX and crashing Safari on reload.
+  return sanitizeWallScene(document);
 }
 
 export const useWallSceneStore = create<WallSceneStore>()(
@@ -186,9 +202,18 @@ export const useWallSceneStore = create<WallSceneStore>()(
         selectedIds: normalizeSelectedIds(ids, state.document.objects),
       })),
 
-    clearSelection: () => set({ selectedIds: [], snapGuides: [] }),
+    clearSelection: () =>
+      set((state) =>
+        state.selectedIds.length === 0 && state.snapGuides.length === 0
+          ? state
+          : { selectedIds: [], snapGuides: [] },
+      ),
 
-    setSnapGuides: (guides) => set({ snapGuides: guides }),
+    setSnapGuides: (guides) =>
+      set((state) => {
+        if (snapGuidesEqual(state.snapGuides, guides)) return state;
+        return { snapGuides: guides };
+      }),
 
     toggleShowGrid: () => set((state) => ({ showGrid: !state.showGrid })),
 
@@ -324,9 +349,92 @@ export const useWallSceneStore = create<WallSceneStore>()(
       set((state) => ({
         document: {
           ...state.document,
-          meta: { ...state.document.meta, wallBounds: bounds },
+          meta: {
+            ...state.document.meta,
+            wallBounds: clampWallBounds(bounds, memorySafeWallMax()),
+          },
         },
       })),
+
+    addWallpaperOffset: (dx, dy) => {
+      if (dx === 0 && dy === 0) return;
+      set((state) => {
+        const prev = state.document.meta.wallpaperOffset ?? { x: 0, y: 0 };
+        return {
+          document: {
+            ...state.document,
+            meta: {
+              ...state.document.meta,
+              wallpaperOffset: { x: prev.x + dx, y: prev.y + dy },
+            },
+          },
+        };
+      });
+    },
+
+    setWallpaperOffset: (offset) =>
+      set((state) => ({
+        document: {
+          ...state.document,
+          meta: {
+            ...state.document.meta,
+            wallpaperOffset: offset,
+          },
+        },
+      })),
+
+    shiftWallHomeAnchors: (dx, dy) => {
+      if (dx === 0 && dy === 0) return;
+      set((state) => {
+        const wallpaper = state.document.meta.wallpaperOffset ?? { x: 0, y: 0 };
+        const home = state.document.meta.homeOrigin ?? { x: 0, y: 0 };
+        return {
+          document: {
+            ...state.document,
+            meta: {
+              ...state.document.meta,
+              wallpaperOffset: { x: wallpaper.x + dx, y: wallpaper.y + dy },
+              homeOrigin: { x: home.x + dx, y: home.y + dy },
+            },
+          },
+        };
+      });
+    },
+
+    normalizeWallHomeOrigin: () =>
+      set((state) => {
+        const { wallBounds, homeOrigin, wallpaperOffset } = state.document.meta;
+        const home = homeOrigin ?? { x: 0, y: 0 };
+        if (home.x === 0 && home.y === 0) return state;
+        if (
+          wallBounds.width > DEFAULT_WALL_BOUNDS.width ||
+          wallBounds.height > DEFAULT_WALL_BOUNDS.height
+        ) {
+          return state;
+        }
+
+        const dx = -home.x;
+        const dy = -home.y;
+        const wallpaper = wallpaperOffset ?? { x: 0, y: 0 };
+        return {
+          document: {
+            ...state.document,
+            meta: {
+              ...state.document.meta,
+              homeOrigin: { x: 0, y: 0 },
+              wallpaperOffset: { x: wallpaper.x + dx, y: wallpaper.y + dy },
+            },
+            objects: state.document.objects.map(
+              (object) =>
+                ({
+                  ...object,
+                  x: object.x + dx,
+                  y: object.y + dy,
+                }) as typeof object,
+            ),
+          },
+        };
+      }),
 
     reconcileWallBoundsFromObjects: () =>
       set((state) => {
@@ -357,5 +465,19 @@ export const useWallSceneStore = create<WallSceneStore>()(
           }),
         };
       }),
+
+    syncRemoteWallMeta: (meta) =>
+      set((state) => ({
+        document: {
+          ...state.document,
+          meta: {
+            ...state.document.meta,
+            wallBounds: clampWallBounds(meta.wallBounds, memorySafeWallMax()),
+            ...(meta.wallpaperOffset !== undefined
+              ? { wallpaperOffset: meta.wallpaperOffset }
+              : {}),
+          },
+        },
+      })),
   })),
 );

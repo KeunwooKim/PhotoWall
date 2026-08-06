@@ -1,4 +1,5 @@
 import { getStickerById } from "@/lib/stickers";
+import { randomHomePlacementPosition } from "@/lib/wall-scene/wall-home-placement";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneSticker } from "@/types/wall-scene-v2";
 
@@ -16,12 +17,9 @@ export function addStickerToWallScene(
   const width = definition.defaultWidth ?? definition.defaultSize ?? 64;
   const height = definition.defaultHeight ?? definition.defaultSize ?? 64;
 
-  const x =
-    options.position?.x ??
-    options.wallWidth * 0.2 + Math.random() * (options.wallWidth * 0.25);
-  const y =
-    options.position?.y ??
-    options.wallHeight * 0.15 + Math.random() * (options.wallHeight * 0.25);
+  const fallback = randomHomePlacementPosition(options.wallWidth, options.wallHeight);
+  const x = options.position?.x ?? fallback.x;
+  const y = options.position?.y ?? fallback.y;
 
   const objects = useWallSceneStore.getState().document.objects;
   const maxZ = objects.reduce((max, object) => Math.max(max, object.zIndex), 0);

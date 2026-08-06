@@ -1,9 +1,15 @@
 "use client";
 
-import type { RefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Layer, Line, Rect, Stage, Transformer } from "react-konva";
 import type Konva from "konva";
+import { configureKonvaForWallEditor, syncKonvaPixelRatioForWall } from "@/lib/konva-device";
+import {
+  applyOmniWallExpandAfterDrag,
+  getEffectiveWallBounds,
+  registerLiveWallBoundsApplier,
+} from "@/lib/wall-scene/wall-drag-expand";
 import type { WallThemeId } from "@/types/wall";
 import type { EditorMode } from "@/components/wall/editor-types";
 import { getWallTheme } from "@/lib/wall-themes";
@@ -26,10 +32,10 @@ import {
   type PenStyleId,
 } from "@/lib/wall-scene/pen";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
-import { clampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
+import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { containerCenter } from "@/lib/wall-scene/viewport-zoom";
 import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
-import { setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { setWallNodeDragging, isAnyWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
@@ -57,6 +63,8 @@ import {
   WallContextMenuProvider,
   type WallContextMenuRequestFn,
 } from "./wall-context-menu-context";
+
+configureKonvaForWallEditor();
 
 /** Client-px movement below this counts as a tap (clear selection). */
 const TAP_CLEAR_PX = 10;
@@ -166,7 +174,6 @@ export default function KonvaWallStage({
 
   const document = useWallSceneStore((s) => s.document);
   const selectedIds = useWallSceneStore((s) => s.selectedIds);
-  const snapGuides = useWallSceneStore((s) => s.snapGuides);
   const showGrid = useWallSceneStore((s) => s.showGrid);
   const gridSize = useWallSceneStore((s) => s.gridSize);
   const loadDocument = useWallSceneStore((s) => s.loadDocument);
@@ -190,7 +197,50 @@ export default function KonvaWallStage({
     height: number;
   } | null>(null);
   const marqueeStartRef = useRef<{ x1: number; y1: number; shiftKey: boolean } | null>(null);
-  const wallBounds = document.meta.wallBounds;
+  const wallBounds = getEffectiveWallBounds();
+  const wallpaperOffset = document.meta.wallpaperOffset ?? { x: 0, y: 0 };
+
+  useEffect(() => {
+    registerLiveWallBoundsApplier((layout) => {
+      const wrapper = wallStageRef?.current;
+      const stage = konvaStageRef?.current;
+      if (wrapper) {
+        wrapper.style.width = `${layout.bounds.width}px`;
+        wrapper.style.height = `${layout.bounds.height}px`;
+        wrapper.style.transform = `translate(calc(-50% + ${layout.panX}px), calc(-50% + ${layout.panY}px)) scale(${layout.viewportScale})`;
+        if (!showGrid) {
+          wrapper.style.backgroundPosition = `${layout.wallpaperOffsetX}px ${layout.wallpaperOffsetY}px`;
+        }
+      }
+      if (
+        stage &&
+        (stage.width() !== layout.bounds.width || stage.height() !== layout.bounds.height)
+      ) {
+        stage.width(layout.bounds.width);
+        stage.height(layout.bounds.height);
+      }
+    });
+    return () => registerLiveWallBoundsApplier(null);
+  }, [konvaStageRef, wallStageRef, showGrid]);
+
+  useEffect(() => {
+    if (isAnyWallNodeDragging()) return;
+    const stored = useWallSceneStore.getState().document.meta.wallBounds;
+    syncKonvaPixelRatioForWall(stored.width, stored.height, konvaStageRef?.current);
+  }, [document.meta.wallBounds.width, document.meta.wallBounds.height, konvaStageRef]);
+
+  const attachStageRef = useCallback(
+    (node: Konva.Stage | null) => {
+      if (konvaStageRef) {
+        (konvaStageRef as MutableRefObject<Konva.Stage | null>).current = node;
+      }
+      if (node) {
+        const stored = useWallSceneStore.getState().document.meta.wallBounds;
+        syncKonvaPixelRatioForWall(stored.width, stored.height, node);
+      }
+    },
+    [konvaStageRef],
+  );
 
   const primaryId = primarySelectedId(selectedIds);
 
@@ -305,9 +355,20 @@ export default function KonvaWallStage({
     [containerSize.width, containerSize.height, wallBounds.width, wallBounds.height],
   );
 
+  const frozenFitScaleRef = useRef<number | null>(null);
+
   useEffect(() => {
+    if (isAnyWallNodeDragging()) {
+      if (frozenFitScaleRef.current === null) {
+        frozenFitScaleRef.current = fitScale;
+      }
+      setViewportScale(frozenFitScaleRef.current * userZoom);
+      return;
+    }
+
+    frozenFitScaleRef.current = null;
     setViewportScale(fitScale * userZoom);
-  }, [fitScale, userZoom, setViewportScale]);
+  }, [fitScale, userZoom, setViewportScale, wallBounds.width, wallBounds.height]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -597,16 +658,16 @@ export default function KonvaWallStage({
   }, [transformableSelectedIds, editorMode, cropPhotoId, interactionLockId]);
 
   const visibleObjects = useMemo(() => {
+    const sorted = [...document.objects].sort((a, b) => a.zIndex - b.zIndex);
+    if (isAnyWallNodeDragging()) return sorted;
+
     const viewport = {
       x: 0,
       y: 0,
       width: wallBounds.width,
       height: wallBounds.height,
     };
-    return cullObjectsForViewport(
-      [...document.objects].sort((a, b) => a.zIndex - b.zIndex),
-      viewport,
-    );
+    return cullObjectsForViewport(sorted, viewport);
   }, [document.objects, wallBounds.height, wallBounds.width]);
 
   const broadcastSelection = useCallback(
@@ -763,12 +824,14 @@ export default function KonvaWallStage({
   const commitTransformSelection = useCallback(() => {
     useWallSceneStore.getState().setSnapGuides([]);
     const store = useWallSceneStore.getState();
-    const wall = store.document.meta.wallBounds;
+    applyOmniWallExpandAfterDrag(transformableSelectedIds);
+
     for (const id of transformableSelectedIds) {
       const node = nodeRegistry.current.get(id);
       if (!node) continue;
 
       const object = store.document.objects.find((item) => item.id === id);
+      const wall = getEffectiveWallBounds();
       let patch = {
         x: node.x(),
         y: node.y(),
@@ -778,7 +841,7 @@ export default function KonvaWallStage({
       };
       if (object) {
         const candidate = { ...object, ...patch };
-        const clamped = clampObjectPositionToWall(candidate, wall);
+        const clamped = hardClampObjectPositionToWall(candidate, wall);
         if (clamped) {
           patch = { ...patch, ...clamped };
           node.position(clamped);
@@ -789,6 +852,7 @@ export default function KonvaWallStage({
     }
     if (transformableSelectedIds.length > 0) {
       useWallSceneStore.getState().recordHistory();
+      useWallSceneStore.getState().reconcileWallBoundsFromObjects();
     }
   }, [patchObject, transformableSelectedIds]);
 
@@ -979,7 +1043,7 @@ export default function KonvaWallStage({
       if (!start || !stage) return;
 
       marqueeStartRef.current = null;
-      const pos = stage.getPointerPosition();
+      const pos = getWallPointer(stage);
       if (!pos) {
         setMarqueeRect(null);
         return;
@@ -1016,6 +1080,7 @@ export default function KonvaWallStage({
       clearSelection,
       document.objects,
       broadcastSelection,
+      getWallPointer,
       selectedIds,
       setSelectedIds,
     ],
@@ -1034,13 +1099,13 @@ export default function KonvaWallStage({
       if (isHandMode(editorModeRef.current)) return;
       if (editorModeRef.current !== "select") return;
 
-      const pos = stage.getPointerPosition();
+      const pos = getWallPointer(stage);
       if (!pos) return;
 
       marqueeStartRef.current = { x1: pos.x, y1: pos.y, shiftKey };
       setMarqueeRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
     },
-    [readOnly, reportPointer],
+    [getWallPointer, readOnly, reportPointer],
   );
 
   const handleStagePointerMove = useCallback(
@@ -1050,7 +1115,7 @@ export default function KonvaWallStage({
       const start = marqueeStartRef.current;
       if (!stage || !start) return;
 
-      const pos = stage.getPointerPosition();
+      const pos = getWallPointer(stage);
       if (!pos) return;
 
       const x = Math.min(start.x1, pos.x);
@@ -1059,7 +1124,7 @@ export default function KonvaWallStage({
       const height = Math.abs(pos.y - start.y1);
       setMarqueeRect({ x, y, width, height });
     },
-    [reportPointer],
+    [getWallPointer, reportPointer],
   );
 
   const handleStagePointerUp = useCallback(
@@ -1110,7 +1175,10 @@ export default function KonvaWallStage({
           backgroundSize: showGrid
             ? `${gridSize}px ${gridSize}px`
             : theme.backgroundSize,
-          backgroundPosition: showGrid ? undefined : theme.backgroundPosition,
+          backgroundPosition: showGrid
+            ? undefined
+            : `${wallpaperOffset.x}px ${wallpaperOffset.y}px`,
+          backgroundRepeat: showGrid ? undefined : theme.backgroundRepeat,
         }}
       >
         <WallContextMenuProvider
@@ -1119,7 +1187,7 @@ export default function KonvaWallStage({
           }
         >
           <Stage
-            ref={konvaStageRef}
+            ref={attachStageRef}
             width={wallBounds.width}
             height={wallBounds.height}
             onMouseDown={(e) => {
@@ -1169,11 +1237,7 @@ export default function KonvaWallStage({
                 listening={false}
               />
             )}
-            <SnapGuideLines
-              guides={snapGuides}
-              wallWidth={wallBounds.width}
-              wallHeight={wallBounds.height}
-            />
+            <SnapGuideLines />
             {!readOnly &&
               (editorMode === "select" || editorMode === "hand") &&
               !cropPhotoId &&

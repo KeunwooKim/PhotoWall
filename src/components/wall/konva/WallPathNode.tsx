@@ -5,7 +5,7 @@ import type Konva from "konva";
 import { Group, Line, Rect } from "react-konva";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
-import { applyDragSnapToNode, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
+import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
 import {
   applyGroupDrag,
   beginGroupDrag,
@@ -112,6 +112,7 @@ export default function WallPathNode({
     cancelLongPress();
     isDraggingRef.current = true;
     beginInteraction(false);
+    beginDragSnap(objectId);
     beginGroupDrag(objectId);
     setWallNodeDragging(objectId, true);
     onManipulationChange?.(true, objectId);
@@ -122,7 +123,7 @@ export default function WallPathNode({
       if (!isHighlighter) return;
       const node = e.target;
       applyDragSnapToNode(node, objectId);
-      applyGroupDrag(node);
+      applyGroupDrag(node, e.evt);
       broadcastLivePosition(objectId, { x: node.x(), y: node.y() });
     },
     [broadcastLivePosition, isHighlighter, objectId],

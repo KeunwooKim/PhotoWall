@@ -34,9 +34,10 @@ export interface WallTheme {
   description: string;
   background: string;
   preview: string;
-  /** CSS background-size — image 벽지는 cover 권장 */
+  /** CSS background-size — 기본 벽 크기 타일로 반복해 확장·축소가 보이게 */
   backgroundSize?: string;
   backgroundPosition?: string;
+  backgroundRepeat?: string;
 }
 
 export interface PublishedWall {
