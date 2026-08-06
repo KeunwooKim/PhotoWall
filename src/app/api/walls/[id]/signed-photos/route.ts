@@ -9,7 +9,7 @@ import {
   isOwnWallPhotoPath,
 } from "@/lib/storage/wall-photos";
 import { fetchWallFromDb } from "@/lib/supabase/walls";
-import { canEditWall } from "@/lib/supabase/wall-role";
+import { canEditWall, listWallCollaboratorUserIds } from "@/lib/supabase/wall-role";
 import { checkRateLimitAsync, getRequestIp } from "@/lib/rate-limit";
 
 const MAX_PATHS = 48;
@@ -63,12 +63,20 @@ export async function POST(
     const onWall = new Set(collectWallPhotoPathsFromCanvas(wall.canvasJson));
     if (wall.previewPath) onWall.add(wall.previewPath);
 
-    const maySignOwnUploads =
+    const maySignLiveUploads =
       !!user && (await canEditWall(supabase, wallId, user.id));
+
+    // Editors receive photos over realtime before autosave writes them into
+    // canvas_json. Allow signing collaborator-owned paths so peers can render.
+    const collaboratorIds = maySignLiveUploads
+      ? await listWallCollaboratorUserIds(supabase, wallId)
+      : null;
 
     toSign = paths.filter((path) => {
       if (onWall.has(path)) return true;
-      if (maySignOwnUploads && user && isOwnWallPhotoPath(path, user.id)) return true;
+      if (maySignLiveUploads && user && isOwnWallPhotoPath(path, user.id)) return true;
+      const ownerId = path.split("/")[0];
+      if (collaboratorIds?.has(ownerId)) return true;
       return false;
     });
   }

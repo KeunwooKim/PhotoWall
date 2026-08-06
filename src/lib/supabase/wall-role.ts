@@ -32,3 +32,30 @@ export async function canEditWall(
   const role = await getUserWallRole(supabase, wallId, userId);
   return role === "owner" || role === "editor";
 }
+
+/** Owner + wall_members — used to sign peer uploads before autosave lands in canvas_json. */
+export async function listWallCollaboratorUserIds(
+  supabase: SupabaseClient,
+  wallId: string,
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+
+  const { data: wall } = await supabase
+    .from("walls")
+    .select("owner_id")
+    .eq("id", wallId)
+    .maybeSingle();
+
+  if (wall?.owner_id) ids.add(wall.owner_id);
+
+  const { data: members } = await supabase
+    .from("wall_members")
+    .select("user_id")
+    .eq("wall_id", wallId);
+
+  for (const row of members ?? []) {
+    if (row.user_id) ids.add(row.user_id);
+  }
+
+  return ids;
+}
