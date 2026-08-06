@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Jua } from "next/font/google";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import HouseAdBanner from "@/components/HouseAdBanner";
 import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
 import CorkWallPreview from "@/components/home/CorkWallPreview";
@@ -225,6 +226,10 @@ export default function HomePage() {
 
           <div className="space-y-7 px-[18px] pb-28 pt-1">
             <AnnouncementBanner target="home" compact />
+            <HouseAdBanner
+              placement="home"
+              plan={profile?.plan === "premium" ? "premium" : user ? "free" : null}
+            />
             {authError && <AuthErrorBanner message={authError} />}
 
             <section className="home-hero-enter">
@@ -267,6 +272,7 @@ export default function HomePage() {
             friendCode={profile?.friendCode ?? null}
             user={!!user}
             authLoading={authLoading}
+            plan={profile?.plan === "premium" ? "premium" : user ? "free" : null}
             wallPreviewUrl={wallPreviewUrl}
             recentPhotos={recentPhotos}
             wallId={wallId}

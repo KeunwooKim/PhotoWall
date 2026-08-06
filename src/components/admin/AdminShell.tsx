@@ -12,6 +12,7 @@ const NAV = [
   { href: "/admin/users", label: "유저" },
   { href: "/admin/plans", label: "플랜" },
   { href: "/admin/announcements", label: "공지" },
+  { href: "/admin/banners", label: "광고" },
   { href: "/admin/operations", label: "기능 설정" },
 ];
 

@@ -5,9 +5,11 @@ import { Jua } from "next/font/google";
 import CorkWallPreview from "@/components/home/CorkWallPreview";
 import AuthButton from "@/components/auth/AuthButton";
 import AppDesktopSidebar from "@/components/layout/AppDesktopSidebar";
+import HouseAdBanner from "@/components/HouseAdBanner";
 import type { HomeNotice } from "@/components/home/HomeNotifications";
 import type { Friend } from "@/types/profile";
 import type { SharedWall } from "@/types/shared-wall";
+import type { UserPlan } from "@/lib/wall-quotas";
 import { authFetch } from "@/lib/auth/api-fetch";
 
 const displayFont = Jua({
@@ -23,6 +25,7 @@ export interface HomeDesktopProps {
   friendCode: string | null;
   user: boolean;
   authLoading: boolean;
+  plan?: UserPlan | null;
   wallPreviewUrl: string | null;
   recentPhotos: string[];
   wallId: string | null;
@@ -41,6 +44,7 @@ export default function HomeDesktop({
   friendCode: _friendCode,
   user,
   authLoading,
+  plan = null,
   wallPreviewUrl,
   recentPhotos,
   wallId,
@@ -100,6 +104,8 @@ export default function HomeDesktop({
             <AuthButton />
           </div>
         )}
+
+        <HouseAdBanner placement="home" plan={plan} />
 
         <section>
           <div className="mb-4 flex items-center justify-between">
