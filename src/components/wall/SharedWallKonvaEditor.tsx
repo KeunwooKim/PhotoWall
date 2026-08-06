@@ -87,11 +87,13 @@ interface SharedWallKonvaEditorProps {
 }
 
 export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEditorProps) {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [themeId, setThemeId] = useState<WallThemeId>(DEFAULT_WALL_THEME_ID);
   const [sharedWallTitle, setSharedWallTitle] = useState<string | null>(null);
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "not_found">("loading");
+  const [loadState, setLoadState] = useState<
+    "loading" | "ready" | "denied" | "not_found" | "unauthorized" | "rate_limited" | "error"
+  >("loading");
   const [isReady, setIsReady] = useState(false);
   const [isAssetsOpen, setIsAssetsOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -394,6 +396,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }, [autoSave]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
     if (!user) return;
 
     setLoadedCanvasJson(null);
@@ -407,6 +410,18 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       if (!result.ok) {
         if (result.reason === "viewer_only") {
           window.location.href = `/wall/${sharedId}`;
+          return;
+        }
+        if (result.reason === "unauthorized") {
+          setLoadState("unauthorized");
+          return;
+        }
+        if (result.reason === "rate_limited") {
+          setLoadState("rate_limited");
+          return;
+        }
+        if (result.reason === "error") {
+          setLoadState("error");
           return;
         }
         setLoadState(result.reason === "not_member" ? "denied" : "not_found");
@@ -425,7 +440,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       serverRevisionRef.current = doc.meta.revision ?? 0;
       setLoadState("ready");
     })();
-  }, [sharedId, user]);
+  }, [sharedId, user, isAuthLoading]);
 
   const handleDocumentChange = useCallback(
     (json: object) => {
@@ -935,7 +950,11 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [broadcastPresence, handleCopy, handleCut, handleDelete, handleDuplicate, handleGroup, handlePaste, handleSelectAll, handleUngroup, mode, nudgeSelection, redo, selectedIds.length, undo]);
 
-  if (!user) {
+  if (isAuthLoading || (user && loadState === "loading" && !loadedCanvasJson)) {
+    return <WallLoadingOverlay title="공동 벽 불러오는 중..." />;
+  }
+
+  if (!user || loadState === "unauthorized") {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6">
         <p className="text-center text-sm text-muted">공동 벽을 꾸미려면 로그인이 필요해요</p>
@@ -957,6 +976,38 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           className="mt-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-medium text-background"
         >
           벽 목록으로
+        </button>
+      </div>
+    );
+  }
+
+  if (loadState === "rate_limited") {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-lg font-medium text-foreground">요청이 많아요</p>
+        <p className="text-sm text-muted">잠시 후 다시 열어 주세요.</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-medium text-background"
+        >
+          다시 시도
+        </button>
+      </div>
+    );
+  }
+
+  if (loadState === "error") {
+    return (
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-lg font-medium text-foreground">공동 벽을 불러오지 못했어요</p>
+        <p className="text-sm text-muted">잠시 후 다시 시도해 주세요.</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-medium text-background"
+        >
+          다시 시도
         </button>
       </div>
     );

@@ -20,8 +20,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const walls = await getSharedWallsForUser(supabase, user.id);
-  return applyCookies(NextResponse.json(walls));
+  const result = await getSharedWallsForUser(supabase, user.id);
+  if (result.error) {
+    const status = /rate limit/i.test(result.error) ? 429 : 500;
+    return applyCookies(
+      NextResponse.json(
+        {
+          error: status === 429 ? "rate_limited" : "shared_walls_fetch_failed",
+          message:
+            status === 429
+              ? "요청이 많아요. 잠시 후 다시 시도해 주세요"
+              : "공동 벽 목록을 불러오지 못했어요",
+        },
+        { status },
+      ),
+    );
+  }
+  return applyCookies(NextResponse.json(result.walls));
 }
 
 export async function POST(request: NextRequest) {

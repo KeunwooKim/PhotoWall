@@ -79,6 +79,8 @@ export default function HomePage() {
       if (sharedRes.ok) {
         const walls = (await sharedRes.json()) as SharedWall[];
         setSharedWalls(Array.isArray(walls) ? walls : []);
+      } else {
+        setSharedWalls([]);
       }
 
       if (friendsRes.ok) {

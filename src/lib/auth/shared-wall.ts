@@ -9,7 +9,7 @@ export interface SharedWallEditData extends PublishedWall {
 
 export type FetchSharedWallResult =
   | { ok: true; wall: SharedWallEditData }
-  | { ok: false; reason: "not_found" | "not_member" | "viewer_only" | "unauthorized" };
+  | { ok: false; reason: "not_found" | "not_member" | "viewer_only" | "unauthorized" | "rate_limited" | "error" };
 
 export async function fetchSharedWallForEdit(wallId: string): Promise<FetchSharedWallResult> {
   const res = await authFetch(`/api/shared-walls/${wallId}`);
@@ -19,8 +19,10 @@ export async function fetchSharedWallForEdit(wallId: string): Promise<FetchShare
 
   const body = (await res.json().catch(() => ({}))) as { error?: string };
   if (res.status === 401) return { ok: false, reason: "unauthorized" };
+  if (res.status === 429) return { ok: false, reason: "rate_limited" };
   if (res.status === 403 && body.error === "viewer_only") return { ok: false, reason: "viewer_only" };
   if (res.status === 403 && body.error === "not_member") return { ok: false, reason: "not_member" };
+  if (res.status >= 500) return { ok: false, reason: "error" };
   return { ok: false, reason: "not_found" };
 }
 

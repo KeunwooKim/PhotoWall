@@ -236,25 +236,31 @@ export async function declineWallInvite(
 export async function getSharedWallsForUser(
   supabase: SupabaseClient,
   userId: string,
-): Promise<SharedWall[]> {
+): Promise<{ walls: SharedWall[]; error?: string }> {
   const { data: memberships, error } = await supabase
     .from("wall_members")
     .select("wall_id, role")
     .eq("user_id", userId);
 
-  if (error || !memberships?.length) return [];
+  if (error) {
+    return { walls: [], error: error.message };
+  }
+  if (!memberships?.length) return { walls: [] };
 
   const wallIds = memberships.map((m) => m.wall_id);
   const roleByWall = new Map(memberships.map((m) => [m.wall_id, m.role as WallMemberRole]));
 
-  const { data: walls } = await supabase
+  const { data: walls, error: wallsError } = await supabase
     .from("walls")
     .select("id, title, theme_id, updated_at, is_shared")
     .in("id", wallIds)
     .eq("is_shared", true)
     .order("updated_at", { ascending: false });
 
-  if (!walls) return [];
+  if (wallsError) {
+    return { walls: [], error: wallsError.message };
+  }
+  if (!walls) return { walls: [] };
 
   const { data: memberCounts } = await supabase
     .from("wall_members")
@@ -266,14 +272,16 @@ export async function getSharedWallsForUser(
     countByWall.set(row.wall_id, (countByWall.get(row.wall_id) ?? 0) + 1);
   }
 
-  return walls.map((wall) => ({
-    id: wall.id,
-    title: wall.title ?? "우리 인생네컷",
-    themeId: resolveWallThemeId(wall.theme_id),
-    updatedAt: wall.updated_at,
-    myRole: roleByWall.get(wall.id) ?? "viewer",
-    memberCount: countByWall.get(wall.id) ?? 1,
-  }));
+  return {
+    walls: walls.map((wall) => ({
+      id: wall.id,
+      title: wall.title ?? "우리 인생네컷",
+      themeId: resolveWallThemeId(wall.theme_id),
+      updatedAt: wall.updated_at,
+      myRole: roleByWall.get(wall.id) ?? "viewer",
+      memberCount: countByWall.get(wall.id) ?? 1,
+    })),
+  };
 }
 
 export async function getSharedWallMembers(
