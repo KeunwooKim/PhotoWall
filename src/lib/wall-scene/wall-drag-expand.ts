@@ -13,6 +13,7 @@ import type { WallSceneObject } from "@/types/wall-scene-v2";
 import { DD } from "konva/lib/DragAndDrop";
 import { throttle } from "@/lib/throttle";
 import { LIVE_PATCH_MS } from "@/lib/wall-scene/realtime/live-object-patch";
+import { allowWallSizeChange } from "@/lib/wall-scene/wall-size-lock";
 
 export type LiveWallLayout = {
   bounds: WallBounds;
@@ -218,6 +219,11 @@ export function applyWallExpandDuringDrag(movingIds: Iterable<string>): boolean 
     shiftX === 0 &&
     shiftY === 0
   ) {
+    return false;
+  }
+
+  // Size lock: block grow (toast). Allow shrink-only follow so content can reclaim padding.
+  if ((dW > 0 || dH > 0) && !allowWallSizeChange()) {
     return false;
   }
 

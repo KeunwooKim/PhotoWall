@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { HomeIcon, MenuIcon } from "@/components/wall/EditorToolDock";
+import { isWallSizeLocked, setWallSizeLocked } from "@/lib/wall-scene/wall-size-lock";
 
 type Panel = "menu" | "settings";
 
@@ -20,10 +21,6 @@ interface EditorMenuDrawerProps {
   onExport?: () => void;
   isExporting?: boolean;
   onSave?: () => void;
-  onOpenAssets?: () => void;
-  onBringOntoWall?: () => void;
-  onExpandWall?: () => void;
-  onShrinkWall?: () => void;
   homeHref?: string;
 }
 
@@ -40,22 +37,20 @@ export default function EditorMenuDrawer({
   onExport,
   isExporting = false,
   onSave,
-  onOpenAssets,
-  onBringOntoWall,
-  onExpandWall,
-  onShrinkWall,
   homeHref = "/",
 }: EditorMenuDrawerProps) {
   const [panel, setPanel] = useState<Panel>("menu");
   const [draftTitle, setDraftTitle] = useState(wallTitle ?? "");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [lockWallSize, setLockWallSize] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setPanel("menu");
     setDraftTitle(wallTitle ?? "");
     setTitleError(null);
+    setLockWallSize(isWallSizeLocked());
   }, [isOpen, wallTitle]);
 
   useEffect(() => {
@@ -91,6 +86,12 @@ export default function EditorMenuDrawer({
     } finally {
       setIsSavingTitle(false);
     }
+  };
+
+  const toggleLockWallSize = () => {
+    const next = !lockWallSize;
+    setLockWallSize(next);
+    setWallSizeLocked(next);
   };
 
   const itemClass =
@@ -233,56 +234,30 @@ export default function EditorMenuDrawer({
                 </p>
               )}
 
-              {onOpenAssets && (
-                <button
-                  type="button"
-                  className={itemClass}
-                  onClick={() => {
-                    onClose();
-                    onOpenAssets();
-                  }}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={lockWallSize}
+                className={itemClass}
+                onClick={toggleLockWallSize}
+              >
+                <LockWallIcon />
+                <span className="flex-1">벽 크기 고정</span>
+                <span
+                  className={`relative h-6 w-10 shrink-0 rounded-full transition ${
+                    lockWallSize ? "bg-foreground" : "bg-foreground/20"
+                  }`}
                 >
-                  <AssetsIcon />
-                  에셋 열기
-                </button>
-              )}
-
-              {onBringOntoWall && (
-                <button
-                  type="button"
-                  className={itemClass}
-                  onClick={() => runAndClose(() => onBringOntoWall())}
-                >
-                  <BringIcon />
-                  벽으로 가져오기
-                </button>
-              )}
-
-              {(onExpandWall || onShrinkWall) && (
-                <div className="my-2 border-t border-foreground/8" />
-              )}
-
-              {onExpandWall && (
-                <button
-                  type="button"
-                  className={itemClass}
-                  onClick={() => runAndClose(() => onExpandWall())}
-                >
-                  <ExpandWallIcon />
-                  벽 키우기
-                </button>
-              )}
-
-              {onShrinkWall && (
-                <button
-                  type="button"
-                  className={itemClass}
-                  onClick={() => runAndClose(() => onShrinkWall())}
-                >
-                  <ShrinkWallIcon />
-                  벽 줄이기
-                </button>
-              )}
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition ${
+                      lockWallSize ? "left-4" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+              <p className="-mt-2 px-3 text-[11px] leading-relaxed text-muted">
+                켜면 드래그로 벽이 커지지 않아요
+              </p>
             </div>
           )}
         </div>
@@ -358,56 +333,15 @@ function SaveIcon() {
   );
 }
 
-function AssetsIcon() {
+function LockWallIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="4" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="14" y="4" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="3" y="13" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="14" y="13" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-function BringIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" />
       <path
-        d="M12 8v8M8 12h8"
+        d="M8 10V7a4 4 0 018 0v3"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function ExpandWallIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="7" y="7" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ShrinkWallIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
