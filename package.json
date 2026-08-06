@@ -6,8 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "verify:supabase": "node scripts/verify-supabase-migrations.mjs"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "verify:supabase": "node scripts/verify-supabase-migrations.mjs",
+    "verify:wall-omni": "npx --yes tsx scripts/verify-wall-omni.ts",
+    "verify": "npm run typecheck && npm run lint && npm run verify:wall-omni",
+    "audit:gate": "npm run build && npm run verify && node scripts/verify-supabase-migrations.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.69.0",

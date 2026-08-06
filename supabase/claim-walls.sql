@@ -1,0 +1,7 @@
+-- 기존 owner_id가 null인 벽을 본인 계정에 연결 (선택)
+-- Supabase Dashboard → Authentication → Users 에서 본인 UUID 확인 후 실행
+--
+-- update walls
+-- set owner_id = 'YOUR-USER-UUID-HERE'
+-- where owner_id is null
+--   and id = 'YOUR-WALL-UUID-HERE';

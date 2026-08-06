@@ -960,6 +960,12 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | 2026-07-30 | **Presence session** — 같은 계정 다른 기기 선택 테두리·소프트락, 접속자 아바타 |
 | 2026-07-30 | **벽 밖 복구** — 드래그 클램프, 「벽으로 가져오기」 |
 | 2026-07-30 | **정리** — `CanvasHistory`·`canvas-viewport`·Fabric `getObjectsBounds`·`notion-ui` 제거, `PROJECT.md` 동기화 |
+| 2026-08-06 | **전체 점검** — 감사 규칙 6종, ESLint `.next` ignore, `npm run audit:gate` / CI, README 보강 |
+| 2026-08-06 | **SQL 버전관리** — `supabase/*.sql` gitignore 해제 후 repo 추적 |
+| 2026-08-06 | **하우스 배너** — admin 광고 CRUD, `HouseAdBanner`, placement별 노출 |
+| 2026-08-06 | **Discord 오류알림** — `error-notify` + admin discord-test |
+| 2026-08-06 | **스토리지 쿼터** — `/api/storage/usage`, plan별 용량 게이트 |
+| 2026-08-06 | **Omni 벽 확장** — 좌/상/우/하 grow·shrink, `homeOrigin` 예산 reclaim |
 
 ---
 
