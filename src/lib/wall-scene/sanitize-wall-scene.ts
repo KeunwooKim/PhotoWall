@@ -115,7 +115,7 @@ export function sanitizeWallScene(document: WallSceneDocument): WallSceneDocumen
   let homeOrigin = document.meta.homeOrigin;
 
   if (sizeLocked) {
-    // Lock: never grow — clamp content into the current wall.
+    // Lock: never change wall size — clamp content into the current wall.
     objects = objects.map((object) => clampObjectIntoWall(object, wall));
   } else {
     // Prefer growing west/north (shift + enlarge) over clamping content inward.
