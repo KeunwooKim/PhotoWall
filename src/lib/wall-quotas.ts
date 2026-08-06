@@ -13,23 +13,33 @@ export interface WallQuota {
   maxSceneObjects: number;
   /** Per-file upload limit for wall photos */
   maxPhotoBytes: number;
+  /** Total wall-photos storage per account */
+  maxStorageBytes: number;
 }
 
 /** Free defaults; `premium` plan is shown in UI as 플러스. */
 export const WALL_QUOTAS: Record<UserPlan, WallQuota> = {
   free: {
     maxOwnedSharedWalls: 1,
-    maxSceneBytes: 4 * 1024 * 1024,
-    maxSceneObjects: 160,
-    maxPhotoBytes: 10 * 1024 * 1024,
+    maxSceneBytes: 6 * 1024 * 1024,
+    maxSceneObjects: 200,
+    maxPhotoBytes: 12 * 1024 * 1024,
+    maxStorageBytes: 500 * 1024 * 1024,
   },
   premium: {
     maxOwnedSharedWalls: 5,
-    maxSceneBytes: 10 * 1024 * 1024,
-    maxSceneObjects: 400,
-    maxPhotoBytes: 24 * 1024 * 1024,
+    maxSceneBytes: 16 * 1024 * 1024,
+    maxSceneObjects: 500,
+    maxPhotoBytes: 30 * 1024 * 1024,
+    maxStorageBytes: 5 * 1024 * 1024 * 1024,
   },
 };
+
+/** Plus plan display prices (KRW). Payment is manual until billing is wired. */
+export const PLUS_PRICE_KRW = {
+  monthly: 3900,
+  yearly: 39000,
+} as const;
 
 export const ALLOWED_PHOTO_MIME_TYPES = [
   "image/jpeg",
@@ -119,16 +129,27 @@ export function checkSceneQuota(
 
 export function sceneQuotaMessage(violation: SceneQuotaViolation): string {
   if (violation === "too_large") {
-    return "개발 단계에서 벽 용량 제한을 넘었어요. 사진·스티커를 조금 줄여 주세요";
+    return "벽 용량 제한을 넘었어요. 사진·스티커를 조금 줄여 주세요";
   }
-  return "개발 단계에서 사진·스티커·텍스트 개수 제한을 넘었어요. 일부 항목을 지워 주세요";
+  return "사진·스티커·텍스트 개수 제한을 넘었어요. 일부 항목을 지워 주세요";
 }
 
 export function formatBytesShort(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
   const mb = bytes / (1024 * 1024);
-  return `${mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)}MB`;
+  if (mb < 1024) return `${mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)}MB`;
+  const gb = mb / 1024;
+  return `${gb >= 10 ? gb.toFixed(0) : gb.toFixed(1)}GB`;
+}
+
+export function formatStorageQuotaLabel(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) {
+    const gb = bytes / (1024 * 1024 * 1024);
+    return Number.isInteger(gb) ? `${gb}GB` : `${gb.toFixed(1)}GB`;
+  }
+  const mb = bytes / (1024 * 1024);
+  return Number.isInteger(mb) ? `${mb}MB` : `${mb.toFixed(0)}MB`;
 }
 
 export interface SceneUsage {
@@ -184,20 +205,20 @@ export function getDocumentSceneUsage(
 }
 
 export function objectLimitReachedMessage(usage: SceneUsage): string {
-  return `개발 단계에서 사진·스티커·텍스트 개수 제한을 넘었어요 (${usage.objectCount}/${usage.maxObjects}). 일부 항목을 지워 주세요`;
+  return `사진·스티커·텍스트 개수 제한을 넘었어요 (${usage.objectCount}/${usage.maxObjects}). 일부 항목을 지워 주세요`;
 }
 
 export function quotaHintDetail(usage: SceneUsage, _plan: UserPlan): string {
   if (usage.atObjectLimit) {
-    return "개발 단계에서 사진·스티커·텍스트 개수 제한을 넘었어요";
+    return "사진·스티커·텍스트 개수 제한을 넘었어요";
   }
   if (usage.atByteLimit) {
-    return "개발 단계에서 용량 제한을 넘었어요";
+    return "벽 용량 제한을 넘었어요";
   }
-  return "개발 단계에서 공간이 거의 찼어요";
+  return "공간이 거의 찼어요";
 }
 
-export type PhotoUploadViolation = "too_large" | "invalid_type";
+export type PhotoUploadViolation = "too_large" | "invalid_type" | "storage_full";
 
 export function checkPhotoUpload(
   file: { size: number; type: string },
@@ -215,6 +236,16 @@ export function checkPhotoUpload(
   return null;
 }
 
+export function checkAccountStorage(
+  usedBytes: number,
+  additionalBytes: number,
+  plan: UserPlan,
+): PhotoUploadViolation | null {
+  const max = getWallQuota(plan).maxStorageBytes;
+  if (usedBytes + additionalBytes > max) return "storage_full";
+  return null;
+}
+
 export function photoUploadMessage(
   violation: PhotoUploadViolation,
   plan: UserPlan,
@@ -222,8 +253,15 @@ export function photoUploadMessage(
   if (violation === "invalid_type") {
     return "JPG, PNG, WEBP, GIF만 올릴 수 있어요";
   }
+  if (violation === "storage_full") {
+    const cap = formatStorageQuotaLabel(getWallQuota(plan).maxStorageBytes);
+    if (plan === "free") {
+      return `저장 공간이 가득 찼어요 (최대 ${cap}). 플러스로 올리거나 사진을 지워 주세요`;
+    }
+    return `저장 공간이 가득 찼어요 (최대 ${cap}). 사진을 조금 지워 주세요`;
+  }
   const maxMb = Math.round(getWallQuota(plan).maxPhotoBytes / (1024 * 1024));
-  return `개발 단계에서는 사진을 ${maxMb}MB까지 올릴 수 있어요`;
+  return `사진은 ${maxMb}MB까지 올릴 수 있어요`;
 }
 
 export class PhotoUploadError extends Error {
@@ -246,3 +284,11 @@ export function assertPhotoUploadAllowed(
   if (violation) throw new PhotoUploadError(violation, plan);
 }
 
+export function assertAccountStorageAllowed(
+  usedBytes: number,
+  additionalBytes: number,
+  plan: UserPlan,
+): void {
+  const violation = checkAccountStorage(usedBytes, additionalBytes, plan);
+  if (violation) throw new PhotoUploadError(violation, plan);
+}
