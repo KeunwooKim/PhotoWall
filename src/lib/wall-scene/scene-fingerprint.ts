@@ -48,7 +48,8 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
 
 export function fingerprintPersistableScene(doc: WallSceneDocument): string {
   return JSON.stringify({
-    wallBounds: doc.meta.wallBounds satisfies WallBounds,
+    wallBounds: doc.meta.wallBounds,
+    wallSizeLocked: !!doc.meta.wallSizeLocked,
     objects: sortForFingerprint(doc.objects),
   });
 }

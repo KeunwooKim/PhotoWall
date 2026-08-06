@@ -44,6 +44,7 @@ const broadcastLiveWall = throttle(
   (payload: {
     wallBounds: WallBounds;
     wallpaperOffset: { x: number; y: number };
+    wallSizeLocked?: boolean;
     positions?: Array<{ id: string; x: number; y: number }>;
   }) => {
     broadcastWallLive(payload);
@@ -136,6 +137,7 @@ function pushLiveLayout(bounds: WallBounds, includePositions = false): void {
   broadcastLiveWall({
     wallBounds: bounds,
     wallpaperOffset,
+    wallSizeLocked: store.document.meta.wallSizeLocked,
     positions,
   });
 }

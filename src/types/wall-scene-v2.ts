@@ -27,6 +27,11 @@ export interface WallSceneMeta {
    * Updated with west/north content shifts so placement and “home” stay put.
    */
   homeOrigin?: { x: number; y: number };
+  /**
+   * When true, the wall must not grow (drag expand / sanitize reconcile).
+   * Shared via realtime + persist so all collaborators share the same lock.
+   */
+  wallSizeLocked?: boolean;
 }
 
 export interface WallSceneObjectBase {
