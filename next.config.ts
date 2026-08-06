@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["onnxruntime-web"],
   async headers() {
     const api = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://api.photowall.kr";
+    // Chromium CSP: https://host does NOT allow wss://host — Realtime needs both.
+    const apiWs = api.replace(/^http/i, "ws");
     const csp = [
       "default-src 'self'",
       "base-uri 'self'",
@@ -22,7 +24,7 @@ const nextConfig: NextConfig = {
       // Google OAuth avatars (lh3/lh4/…googleusercontent.com)
       `img-src 'self' data: blob: ${api} https://*.googleusercontent.com`,
       "font-src 'self' data:",
-      `connect-src 'self' ${api} https://*.ingest.us.sentry.io https://accounts.google.com https://www.googleapis.com`,
+      `connect-src 'self' ${api} ${apiWs} https://*.ingest.us.sentry.io https://accounts.google.com https://www.googleapis.com`,
       "worker-src 'self' blob:",
       "media-src 'self' blob:",
       "upgrade-insecure-requests",
