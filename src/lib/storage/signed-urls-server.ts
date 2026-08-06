@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/admin/service-client";
+import { toPublicSupabaseUrl } from "@/lib/supabase/env";
 import { WALL_PHOTOS_BUCKET } from "@/lib/storage/wall-photos";
 
-const SIGNED_URL_TTL_SEC = 3600;
+/** Short-lived URLs reduce reuse if a link is leaked or scraped. */
+const SIGNED_URL_TTL_SEC = 600;
 
 export async function createWallPhotoSignedUrls(
   paths: string[],
@@ -23,7 +25,7 @@ export async function createWallPhotoSignedUrls(
           .createSignedUrl(path, SIGNED_URL_TTL_SEC);
 
         if (!error && data?.signedUrl) {
-          signed[path] = data.signedUrl;
+          signed[path] = toPublicSupabaseUrl(data.signedUrl);
         }
       }),
     );
@@ -42,7 +44,7 @@ export async function createWallPhotoSignedUrls(
         .createSignedUrl(path, SIGNED_URL_TTL_SEC);
 
       if (!error && data?.signedUrl) {
-        signed[path] = data.signedUrl;
+        signed[path] = toPublicSupabaseUrl(data.signedUrl);
       }
     }),
   );

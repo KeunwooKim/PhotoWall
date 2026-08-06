@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { getSupabaseEnv } from "./env";
+import { getSupabaseAuthCookieOptions, getSupabaseEnv } from "./env";
 
 function getBearerToken(request: NextRequest): string | null {
   const authHeader = request.headers.get("Authorization");
@@ -35,8 +35,10 @@ export function createRouteClient(request: NextRequest) {
   }
 
   let response = NextResponse.next({ request });
+  const cookieOptions = getSupabaseAuthCookieOptions();
 
   const supabase = createServerClient(url, key, {
+    ...(cookieOptions ? { cookieOptions } : {}),
     cookies: {
       getAll() {
         return request.cookies.getAll();

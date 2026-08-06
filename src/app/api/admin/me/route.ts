@@ -6,15 +6,21 @@ import { createAdminClient } from "@/lib/admin/service-client";
 export async function GET(request: NextRequest) {
   const routeClient = createRouteClient(request);
   if (!routeClient) {
-    return NextResponse.json({ isAdmin: false, hasServiceRole: false }, { status: 503 });
+    return NextResponse.json({ isAdmin: false }, { status: 503 });
   }
 
   const { supabase, applyCookies } = routeClient;
   const user = await getRouteUser(supabase, request);
+  const isAdmin = isAdminUser(user);
+
+  // Do not advertise service-role presence to anonymous / non-admin callers.
+  if (!isAdmin) {
+    return applyCookies(NextResponse.json({ isAdmin: false }));
+  }
 
   return applyCookies(
     NextResponse.json({
-      isAdmin: isAdminUser(user),
+      isAdmin: true,
       hasServiceRole: !!createAdminClient(),
     }),
   );

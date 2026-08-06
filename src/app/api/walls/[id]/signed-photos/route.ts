@@ -3,9 +3,16 @@ import { createAdminClient } from "@/lib/admin/service-client";
 import { checkWallAccess } from "@/lib/supabase/wall-access";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { createWallPhotoSignedUrls } from "@/lib/storage/signed-urls-server";
-import { allPathsOwnedByUser } from "@/lib/storage/wall-photos";
+import {
+  allPathsOwnedByUser,
+  collectWallPhotoPathsFromCanvas,
+  isOwnWallPhotoPath,
+} from "@/lib/storage/wall-photos";
+import { fetchWallFromDb } from "@/lib/supabase/walls";
+import { canEditWall } from "@/lib/supabase/wall-role";
+import { checkRateLimitAsync, getRequestIp } from "@/lib/rate-limit";
 
-const MAX_PATHS = 64;
+const MAX_PATHS = 48;
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +27,11 @@ export async function POST(
 
   const { supabase, applyCookies } = routeClient;
   const user = await getRouteUser(supabase, request);
+  const ip = getRequestIp(request);
+
+  if (!(await checkRateLimitAsync(`signed-photos:${user?.id ?? ip}:${wallId}`, 30, 60_000))) {
+    return applyCookies(NextResponse.json({ error: "Too many requests" }, { status: 429 }));
+  }
 
   let paths: string[] = [];
   try {
@@ -40,7 +52,32 @@ export async function POST(
     return applyCookies(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
   }
 
-  const signedUrls = await createWallPhotoSignedUrls(paths, supabase, user?.id ?? null);
+  let toSign = paths;
+
+  if (access.allowed) {
+    const wall = await fetchWallFromDb(wallId, supabase);
+    if (!wall) {
+      return applyCookies(NextResponse.json({ error: "Wall not found" }, { status: 404 }));
+    }
+
+    const onWall = new Set(collectWallPhotoPathsFromCanvas(wall.canvasJson));
+    if (wall.previewPath) onWall.add(wall.previewPath);
+
+    const maySignOwnUploads =
+      !!user && (await canEditWall(supabase, wallId, user.id));
+
+    toSign = paths.filter((path) => {
+      if (onWall.has(path)) return true;
+      if (maySignOwnUploads && user && isOwnWallPhotoPath(path, user.id)) return true;
+      return false;
+    });
+  }
+
+  if (toSign.length === 0) {
+    return applyCookies(NextResponse.json({ signedUrls: {} }));
+  }
+
+  const signedUrls = await createWallPhotoSignedUrls(toSign, supabase, user?.id ?? null);
 
   if (Object.keys(signedUrls).length === 0 && !createAdminClient()) {
     return applyCookies(

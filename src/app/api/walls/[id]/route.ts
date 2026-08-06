@@ -2,11 +2,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { fetchWallFromDb } from "@/lib/supabase/walls";
 import { checkWallAccess } from "@/lib/supabase/wall-access";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
+import { checkRateLimitAsync, getRequestIp } from "@/lib/rate-limit";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const ip = getRequestIp(request);
+  if (!(await checkRateLimitAsync(`wall-get:${ip}`, 90, 60_000))) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const { id } = await params;
   const routeClient = createRouteClient(request);
   const supabase = routeClient?.supabase ?? null;

@@ -2,7 +2,7 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getSupabaseEnv, isSupabaseConfigured } from "./env";
+import { getSupabaseAuthCookieOptions, getSupabaseEnv, isSupabaseConfigured } from "./env";
 
 let client: SupabaseClient | null = null;
 
@@ -17,7 +17,8 @@ export function createClient() {
     if (!url || !key) {
       throw new Error("Supabase is not configured");
     }
-    client = createBrowserClient(url, key);
+    const cookieOptions = getSupabaseAuthCookieOptions();
+    client = createBrowserClient(url, key, cookieOptions ? { cookieOptions } : undefined);
   }
   return client;
 }
