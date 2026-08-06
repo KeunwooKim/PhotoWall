@@ -75,17 +75,25 @@ export default function AdminDashboardPage() {
       .catch(() => setDiscordConfigured(false));
   }, [loadStats]);
 
-  const sendDiscordTest = async () => {
+  const sendDiscordTest = async (sampleError = false) => {
     setDiscordBusy(true);
     setDiscordMessage(null);
     try {
-      const res = await authFetch("/api/admin/discord-test", { method: "POST" });
+      const res = await authFetch("/api/admin/discord-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sampleError ? { sampleError: true } : {}),
+      });
       const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !body.ok) {
         setDiscordMessage(body.error || "전송에 실패했어요");
         return;
       }
-      setDiscordMessage("Discord로 테스트 알림을 보냈어요");
+      setDiscordMessage(
+        sampleError
+          ? "Discord로 오류 알림 샘플을 보냈어요"
+          : "Discord로 테스트 알림을 보냈어요",
+      );
     } catch {
       setDiscordMessage("전송에 실패했어요");
     } finally {
@@ -116,18 +124,28 @@ export default function AdminDashboardPage() {
               {discordConfigured == null
                 ? "설정 확인 중…"
                 : discordConfigured
-                  ? "웹후크 연결됨 · 신규 가입/신고/제한 알림"
+                  ? "웹후크 연결됨 · 가입/신고/제한 + 앱 오류(한국어 요약)"
                   : "DISCORD_WEBHOOK_URL 미설정 (Vercel env 확인)"}
             </p>
           </div>
-          <button
-            type="button"
-            disabled={discordBusy || discordConfigured === false}
-            onClick={() => void sendDiscordTest()}
-            className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
-          >
-            {discordBusy ? "보내는 중…" : "테스트 알림"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={discordBusy || discordConfigured === false}
+              onClick={() => void sendDiscordTest(false)}
+              className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
+            >
+              {discordBusy ? "보내는 중…" : "테스트 알림"}
+            </button>
+            <button
+              type="button"
+              disabled={discordBusy || discordConfigured === false}
+              onClick={() => void sendDiscordTest(true)}
+              className="rounded-full border border-foreground/15 px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-50"
+            >
+              오류 샘플
+            </button>
+          </div>
         </div>
         {discordMessage && (
           <p className="mt-3 text-xs text-muted">{discordMessage}</p>

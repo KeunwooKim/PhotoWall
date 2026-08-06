@@ -10,6 +10,17 @@ export function captureException(
 ): void {
   console.error("[photowall]", error, extras ?? "");
   Sentry.captureException(error, extras ? { extra: extras } : undefined);
+
+  // Discord webhook is server-only (secret). Skip in browser bundles.
+  if (typeof window === "undefined") {
+    void import("@/lib/discord/error-notify")
+      .then(({ notifyAppError }) => {
+        notifyAppError({ error, extras });
+      })
+      .catch(() => {
+        // Never let alerting break the request path.
+      });
+  }
 }
 
 export function captureMessage(

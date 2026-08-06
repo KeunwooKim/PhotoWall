@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute } from "@/lib/admin/require-admin-route";
 import { postDiscordMessage } from "@/lib/discord/notify";
+import { notifyAppError } from "@/lib/discord/error-notify";
 
 /** POST — send a test Discord webhook message (admin only). */
 export async function POST(request: NextRequest) {
@@ -8,7 +9,23 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const { applyCookies } = auth.ctx;
-  const body = (await request.json().catch(() => ({}))) as { message?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    message?: string;
+    sampleError?: boolean;
+  };
+
+  if (body.sampleError) {
+    notifyAppError({
+      error: new Error("Discord 오류 알림 샘플 · QuotaExceededError 테스트"),
+      extras: {
+        route: "POST /api/admin/discord-test",
+        note: "관리자 테스트 알림입니다",
+      },
+      force: true,
+    });
+    return applyCookies(NextResponse.json({ ok: true, kind: "sampleError" }));
+  }
+
   const custom = body.message?.trim().slice(0, 200);
   const content =
     custom ||
