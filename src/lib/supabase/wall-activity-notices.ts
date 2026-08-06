@@ -72,8 +72,8 @@ export async function scheduleWallActivityNotices(
     updated_at: updatedAt,
   }));
 
-  const { error } = await supabase.from("wall_activity_notices").upsert(rows, {
-    onConflict: "wall_id,actor_id,recipient_id",
+  const { error } = await supabase.rpc("upsert_wall_activity_notices", {
+    p_rows: rows,
   });
 
   if (error) {

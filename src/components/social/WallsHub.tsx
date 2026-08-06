@@ -57,7 +57,18 @@ export default function WallsHub() {
         authFetch("/api/shared-walls/invitations"),
         authFetch("/api/profile"),
       ]);
-      if (wallsRes.ok) setWalls((await wallsRes.json()) as SharedWall[]);
+      if (wallsRes.ok) {
+        setWalls((await wallsRes.json()) as SharedWall[]);
+      } else if (wallsRes.status === 401) {
+        setWalls([]);
+        showMessage("로그인이 만료됐어요. 다시 로그인해 주세요");
+      } else if (wallsRes.status === 429) {
+        setWalls([]);
+        showMessage("요청이 많아요. 잠시 후 다시 시도해 주세요");
+      } else {
+        setWalls([]);
+        showMessage("공동 벽 목록을 불러오지 못했어요");
+      }
       if (friendsRes.ok) setFriends((await friendsRes.json()) as Friend[]);
       if (invitesRes.ok) setInvites((await invitesRes.json()) as WallMemberInvite[]);
       if (profileRes.ok) {
