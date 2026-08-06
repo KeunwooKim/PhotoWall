@@ -19,13 +19,19 @@ export const DEFAULT_WALL_BOUNDS: WallBounds = {
 
 export const WALL_EXPAND_MARGIN = 96;
 export const WALL_EXPAND_STEP = 160;
+/** Same as WALL_EXPAND_MARGIN — live/commit/sanitize share one padding so drop does not jump. */
+export const WALL_DRAG_EXPAND_MARGIN = WALL_EXPAND_MARGIN;
+/** Hard ceiling for logical wall size (Konva buffer stays capped separately). */
 export const WALL_MAX_WIDTH = 2400;
 export const WALL_MAX_HEIGHT = 4000;
 
-export function clampWallBounds(bounds: WallBounds): WallBounds {
+export function clampWallBounds(
+  bounds: WallBounds,
+  max: WallBounds = { width: WALL_MAX_WIDTH, height: WALL_MAX_HEIGHT },
+): WallBounds {
   return {
-    width: Math.min(WALL_MAX_WIDTH, Math.max(DEFAULT_WALL_BOUNDS.width, bounds.width)),
-    height: Math.min(WALL_MAX_HEIGHT, Math.max(DEFAULT_WALL_BOUNDS.height, bounds.height)),
+    width: Math.min(max.width, Math.max(DEFAULT_WALL_BOUNDS.width, bounds.width)),
+    height: Math.min(max.height, Math.max(DEFAULT_WALL_BOUNDS.height, bounds.height)),
   };
 }
 
@@ -49,30 +55,56 @@ function snapWallDimension(defaultSize: number, minRequired: number, maxSize: nu
   return Math.min(maxSize, defaultSize + steps * WALL_EXPAND_STEP);
 }
 
-/** Ideal wall size from content — empty canvas returns default bounds. */
-export function computeWallBoundsFromContent(objectBounds: ObjectBounds | null): WallBounds {
+/** Ideal wall size from content — empty canvas returns default bounds.
+ * Uses content span (+ margins on all sides) so west/north padding is not ignored.
+ */
+export function computeWallBoundsFromContent(
+  objectBounds: ObjectBounds | null,
+  max: WallBounds = { width: WALL_MAX_WIDTH, height: WALL_MAX_HEIGHT },
+): WallBounds {
   if (!objectBounds) return { ...DEFAULT_WALL_BOUNDS };
 
-  return clampWallBounds({
-    width: snapWallDimension(
-      DEFAULT_WALL_BOUNDS.width,
-      objectBounds.maxX + WALL_EXPAND_MARGIN,
-      WALL_MAX_WIDTH,
-    ),
-    height: snapWallDimension(
-      DEFAULT_WALL_BOUNDS.height,
-      objectBounds.maxY + WALL_EXPAND_MARGIN,
-      WALL_MAX_HEIGHT,
-    ),
-  });
+  const spanW = Math.max(0, objectBounds.maxX - objectBounds.minX);
+  const spanH = Math.max(0, objectBounds.maxY - objectBounds.minY);
+
+  return clampWallBounds(
+    {
+      width: snapWallDimension(
+        DEFAULT_WALL_BOUNDS.width,
+        spanW + WALL_EXPAND_MARGIN * 2,
+        max.width,
+      ),
+      height: snapWallDimension(
+        DEFAULT_WALL_BOUNDS.height,
+        spanH + WALL_EXPAND_MARGIN * 2,
+        max.height,
+      ),
+    },
+    max,
+  );
 }
 
-/** Expand or shrink wall to fit content (no-op when already correct). */
+/**
+ * Grow-only fit to current object positions (fixed origin).
+ * Exact pixel size (no step snap) so live drag expand does not jump on commit.
+ * Never shrinks — shrinking is manual (centered) via wall-resize.
+ * Callers that need west/north growth must apply omni shift first.
+ */
 export function reconcileWallBounds(
   current: WallBounds,
   objectBounds: ObjectBounds | null,
+  max: WallBounds = { width: WALL_MAX_WIDTH, height: WALL_MAX_HEIGHT },
 ): WallBounds | null {
-  const next = computeWallBoundsFromContent(objectBounds);
+  if (!objectBounds) return null;
+
+  const next = clampWallBounds(
+    {
+      width: Math.max(current.width, objectBounds.maxX + WALL_EXPAND_MARGIN),
+      height: Math.max(current.height, objectBounds.maxY + WALL_EXPAND_MARGIN),
+    },
+    max,
+  );
+
   if (next.width === current.width && next.height === current.height) return null;
   return next;
 }

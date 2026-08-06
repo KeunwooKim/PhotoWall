@@ -1,4 +1,5 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
+import type { WallBounds } from "@/lib/wall-bounds";
 import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
 import { dedupePresencePeers, mergePeerPresence, presencePeerKey } from "@/lib/wall-scene/presence-utils";
 import { throttle } from "@/lib/throttle";
@@ -6,6 +7,11 @@ import { throttle } from "@/lib/throttle";
 const CHANNEL_PREFIX = "shared-wall";
 const SYNC_EVENT = "wall-sync";
 const PRESENCE_LIVE_EVENT = "wall-presence-live";
+
+export type WallSyncMeta = {
+  wallBounds: WallBounds;
+  wallpaperOffset?: { x: number; y: number };
+};
 
 function channelTopic(wallId: string): string {
   return `${CHANNEL_PREFIX}:${wallId}`;
@@ -64,7 +70,14 @@ export type WallObjectPatch = Partial<
 
 type SyncPayload =
   | { kind: "hello"; sessionId: string; userId: string }
-  | { kind: "full"; sessionId: string; userId: string; objects: WallSceneObject[] }
+  | {
+      kind: "full";
+      sessionId: string;
+      userId: string;
+      objects: WallSceneObject[];
+      wallBounds?: WallBounds;
+      wallpaperOffset?: { x: number; y: number };
+    }
   | { kind: "clear"; sessionId: string; userId: string }
   | {
       kind: "patch";
@@ -87,12 +100,13 @@ export interface WallRealtimeOptions {
   displayName: string;
   color: string;
   supabase: SupabaseClient;
-  onRemoteFull: (objects: WallSceneObject[]) => void;
+  onRemoteFull: (objects: WallSceneObject[], meta?: WallSyncMeta) => void;
   onRemoteClear: () => void;
   onRemotePatch: (id: string, patch: WallObjectPatch) => void;
   onPresenceChange: (peers: WallPresenceState[]) => void;
   onSyncEvent?: (kind: SyncPayload["kind"]) => void;
   getLocalObjects: () => WallSceneObject[];
+  getLocalMeta: () => WallSyncMeta;
 }
 
 export class WallRealtimeSession {
@@ -132,8 +146,8 @@ export class WallRealtimeSession {
     });
   }
 
-  broadcastFull(objects: WallSceneObject[]): void {
-    this.sendFull(objects);
+  broadcastFull(objects: WallSceneObject[], meta?: WallSyncMeta): void {
+    this.sendFull(objects, meta ?? this.options.getLocalMeta());
   }
 
   broadcastClear(): void {
@@ -236,7 +250,7 @@ export class WallRealtimeSession {
       this.options.onSyncEvent?.(msg.kind);
 
       if (msg.kind === "hello") {
-        this.sendFull(this.options.getLocalObjects());
+        this.sendFull(this.options.getLocalObjects(), this.options.getLocalMeta());
         if (this.lastLivePresence) {
           void this.deliverPresenceLive({
             ...this.lastLivePresence,
@@ -247,7 +261,11 @@ export class WallRealtimeSession {
       }
 
       if (msg.kind === "full") {
-        this.options.onRemoteFull(msg.objects);
+        const meta =
+          msg.wallBounds != null
+            ? { wallBounds: msg.wallBounds, wallpaperOffset: msg.wallpaperOffset }
+            : undefined;
+        this.options.onRemoteFull(msg.objects, meta);
         return;
       }
 
@@ -368,12 +386,14 @@ export class WallRealtimeSession {
     });
   }
 
-  private sendFull(objects: WallSceneObject[]): void {
+  private sendFull(objects: WallSceneObject[], meta: WallSyncMeta): void {
     this.send({
       kind: "full",
       sessionId: this.options.sessionId,
       userId: this.options.userId,
       objects,
+      wallBounds: meta.wallBounds,
+      wallpaperOffset: meta.wallpaperOffset,
     });
   }
 

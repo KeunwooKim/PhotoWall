@@ -30,6 +30,22 @@ function structuralFingerprint(objects: Parameters<typeof structuralSceneFingerp
   return structuralSceneFingerprint(objects);
 }
 
+function wallMetaFingerprint(meta: {
+  wallBounds: { width: number; height: number };
+  wallpaperOffset?: { x: number; y: number };
+}): string {
+  const offset = meta.wallpaperOffset ?? { x: 0, y: 0 };
+  return `${meta.wallBounds.width}x${meta.wallBounds.height}:${offset.x},${offset.y}`;
+}
+
+function readLocalMeta() {
+  const meta = useWallSceneStore.getState().document.meta;
+  return {
+    wallBounds: meta.wallBounds,
+    wallpaperOffset: meta.wallpaperOffset,
+  };
+}
+
 export function useWallRealtime({
   wallId,
   userId,
@@ -56,6 +72,27 @@ export function useWallRealtime({
     selectedObjectIds: undefined as string[] | undefined,
     isManipulating: false,
   });
+
+  /** Live remote drag used to patch the store every frame and re-render the whole stage (Safari crash). */
+  const pendingRemotePatchesRef = useRef(new Map<string, WallObjectPatch>());
+  const flushRemoteStorePatchesRef = useRef(
+    throttle(() => {
+      const pending = pendingRemotePatchesRef.current;
+      if (pending.size === 0) return;
+
+      const entries = [...pending.entries()];
+      pending.clear();
+
+      skipLocalSync.current = true;
+      const store = useWallSceneStore.getState();
+      for (const [id, patch] of entries) {
+        store.patchObject(id, patch);
+      }
+      queueMicrotask(() => {
+        skipLocalSync.current = false;
+      });
+    }, 120),
+  );
 
   const flushPresenceRef = useRef(
     throttle(() => {
@@ -92,15 +129,20 @@ export function useWallRealtime({
         color,
         supabase,
         getLocalObjects: () => useWallSceneStore.getState().document.objects,
+        getLocalMeta: readLocalMeta,
         onSyncEvent: () => {
           if (!cancelled) setRemoteSyncCount((count) => count + 1);
         },
-        onRemoteFull: (objects) => {
+        onRemoteFull: (objects, meta) => {
           const localObjects = useWallSceneStore.getState().document.objects;
           if (objects.length === 0 && localObjects.length > 0) return;
           if (isAnyWallNodeDragging()) return;
 
           skipLocalSync.current = true;
+          // Apply wall meta before objects so sanitize does not clamp into a stale small wall.
+          if (meta?.wallBounds) {
+            useWallSceneStore.getState().syncRemoteWallMeta(meta);
+          }
           useWallSceneStore.getState().syncRemoteObjects(objects);
           applyRemoteObjectsToNodes(objects);
           queueMicrotask(() => {
@@ -120,11 +162,9 @@ export function useWallRealtime({
         onRemotePatch: (id, patch) => {
           applyRemotePatchToNode(id, patch);
 
-          skipLocalSync.current = true;
-          useWallSceneStore.getState().patchObject(id, patch);
-          queueMicrotask(() => {
-            skipLocalSync.current = false;
-          });
+          const pending = pendingRemotePatchesRef.current;
+          pending.set(id, { ...(pending.get(id) ?? {}), ...patch });
+          flushRemoteStorePatchesRef.current();
         },
         onPresenceChange: setPeers,
       });
@@ -150,10 +190,15 @@ export function useWallRealtime({
       }
 
       unsubStore = useWallSceneStore.subscribe(
-        (s) => structuralFingerprint(s.document.objects),
+        (s) =>
+          `${structuralFingerprint(s.document.objects)}|${wallMetaFingerprint(s.document.meta)}`,
         () => {
           if (skipLocalSync.current || !sessionRef.current) return;
-          sessionRef.current.broadcastFull(useWallSceneStore.getState().document.objects);
+          const state = useWallSceneStore.getState();
+          sessionRef.current.broadcastFull(state.document.objects, {
+            wallBounds: state.document.meta.wallBounds,
+            wallpaperOffset: state.document.meta.wallpaperOffset,
+          });
         },
       );
     })();
@@ -161,6 +206,8 @@ export function useWallRealtime({
     return () => {
       cancelled = true;
       unsubStore?.();
+      flushRemoteStorePatchesRef.current.flush();
+      pendingRemotePatchesRef.current.clear();
       setActiveWallRealtimeSession(null);
       const active = sessionRef.current;
       sessionRef.current = null;

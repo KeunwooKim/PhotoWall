@@ -1,6 +1,10 @@
 import type { WallTheme, WallThemeId } from "@/types/wall";
+import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
 
 export const DEFAULT_WALL_THEME_ID: WallThemeId = "linen-cream";
+
+/** One wallpaper tile = default wall size — expanding reveals more tiles. */
+export const WALL_TILE_SIZE = `${DEFAULT_WALL_BOUNDS.width}px ${DEFAULT_WALL_BOUNDS.height}px`;
 
 /** DB·localStorage에 남아 있는 구 CSS 벽지 ID → 이미지 벽지 */
 const LEGACY_THEME_IDS: Record<string, WallThemeId> = {
@@ -26,9 +30,10 @@ function imageWallTheme(
     name,
     description,
     background: url,
-    preview: `${url} center / cover no-repeat`,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
+    preview: `${url} 0 0 / ${WALL_TILE_SIZE} repeat`,
+    backgroundSize: WALL_TILE_SIZE,
+    backgroundPosition: "0 0",
+    backgroundRepeat: "repeat",
   };
 }
 

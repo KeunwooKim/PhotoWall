@@ -17,6 +17,16 @@ export interface WallSceneMeta {
   wallBounds: WallBounds;
   /** Monotonic revision for DB persist / conflict detection */
   revision: number;
+  /**
+   * Wallpaper tile offset in wall coordinates.
+   * Updated when content shifts for west/north expand so the pattern stays under objects.
+   */
+  wallpaperOffset?: { x: number; y: number };
+  /**
+   * Top-left of the stable default-size (780×1200) home frame in wall coordinates.
+   * Updated with west/north content shifts so placement and “home” stay put.
+   */
+  homeOrigin?: { x: number; y: number };
 }
 
 export interface WallSceneObjectBase {

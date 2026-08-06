@@ -1,6 +1,7 @@
 import { DEFAULT_WALL_BOUNDS, clampWallBounds } from "@/lib/wall-bounds";
 import { normalizeImageSrcForStorage } from "@/lib/storage/wall-photos";
 import { unpackCanvasJson } from "@/lib/wall-canvas-json";
+import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
 import {
   WALL_SCENE_VERSION,
   type WallSceneDocument,
@@ -184,15 +185,28 @@ function importFabricJson(fabricJson: object, wallBounds = DEFAULT_WALL_BOUNDS):
 }
 
 /** Load v2 scene or migrate legacy Fabric canvas_json */
-export function parseWallScene(json: object): WallSceneDocument {
+export function parseWallScene(
+  json: object,
+  options?: { sanitize?: boolean },
+): WallSceneDocument {
   const envelope = json as WallSceneEnvelope;
+  const shouldSanitize = options?.sanitize !== false;
 
+  let doc: WallSceneDocument;
   if (envelope.photowallScene && isSceneDocument(envelope.photowallScene)) {
-    return envelope.photowallScene;
+    doc = {
+      ...envelope.photowallScene,
+      meta: {
+        ...envelope.photowallScene.meta,
+        wallBounds: clampWallBounds(envelope.photowallScene.meta.wallBounds),
+      },
+    };
+  } else {
+    const { fabricJson, wallBounds } = unpackCanvasJson(json);
+    doc = importFabricJson(fabricJson, wallBounds);
   }
 
-  const { fabricJson, wallBounds } = unpackCanvasJson(json);
-  return importFabricJson(fabricJson, wallBounds);
+  return shouldSanitize ? sanitizeWallScene(doc) : doc;
 }
 
 export function serializeWallScene(doc: WallSceneDocument): WallSceneEnvelope {

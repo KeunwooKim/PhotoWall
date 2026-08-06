@@ -1,8 +1,17 @@
 import type Konva from "konva";
-import { clampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
+import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
+import {
+  applyOmniWallExpandAfterDrag,
+  beginLiveWallExpandSession,
+  cancelWallExpandDuringDrag,
+  getEffectiveWallBounds,
+  registerLiveContentShiftListener,
+  revertLiveWallBounds,
+  scheduleWallExpandDuringDrag,
+} from "@/lib/wall-scene/wall-drag-expand";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 
@@ -16,13 +25,23 @@ interface DragSession {
 let session: DragSession | null = null;
 const liveBroadcast = createLivePatchBroadcaster();
 
+registerLiveContentShiftListener((dx, dy) => {
+  if (!session || (dx === 0 && dy === 0)) return;
+  session.leaderStartX += dx;
+  session.leaderStartY += dy;
+  for (const start of session.startPositions.values()) {
+    start.x += dx;
+    start.y += dy;
+  }
+});
+
 function clampPatchForObject(
   object: WallSceneObject,
   patch: { x: number; y: number; rotation: number; scaleX: number; scaleY: number },
 ): { x: number; y: number; rotation: number; scaleX: number; scaleY: number } {
-  const wall = useWallSceneStore.getState().document.meta.wallBounds;
+  const wall = getEffectiveWallBounds();
   const candidate = { ...object, ...patch } as WallSceneObject;
-  const clamped = clampObjectPositionToWall(candidate, wall);
+  const clamped = hardClampObjectPositionToWall(candidate, wall);
   if (!clamped) return patch;
   return { ...patch, ...clamped };
 }
@@ -57,6 +76,8 @@ export function beginGroupDrag(leaderId: string): void {
     if (object) startPositions.set(id, { x: object.x, y: object.y });
   }
 
+  beginLiveWallExpandSession();
+
   session = {
     leaderId,
     leaderStartX: leader.x,
@@ -65,24 +86,30 @@ export function beginGroupDrag(leaderId: string): void {
   };
 }
 
-export function applyGroupDrag(leaderNode: Konva.Node): void {
+export function applyGroupDrag(
+  leaderNode: Konva.Node,
+  evt?: Event,
+): void {
   if (!session || session.leaderId !== leaderNode.id()) return;
 
   const deltaX = leaderNode.x() - session.leaderStartX;
   const deltaY = leaderNode.y() - session.leaderStartY;
-  if (deltaX === 0 && deltaY === 0) return;
+  if (deltaX !== 0 || deltaY !== 0) {
+    for (const [id, start] of session.startPositions) {
+      if (id === session.leaderId) continue;
 
-  for (const [id, start] of session.startPositions) {
-    if (id === session.leaderId) continue;
+      const node = getWallNode(id);
+      if (!node) continue;
 
-    const node = getWallNode(id);
-    if (!node) continue;
-
-    const x = start.x + deltaX;
-    const y = start.y + deltaY;
-    node.position({ x, y });
-    liveBroadcast(id, { x, y });
+      const x = start.x + deltaX;
+      const y = start.y + deltaY;
+      node.position({ x, y });
+      liveBroadcast(id, { x, y });
+    }
   }
+
+  // Expand after followers move so bounds include the whole selection.
+  scheduleWallExpandDuringDrag(session.startPositions.keys(), evt);
 }
 
 export function commitGroupDrag(leaderNode: Konva.Node): void {
@@ -96,7 +123,11 @@ export function commitGroupDrag(leaderNode: Konva.Node): void {
   const store = useWallSceneStore.getState();
   store.recordHistory();
 
-  for (const id of session.startPositions.keys()) {
+  const movingIds = [...session.startPositions.keys()];
+  cancelWallExpandDuringDrag();
+  applyOmniWallExpandAfterDrag(movingIds);
+
+  for (const id of movingIds) {
     const node = getWallNode(id) ?? (id === leaderNode.id() ? leaderNode : null);
     if (!node) continue;
 
@@ -117,6 +148,7 @@ export function commitGroupDrag(leaderNode: Konva.Node): void {
   }
 
   session = null;
+  store.reconcileWallBoundsFromObjects();
   store.bumpRevision();
 }
 
@@ -124,6 +156,10 @@ function commitSingleDrag(node: Konva.Node): void {
   const id = node.id();
   const store = useWallSceneStore.getState();
   const object = store.document.objects.find((item) => item.id === id);
+
+  cancelWallExpandDuringDrag();
+  applyOmniWallExpandAfterDrag([id]);
+
   let patch = {
     x: node.x(),
     y: node.y(),
@@ -138,9 +174,12 @@ function commitSingleDrag(node: Konva.Node): void {
   store.patchObject(id, patch);
   store.recordHistory();
   broadcastWallPatch(id, patch);
+  store.reconcileWallBoundsFromObjects();
 }
 
 export function cancelGroupDrag(): void {
   session = null;
   liveBroadcast.flush();
+  cancelWallExpandDuringDrag();
+  revertLiveWallBounds();
 }

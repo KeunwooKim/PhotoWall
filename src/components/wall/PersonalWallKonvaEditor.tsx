@@ -39,6 +39,8 @@ import {
 } from "@/lib/wall-scene/bring-objects-onto-wall";
 import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
+import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
+import { applyExpandWall, applyShrinkWall } from "@/lib/wall-scene/wall-resize";
 import { debounce } from "@/lib/debounce";
 import { useWallPreviewFlush } from "@/hooks/useWallPreviewFlush";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
@@ -263,33 +265,40 @@ export default function PersonalWallKonvaEditor() {
             wallIdRef.current,
             serverRevisionRef.current,
             userRef.current?.id,
-          ).then((result) => {
-            if (result.migratedDocument) {
-              useWallSceneStore.getState().loadDocument(result.migratedDocument);
-              lastSavedFingerprintRef.current = fingerprintPersistableScene(
-                result.migratedDocument,
-              );
-            }
-            if (result.restricted) {
-              showToast(result.message || "활동이 제한된 계정이에요");
-              return;
-            }
-            if (result.conflictWall) {
-              const doc = parseWallScene(result.conflictWall.canvasJson);
-              useWallSceneStore.getState().loadDocument(doc);
-              serverRevisionRef.current = sceneRevisionFromJson(
-                result.conflictWall.canvasJson,
-              );
-              lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
-              saveWall(result.conflictWall.themeId, result.conflictWall.canvasJson);
-              showToast(result.message || "다른 기기 저장본으로 맞췄어요");
-              return;
-            }
-            if (result.wall) {
-              adoptWallId(result.wall.id);
-              serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
-            }
-          });
+          )
+            .then((result) => {
+              if (result.migratedDocument) {
+                useWallSceneStore.getState().loadDocument(result.migratedDocument);
+                lastSavedFingerprintRef.current = fingerprintPersistableScene(
+                  result.migratedDocument,
+                );
+              }
+              if (result.restricted) {
+                showToast(result.message || "활동이 제한된 계정이에요");
+                return;
+              }
+              if (result.conflictWall) {
+                const doc = parseWallScene(result.conflictWall.canvasJson);
+                useWallSceneStore.getState().loadDocument(doc);
+                serverRevisionRef.current = sceneRevisionFromJson(
+                  result.conflictWall.canvasJson,
+                );
+                lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
+                saveWall(result.conflictWall.themeId, result.conflictWall.canvasJson);
+                showToast(result.message || "다른 기기 저장본으로 맞췄어요");
+                return;
+              }
+              if (result.wall) {
+                adoptWallId(result.wall.id);
+                serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+                return;
+              }
+              // Local already saved; cloud failed silently before — surface it
+              showToast("클라우드 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
+            })
+            .catch(() => {
+              showToast("클라우드 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
+            });
         }
       }, 1500),
     [persistLocal, adoptWallId, markPreviewDirty, showToast],
@@ -304,7 +313,8 @@ export default function PersonalWallKonvaEditor() {
     [autoSave],
   );
 
-  // Flush pending autosave on tab hide / refresh so edits aren't lost to the 1.5s debounce
+  // Flush pending autosave on tab hide / refresh / in-app navigate so edits
+  // aren't lost to the 1.5s debounce (cancel-on-unmount used to drop them).
   useEffect(() => {
     const flush = () => {
       autoSave.flush();
@@ -314,10 +324,13 @@ export default function PersonalWallKonvaEditor() {
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flush);
-      autoSave.cancel();
+      window.removeEventListener("beforeunload", flush);
+      // Flush before this effect tears down (dep change or leave)
+      flush();
     };
   }, [autoSave]);
 
@@ -380,6 +393,8 @@ export default function PersonalWallKonvaEditor() {
 
   useEffect(() => {
     return () => {
+      // Flush first while lastArgs still hold the real scene — then disarm.
+      autoSave.flush();
       persistEnabledRef.current = false;
       autoSave.cancel();
       useWallSceneStore.getState().reset();
@@ -401,16 +416,20 @@ export default function PersonalWallKonvaEditor() {
       const saved = loadWall();
       if (saved) {
         setThemeId(resolveWallThemeId(saved.themeId));
-        let doc = parseWallScene(saved.canvasJson);
+        const rawDoc = parseWallScene(saved.canvasJson, { sanitize: false });
+        let doc = sanitizeWallScene(rawDoc);
         const legacy = await migrateDataUrlsToGuestPhotos(doc);
         if (legacy.migrated > 0) {
           doc = legacy.document;
-          const json = serializeWallScene(doc);
-          saveWall(saved.themeId, json);
-          setLoadedCanvasJson(json);
-        } else {
-          setLoadedCanvasJson(saved.canvasJson);
         }
+        const json = serializeWallScene(doc);
+        const repaired =
+          legacy.migrated > 0 ||
+          fingerprintPersistableScene(rawDoc) !== fingerprintPersistableScene(doc);
+        if (repaired) {
+          saveWall(saved.themeId, json);
+        }
+        setLoadedCanvasJson(json);
         await prefetchWallScenePhotoUrls(doc, wallId);
         return;
       }
@@ -741,6 +760,22 @@ export default function PersonalWallKonvaEditor() {
     showToast(
       moved === 1 ? "벽 안으로 가져왔어요" : `${moved}개 항목을 벽 안으로 가져왔어요`,
     );
+  }, [showToast]);
+
+  const handleExpandWall = useCallback(() => {
+    if (!applyExpandWall()) {
+      showToast("더 이상 키울 수 없어요");
+      return;
+    }
+    showToast("벽을 키웠어요");
+  }, [showToast]);
+
+  const handleShrinkWall = useCallback(() => {
+    if (!applyShrinkWall()) {
+      showToast("더 이상 줄일 수 없어요");
+      return;
+    }
+    showToast("벽을 줄였어요");
   }, [showToast]);
 
   const handleBringForward = useCallback(() => {
@@ -1286,6 +1321,8 @@ export default function PersonalWallKonvaEditor() {
         onSave={() => void handleSave()}
         onOpenAssets={() => setIsAssetsOpen(true)}
         onBringOntoWall={handleBringOntoWall}
+        onExpandWall={handleExpandWall}
+        onShrinkWall={handleShrinkWall}
       />
 
       <div className="flex min-h-0 flex-1">
