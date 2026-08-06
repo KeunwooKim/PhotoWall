@@ -101,6 +101,7 @@ export function sanitizeWallScene(document: WallSceneDocument): WallSceneDocumen
   const sourceWall = document.meta.wallBounds ?? DEFAULT_WALL_BOUNDS;
   let objects = document.objects.map((object) => sanitizeObjectNumbers(object));
   let wall = clampWallBounds(sourceWall, safeMax);
+  const sizeLocked = !!document.meta.wallSizeLocked;
 
   // If we had to shrink a previously oversized wall, scale content proportionally
   // so collages don't all pile into a corner.
@@ -110,33 +111,42 @@ export function sanitizeWallScene(document: WallSceneDocument): WallSceneDocumen
     objects = objects.map((object) => scaleObjectToWall(object, scaleX, scaleY));
   }
 
-  // Prefer growing west/north (shift + enlarge) over clamping content inward.
-  const omni = computeOmniWallGrowFromContent(
-    getSceneObjectsBounds(objects),
-    wall,
-    safeMax,
-  );
   let wallpaperOffset = document.meta.wallpaperOffset;
   let homeOrigin = document.meta.homeOrigin;
-  if (omni) {
-    objects = shiftSceneObjects(objects, omni.shiftX, omni.shiftY);
-    wall = omni.bounds;
-    if (omni.shiftX !== 0 || omni.shiftY !== 0) {
-      const prevWp = wallpaperOffset ?? { x: 0, y: 0 };
-      const prevHome = homeOrigin ?? { x: 0, y: 0 };
-      wallpaperOffset = { x: prevWp.x + omni.shiftX, y: prevWp.y + omni.shiftY };
-      homeOrigin = { x: prevHome.x + omni.shiftX, y: prevHome.y + omni.shiftY };
+
+  if (sizeLocked) {
+    // Lock: never grow — clamp content into the current wall.
+    objects = objects.map((object) => clampObjectIntoWall(object, wall));
+  } else {
+    // Prefer growing west/north (shift + enlarge) over clamping content inward.
+    const omni = computeOmniWallGrowFromContent(
+      getSceneObjectsBounds(objects),
+      wall,
+      safeMax,
+    );
+    if (omni) {
+      objects = shiftSceneObjects(objects, omni.shiftX, omni.shiftY);
+      wall = omni.bounds;
+      if (omni.shiftX !== 0 || omni.shiftY !== 0) {
+        const prevWp = wallpaperOffset ?? { x: 0, y: 0 };
+        const prevHome = homeOrigin ?? { x: 0, y: 0 };
+        wallpaperOffset = { x: prevWp.x + omni.shiftX, y: prevWp.y + omni.shiftY };
+        homeOrigin = { x: prevHome.x + omni.shiftX, y: prevHome.y + omni.shiftY };
+      }
     }
+
+    objects = objects.map((object) => clampObjectIntoWall(object, wall));
+
+    const reconciled =
+      reconcileWallBounds(wall, getSceneObjectsBounds(objects), safeMax) ?? wall;
+    wall = clampWallBounds(reconciled, safeMax);
   }
 
-  objects = objects.map((object) => clampObjectIntoWall(object, wall));
-
-  const reconciled =
-    reconcileWallBounds(wall, getSceneObjectsBounds(objects), safeMax) ?? wall;
-  const nextWall = clampWallBounds(reconciled, safeMax);
+  const nextWall = wall;
 
   // Bake home back to (0,0) once the wall is default-sized again.
   if (
+    !sizeLocked &&
     nextWall.width <= DEFAULT_WALL_BOUNDS.width &&
     nextWall.height <= DEFAULT_WALL_BOUNDS.height &&
     ((homeOrigin?.x ?? 0) !== 0 || (homeOrigin?.y ?? 0) !== 0)

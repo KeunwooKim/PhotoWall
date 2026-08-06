@@ -93,6 +93,7 @@ export interface WallSceneStore {
   /** When wall is default-sized, bake homeOrigin back to (0,0). */
   normalizeWallHomeOrigin: () => void;
   reconcileWallBoundsFromObjects: () => void;
+  setWallSizeLocked: (locked: boolean) => void;
   bumpRevision: () => void;
   /** Merge authoritative remote snapshot without replacing unrelated local state. */
   syncRemoteObjects: (objects: WallSceneObject[]) => void;
@@ -100,6 +101,7 @@ export interface WallSceneStore {
   syncRemoteWallMeta: (meta: {
     wallBounds: WallBounds;
     wallpaperOffset?: { x: number; y: number };
+    wallSizeLocked?: boolean;
   }) => void;
 }
 
@@ -443,6 +445,21 @@ export const useWallSceneStore = create<WallSceneStore>()(
         return { document };
       }),
 
+    setWallSizeLocked: (locked) =>
+      set((state) => {
+        if (!!state.document.meta.wallSizeLocked === locked) return state;
+        return {
+          document: {
+            ...state.document,
+            meta: {
+              ...state.document.meta,
+              wallSizeLocked: locked,
+              revision: state.document.meta.revision + 1,
+            },
+          },
+        };
+      }),
+
     bumpRevision: () =>
       set((state) => ({
         document: {
@@ -476,6 +493,9 @@ export const useWallSceneStore = create<WallSceneStore>()(
             wallBounds: clampWallBounds(meta.wallBounds, memorySafeWallMax()),
             ...(meta.wallpaperOffset !== undefined
               ? { wallpaperOffset: meta.wallpaperOffset }
+              : {}),
+            ...(meta.wallSizeLocked !== undefined
+              ? { wallSizeLocked: meta.wallSizeLocked }
               : {}),
           },
         },

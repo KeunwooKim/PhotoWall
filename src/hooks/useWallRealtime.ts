@@ -17,6 +17,8 @@ import {
 } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
 import { panDeltaForWallLayoutChange } from "@/lib/wall-scene/viewport-stabilize";
+import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
+import { isWallSizeLocked } from "@/lib/wall-scene/wall-size-lock";
 import { presenceColorForUser } from "@/lib/wall-scene/presence-colors";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { structuralSceneFingerprint } from "@/lib/wall-scene/scene-fingerprint";
@@ -38,9 +40,10 @@ function structuralFingerprint(objects: Parameters<typeof structuralSceneFingerp
 function wallMetaFingerprint(meta: {
   wallBounds: { width: number; height: number };
   wallpaperOffset?: { x: number; y: number };
+  wallSizeLocked?: boolean;
 }): string {
   const offset = meta.wallpaperOffset ?? { x: 0, y: 0 };
-  return `${meta.wallBounds.width}x${meta.wallBounds.height}:${offset.x},${offset.y}`;
+  return `${meta.wallBounds.width}x${meta.wallBounds.height}:${offset.x},${offset.y}:L${meta.wallSizeLocked ? 1 : 0}`;
 }
 
 function readLocalMeta() {
@@ -48,6 +51,7 @@ function readLocalMeta() {
   return {
     wallBounds: meta.wallBounds,
     wallpaperOffset: meta.wallpaperOffset,
+    wallSizeLocked: meta.wallSizeLocked,
   };
 }
 
@@ -202,28 +206,57 @@ export function useWallRealtime({
               wallpaperOffset: store.document.meta.wallpaperOffset,
             };
             const prevScale = store.viewportScale;
+            const locked =
+              isWallSizeLocked() ||
+              live.wallSizeLocked === true ||
+              store.document.meta.wallSizeLocked === true;
+
+            const nextBounds = locked
+              ? {
+                  width: Math.min(live.wallBounds.width, prevMeta.wallBounds.width),
+                  height: Math.min(live.wallBounds.height, prevMeta.wallBounds.height),
+                }
+              : live.wallBounds;
 
             store.syncRemoteWallMeta({
-              wallBounds: live.wallBounds,
-              wallpaperOffset: live.wallpaperOffset,
+              wallBounds: nextBounds,
+              wallpaperOffset: locked ? prevMeta.wallpaperOffset : live.wallpaperOffset,
+              wallSizeLocked: live.wallSizeLocked,
             });
-            const delta = panDeltaForWallLayoutChange(
-              prevMeta,
-              {
-                wallBounds: live.wallBounds,
-                wallpaperOffset: live.wallpaperOffset,
-              },
-              prevScale,
-            );
-            if (delta.dx !== 0 || delta.dy !== 0) {
-              useWallSceneStore.getState().addPan(delta.dx, delta.dy);
+
+            if (!locked) {
+              const delta = panDeltaForWallLayoutChange(
+                prevMeta,
+                {
+                  wallBounds: nextBounds,
+                  wallpaperOffset: live.wallpaperOffset,
+                },
+                prevScale,
+              );
+              if (delta.dx !== 0 || delta.dy !== 0) {
+                useWallSceneStore.getState().addPan(delta.dx, delta.dy);
+              }
             }
 
             if (live.positions?.length) {
               const nextStore = useWallSceneStore.getState();
+              const wall = nextStore.document.meta.wallBounds;
               for (const pos of live.positions) {
-                nextStore.patchObject(pos.id, { x: pos.x, y: pos.y });
-                applyRemotePatchToNode(pos.id, { x: pos.x, y: pos.y });
+                const object = nextStore.document.objects.find((item) => item.id === pos.id);
+                let x = pos.x;
+                let y = pos.y;
+                if (locked && object) {
+                  const clamped = hardClampObjectPositionToWall(
+                    { ...object, x, y } as typeof object,
+                    wall,
+                  );
+                  if (clamped) {
+                    x = clamped.x;
+                    y = clamped.y;
+                  }
+                }
+                nextStore.patchObject(pos.id, { x, y });
+                applyRemotePatchToNode(pos.id, { x, y });
               }
             }
 
@@ -267,6 +300,7 @@ export function useWallRealtime({
           sessionRef.current.broadcastFull(state.document.objects, {
             wallBounds: state.document.meta.wallBounds,
             wallpaperOffset: state.document.meta.wallpaperOffset,
+            wallSizeLocked: state.document.meta.wallSizeLocked,
           });
         },
       );

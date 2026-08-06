@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { HomeIcon, MenuIcon } from "@/components/wall/EditorToolDock";
-import { isWallSizeLocked, setWallSizeLocked } from "@/lib/wall-scene/wall-size-lock";
+import { useWallSceneStore } from "@/stores/wall-scene-store";
+import { setWallSizeLocked } from "@/lib/wall-scene/wall-size-lock";
 
 type Panel = "menu" | "settings";
 
@@ -43,14 +44,13 @@ export default function EditorMenuDrawer({
   const [draftTitle, setDraftTitle] = useState(wallTitle ?? "");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
-  const [lockWallSize, setLockWallSize] = useState(false);
+  const lockWallSize = useWallSceneStore((s) => !!s.document.meta.wallSizeLocked);
 
   useEffect(() => {
     if (!isOpen) return;
     setPanel("menu");
     setDraftTitle(wallTitle ?? "");
     setTitleError(null);
-    setLockWallSize(isWallSizeLocked());
   }, [isOpen, wallTitle]);
 
   useEffect(() => {
@@ -89,9 +89,7 @@ export default function EditorMenuDrawer({
   };
 
   const toggleLockWallSize = () => {
-    const next = !lockWallSize;
-    setLockWallSize(next);
-    setWallSizeLocked(next);
+    setWallSizeLocked(!lockWallSize);
   };
 
   const itemClass =
@@ -256,7 +254,7 @@ export default function EditorMenuDrawer({
                 </span>
               </button>
               <p className="-mt-2 px-3 text-[11px] leading-relaxed text-muted">
-                켜면 드래그로 벽이 커지지 않아요
+                켜면 모두가 드래그로 벽을 키울 수 없어요
               </p>
             </div>
           )}

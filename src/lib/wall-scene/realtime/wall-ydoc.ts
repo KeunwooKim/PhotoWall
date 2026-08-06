@@ -11,6 +11,7 @@ const PRESENCE_LIVE_EVENT = "wall-presence-live";
 export type WallSyncMeta = {
   wallBounds: WallBounds;
   wallpaperOffset?: { x: number; y: number };
+  wallSizeLocked?: boolean;
 };
 
 /** Live wall grow/shrink while a peer is dragging (not yet committed to store on sender). */
@@ -84,6 +85,7 @@ type SyncPayload =
       objects: WallSceneObject[];
       wallBounds?: WallBounds;
       wallpaperOffset?: { x: number; y: number };
+      wallSizeLocked?: boolean;
     }
   | { kind: "clear"; sessionId: string; userId: string }
   | {
@@ -98,6 +100,7 @@ type SyncPayload =
       userId: string;
       wallBounds: WallBounds;
       wallpaperOffset?: { x: number; y: number };
+      wallSizeLocked?: boolean;
       positions?: Array<{ id: string; x: number; y: number }>;
     }
   | {
@@ -202,6 +205,7 @@ export class WallRealtimeSession {
       userId: this.options.userId,
       wallBounds: live.wallBounds,
       wallpaperOffset: live.wallpaperOffset,
+      wallSizeLocked: live.wallSizeLocked,
       positions: live.positions,
     });
   }
@@ -311,7 +315,11 @@ export class WallRealtimeSession {
       if (msg.kind === "full") {
         const meta =
           msg.wallBounds != null
-            ? { wallBounds: msg.wallBounds, wallpaperOffset: msg.wallpaperOffset }
+            ? {
+                wallBounds: msg.wallBounds,
+                wallpaperOffset: msg.wallpaperOffset,
+                wallSizeLocked: msg.wallSizeLocked,
+              }
             : undefined;
         this.options.onRemoteFull(msg.objects, meta);
         return;
@@ -333,6 +341,7 @@ export class WallRealtimeSession {
         this.options.onRemoteWallLive?.({
           wallBounds: msg.wallBounds,
           wallpaperOffset: msg.wallpaperOffset,
+          wallSizeLocked: msg.wallSizeLocked,
           positions: msg.positions,
         });
         return;
@@ -458,6 +467,7 @@ export class WallRealtimeSession {
       objects,
       wallBounds: meta.wallBounds,
       wallpaperOffset: meta.wallpaperOffset,
+      wallSizeLocked: meta.wallSizeLocked,
     });
   }
 
