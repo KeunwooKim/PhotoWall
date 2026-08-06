@@ -37,6 +37,7 @@ import {
 } from "@/lib/wall-scene/bring-objects-onto-wall";
 import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
+import { panDeltaForWallLayoutChange } from "@/lib/wall-scene/viewport-stabilize";
 import { applyExpandWall, applyShrinkWall } from "@/lib/wall-scene/wall-resize";
 import { debounce } from "@/lib/debounce";
 import { useWallPreviewFlush } from "@/hooks/useWallPreviewFlush";
@@ -278,7 +279,17 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           }
 
           // Real conflict: adopt server snapshot without coordinate re-bake.
+          const prev = useWallSceneStore.getState();
+          const prevMeta = {
+            wallBounds: prev.document.meta.wallBounds,
+            wallpaperOffset: prev.document.meta.wallpaperOffset,
+          };
+          const prevScale = prev.viewportScale;
           useWallSceneStore.getState().loadDocument(doc);
+          const delta = panDeltaForWallLayoutChange(prevMeta, doc.meta, prevScale);
+          if (delta.dx !== 0 || delta.dy !== 0) {
+            useWallSceneStore.getState().addPan(delta.dx, delta.dy);
+          }
           lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
           setThemeId(resolveWallThemeId(result.conflictWall!.themeId));
           showToast(result.message || "다른 사람 저장본으로 맞췄어요");

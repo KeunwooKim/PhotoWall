@@ -458,11 +458,12 @@ export const useWallSceneStore = create<WallSceneStore>()(
           const local = localById.get(remote.id);
           return (local ? { ...local, ...remote } : remote) as WallSceneObject;
         });
+        // Do not sanitize here — re-baking homeOrigin/wallpaper on peers shifts their camera.
         return {
-          document: withReconciledWallBounds({
+          document: {
             ...state.document,
             objects: sortByZIndex(merged),
-          }),
+          },
         };
       }),
 

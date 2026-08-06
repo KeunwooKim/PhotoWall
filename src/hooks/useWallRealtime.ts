@@ -15,6 +15,7 @@ import {
   isAnyWallNodeDragging,
 } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
+import { panDeltaForWallLayoutChange } from "@/lib/wall-scene/viewport-stabilize";
 import { presenceColorForUser } from "@/lib/wall-scene/presence-colors";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { structuralSceneFingerprint } from "@/lib/wall-scene/scene-fingerprint";
@@ -148,9 +149,20 @@ export function useWallRealtime({
 
           runWithoutWallPersist(() => {
             skipLocalSync.current = true;
-            // Apply wall meta before objects so sanitize does not clamp into a stale small wall.
+            const store = useWallSceneStore.getState();
+            const prevMeta = {
+              wallBounds: store.document.meta.wallBounds,
+              wallpaperOffset: store.document.meta.wallpaperOffset,
+            };
+            const prevScale = store.viewportScale;
+
+            // Apply wall meta before objects so peers share the same coordinate frame.
             if (meta?.wallBounds) {
-              useWallSceneStore.getState().syncRemoteWallMeta(meta);
+              store.syncRemoteWallMeta(meta);
+              const delta = panDeltaForWallLayoutChange(prevMeta, meta, prevScale);
+              if (delta.dx !== 0 || delta.dy !== 0) {
+                useWallSceneStore.getState().addPan(delta.dx, delta.dy);
+              }
             }
             useWallSceneStore.getState().syncRemoteObjects(objects);
             applyRemoteObjectsToNodes(objects);
