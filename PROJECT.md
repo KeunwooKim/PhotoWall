@@ -821,7 +821,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | **P1** | 에디터 크롬 (레일·햄버거·선택 바) | ✅ |
 | **P1** | Presence session + 벽 밖 복구 | ✅ |
 | **P2** | 텍스트 행간 | ⬜ |
-| **P2** | 2-browser 실시간 QA | 🔄 코드 경로 smoke OK (hello/full/patch/clear·Presence session) — 브라우저 실기기 확인 남음 |
+| **P2** | 2-browser 실시간 QA | ✅ `verify:wall-realtime` — Presence unit + live 2-session patch/full/clear |
 | **P3** | QR 실부스 E2E + 홈 CTA | ⬜ *(보류)* |
 | **P3** | 3단계 수익화 | ⬜ |
 
@@ -839,7 +839,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 - [x] Presence `selectedObjectIds[]` — 피어 다중 선택 테두리
 - [x] Phase C — 균등 배치·뒤집기·클립보드·스냅 가이드
 - [x] Phase D — 그룹/해제·레이어 패널·격자·컨텍스트 메뉴·형광펜 이동
-- [ ] 2-browser 실시간 QA 체크리스트 통과 (아래 §9.1)
+- [x] 2-browser 실시간 QA 체크리스트 통과 (아래 §9.1) — `npm run verify:wall-realtime` (Presence unit + live 2-session)
 - [x] `path` 타입 피어 선택 테두리 (형광펜)
 
 ### PPT Phase C 체크리스트
@@ -966,6 +966,8 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | 2026-08-06 | **Discord 오류알림** — `error-notify` + admin discord-test |
 | 2026-08-06 | **스토리지 쿼터** — `/api/storage/usage`, plan별 용량 게이트 |
 | 2026-08-06 | **Omni 벽 확장** — 좌/상/우/하 grow·shrink, `homeOrigin` 예산 reclaim |
+| 2026-08-06 | **Realtime QA** — `verify:wall-realtime` live 2-session (patch/full/clear/Presence) |
+| 2026-08-06 | **npm overrides** — postcss 8.5.26 + sharp 0.35.3 → audit 0 (Next 16 없이) |
 
 ---
 

@@ -28,6 +28,7 @@ npm run audit:gate
 | `npm run typecheck` | TypeScript strict |
 | `npm run lint` | ESLint (`src` + configs, `.next` 제외) |
 | `npm run verify:wall-omni` | 벽 확장/축소 수학 smoke |
+| `npm run verify:wall-realtime` | 공동벽 Presence + live 2-session sync |
 | `npm run verify:supabase` | RLS·Storage·admin 마이그레이션 확인 |
 | `npm run build` | 프로덕션 빌드 |
 
