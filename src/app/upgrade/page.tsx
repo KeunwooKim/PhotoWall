@@ -8,13 +8,19 @@ import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
 import {
   PLAN_UI_NAME,
+  PLUS_PRICE_KRW,
   WALL_QUOTAS,
+  formatStorageQuotaLabel,
   type UserPlan,
 } from "@/lib/wall-quotas";
 import type { Profile } from "@/types/profile";
 
 function formatMb(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))}MB`;
+}
+
+function formatPrice(krw: number): string {
+  return `₩${krw.toLocaleString("ko-KR")}`;
 }
 
 export default function UpgradePage() {
@@ -48,7 +54,7 @@ export default function UpgradePage() {
         body: JSON.stringify({
           category: "business",
           subject: "플러스 업그레이드 신청",
-          body: `플러스(유료) 플랜 업그레이드를 신청합니다.\n친구 코드: ${profile?.friendCode ?? "-"}\n유저 ID: ${user.id}`,
+          body: `플러스(유료) 플랜 업그레이드를 신청합니다.\n친구 코드: ${profile?.friendCode ?? "-"}\n유저 ID: ${user.id}\n희망 요금: 월 ${formatPrice(PLUS_PRICE_KRW.monthly)} / 연 ${formatPrice(PLUS_PRICE_KRW.yearly)}`,
         }),
       });
       if (!res.ok) {
@@ -71,7 +77,7 @@ export default function UpgradePage() {
           <p className="text-xs font-medium tracking-wide text-muted">요금제</p>
           <h1 className="text-2xl font-bold tracking-tight">{PLAN_UI_NAME.premium}</h1>
           <p className="text-sm leading-relaxed text-muted">
-            벽·사진·오브젝트 한도를 넓혀 더 자유롭게 꾸며 보세요. 결제 연동 전에는 신청 후
+            저장 공간과 꾸미기 한도를 넓혀 더 자유롭게 꾸며 보세요. 결제 연동 전에는 신청 후
             관리자가 부여합니다.
           </p>
         </header>
@@ -102,7 +108,16 @@ export default function UpgradePage() {
                     }`}
                   >
                     <p className="text-sm font-semibold">{PLAN_UI_NAME[key]}</p>
+                    {key === "premium" ? (
+                      <p className="mt-1 text-xs text-muted">
+                        {formatPrice(PLUS_PRICE_KRW.monthly)}/월 · 연{" "}
+                        {formatPrice(PLUS_PRICE_KRW.yearly)}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted">무료</p>
+                    )}
                     <ul className="mt-3 space-y-1.5 text-xs leading-relaxed text-muted">
+                      <li>저장 공간 {formatStorageQuotaLabel(q.maxStorageBytes)}</li>
                       <li>공동 벽 {q.maxOwnedSharedWalls}개</li>
                       <li>장면 오브젝트 {q.maxSceneObjects}개</li>
                       <li>장면 크기 {formatMb(q.maxSceneBytes)}</li>
@@ -124,7 +139,9 @@ export default function UpgradePage() {
                 onClick={() => void requestUpgrade()}
                 className="w-full rounded-2xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background transition active:scale-[0.99] disabled:opacity-50"
               >
-                {submitting ? "신청 중…" : `${PLAN_UI_NAME.premium} 신청하기`}
+                {submitting
+                  ? "신청 중…"
+                  : `${PLAN_UI_NAME.premium} 신청하기 · ${formatPrice(PLUS_PRICE_KRW.monthly)}/월`}
               </button>
             )}
           </>

@@ -1,7 +1,23 @@
 import { createClient } from "@/lib/supabase/client";
 import { putGuestPhoto } from "@/lib/storage/guest-photos";
 import { toWallPhotoRef, WALL_PHOTOS_BUCKET } from "@/lib/storage/wall-photos";
-import { assertPhotoUploadAllowed, type UserPlan } from "@/lib/wall-quotas";
+import {
+  assertAccountStorageAllowed,
+  assertPhotoUploadAllowed,
+  type UserPlan,
+} from "@/lib/wall-quotas";
+import { authFetch } from "@/lib/auth/api-fetch";
+
+async function assertStorageRoom(additionalBytes: number, plan: UserPlan): Promise<void> {
+  const res = await authFetch("/api/storage/usage");
+  if (!res.ok) {
+    // Don't block upload if usage API flaps — per-file limit still applies
+    return;
+  }
+  const body = (await res.json()) as { usedBytes?: number };
+  const used = typeof body.usedBytes === "number" ? body.usedBytes : 0;
+  assertAccountStorageAllowed(used, additionalBytes, plan);
+}
 
 export async function uploadWallPhoto(
   file: File | Blob,
@@ -17,6 +33,7 @@ export async function uploadWallPhoto(
         });
 
   assertPhotoUploadAllowed(asFile, plan);
+  await assertStorageRoom(asFile.size, plan);
 
   const supabase = createClient();
 

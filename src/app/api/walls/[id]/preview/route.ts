@@ -5,6 +5,9 @@ import { canEditWall } from "@/lib/supabase/wall-role";
 import { WALL_PHOTOS_BUCKET } from "@/lib/storage/wall-photos";
 import { wallPreviewStoragePath } from "@/lib/storage/wall-preview";
 import { checkRateLimitAsync } from "@/lib/rate-limit";
+import { getUserPlan } from "@/lib/auth/user-plan";
+import { checkAccountStorage, photoUploadMessage } from "@/lib/wall-quotas";
+import { getUserWallPhotoBytes } from "@/lib/storage/account-usage-server";
 
 const MAX_PREVIEW_BYTES = 2.5 * 1024 * 1024;
 
@@ -49,6 +52,18 @@ export async function POST(
   if (file.size <= 0 || file.size > MAX_PREVIEW_BYTES) {
     return applyCookies(
       NextResponse.json({ error: "invalid preview size" }, { status: 400 }),
+    );
+  }
+
+  const plan = await getUserPlan(user.id, supabase);
+  const usedBytes = await getUserWallPhotoBytes(user.id, supabase);
+  const storageViolation = checkAccountStorage(usedBytes, file.size, plan);
+  if (storageViolation) {
+    return applyCookies(
+      NextResponse.json(
+        { error: storageViolation, message: photoUploadMessage(storageViolation, plan) },
+        { status: 413 },
+      ),
     );
   }
 

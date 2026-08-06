@@ -4,6 +4,7 @@ import { resolvePhotoUrl } from "@/lib/storage/upload-photo";
 import { resolveWallPhotoSrc } from "@/lib/storage/resolve-wall-photos";
 import { isGuestPhotoRef } from "@/lib/storage/guest-photo-refs";
 import { isWallPhotoRef } from "@/lib/storage/wall-photos";
+import { randomHomePlacementPosition } from "@/lib/wall-scene/wall-home-placement";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
 import type { UserPlan } from "@/lib/wall-quotas";
@@ -42,12 +43,9 @@ export async function addPhotoToWallScene(
   const width = naturalW * scale;
   const height = naturalH * scale;
 
-  const x =
-    options.position?.x ??
-    options.wallWidth * 0.2 + Math.random() * (options.wallWidth * 0.2);
-  const y =
-    options.position?.y ??
-    options.wallHeight * 0.15 + Math.random() * (options.wallHeight * 0.2);
+  const fallback = randomHomePlacementPosition(options.wallWidth, options.wallHeight);
+  const x = options.position?.x ?? fallback.x;
+  const y = options.position?.y ?? fallback.y;
 
   const objects = useWallSceneStore.getState().document.objects;
   const maxZ = objects.reduce((max, o) => Math.max(max, o.zIndex), 0);
