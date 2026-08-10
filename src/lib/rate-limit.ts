@@ -1,11 +1,35 @@
 /**
  * Rate limiter — uses Upstash Redis REST when configured, otherwise
  * falls back to per-instance memory (dev / single-instance only).
+ * Production should set UPSTASH_REDIS_REST_* (see /api/health + admin dashboard).
  */
 
 import type { NextRequest } from "next/server";
 
 const memoryHits = new Map<string, { count: number; resetAt: number }>();
+let warnedMissingUpstash = false;
+
+export function isUpstashConfigured(): boolean {
+  return Boolean(
+    process.env.UPSTASH_REDIS_REST_URL?.trim() && process.env.UPSTASH_REDIS_REST_TOKEN?.trim(),
+  );
+}
+
+export type RateLimitBackend = "upstash" | "memory";
+
+export function getRateLimitBackend(): RateLimitBackend {
+  return isUpstashConfigured() ? "upstash" : "memory";
+}
+
+function warnIfProdMissingUpstash() {
+  if (warnedMissingUpstash) return;
+  if (process.env.NODE_ENV !== "production") return;
+  if (isUpstashConfigured()) return;
+  warnedMissingUpstash = true;
+  console.warn(
+    "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN missing in production — using per-instance memory",
+  );
+}
 
 /** Prefer Cloudflare / proxy client IP; fall back to a stable unknown bucket. */
 export function getRequestIp(request: Request | NextRequest): string {
@@ -73,6 +97,7 @@ export async function checkRateLimitAsync(
   limit: number,
   windowMs: number,
 ): Promise<boolean> {
+  warnIfProdMissingUpstash();
   const count = await upstashIncr(key, windowMs);
   if (count == null) return memoryCheck(key, limit, windowMs);
   return count <= limit;

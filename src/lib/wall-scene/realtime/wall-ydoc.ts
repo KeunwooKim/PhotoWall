@@ -12,6 +12,8 @@ export type WallSyncMeta = {
   wallBounds: WallBounds;
   wallpaperOffset?: { x: number; y: number };
   wallSizeLocked?: boolean;
+  /** Wallpaper theme — not part of canvas JSON; synced separately for live peers. */
+  themeId?: string;
 };
 
 /** Live wall grow/shrink while a peer is dragging (not yet committed to store on sender). */
@@ -30,6 +32,8 @@ function isSyncPayload(value: Record<string, unknown>): boolean {
     value.kind === "clear" ||
     value.kind === "saved" ||
     value.kind === "wall-live" ||
+    value.kind === "theme" ||
+    (value.kind === "remove" && Array.isArray(value.ids)) ||
     (value.kind === "patch" && typeof value.id === "string" && !!value.patch)
   );
 }
@@ -86,8 +90,21 @@ type SyncPayload =
       wallBounds?: WallBounds;
       wallpaperOffset?: { x: number; y: number };
       wallSizeLocked?: boolean;
+      themeId?: string;
     }
   | { kind: "clear"; sessionId: string; userId: string }
+  | {
+      kind: "remove";
+      sessionId: string;
+      userId: string;
+      ids: string[];
+    }
+  | {
+      kind: "theme";
+      sessionId: string;
+      userId: string;
+      themeId: string;
+    }
   | {
       kind: "saved";
       sessionId: string;
@@ -126,6 +143,8 @@ export interface WallRealtimeOptions {
   supabase: SupabaseClient;
   onRemoteFull: (objects: WallSceneObject[], meta?: WallSyncMeta) => void;
   onRemoteClear: () => void;
+  onRemoteRemove?: (ids: string[]) => void;
+  onRemoteTheme?: (themeId: string) => void;
   onRemotePatch: (id: string, patch: WallObjectPatch) => void;
   /** Peer is live-expanding the wall while dragging. */
   onRemoteWallLive?: (live: WallLiveSync) => void;
@@ -183,6 +202,30 @@ export class WallRealtimeSession {
       kind: "clear",
       sessionId: this.options.sessionId,
       userId: this.options.userId,
+    });
+  }
+
+  /** Lightweight delete sync — full scene broadcast can drop on Realtime size limits. */
+  broadcastRemove(ids: string[]): void {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return;
+    this.send({
+      kind: "remove",
+      sessionId: this.options.sessionId,
+      userId: this.options.userId,
+      ids: unique,
+    });
+  }
+
+  /** Wallpaper / theme change — not in canvas JSON, so needs its own sync. */
+  broadcastTheme(themeId: string): void {
+    const id = themeId.trim();
+    if (!id) return;
+    this.send({
+      kind: "theme",
+      sessionId: this.options.sessionId,
+      userId: this.options.userId,
+      themeId: id,
     });
   }
 
@@ -319,14 +362,33 @@ export class WallRealtimeSession {
                 wallBounds: msg.wallBounds,
                 wallpaperOffset: msg.wallpaperOffset,
                 wallSizeLocked: msg.wallSizeLocked,
+                themeId: msg.themeId,
               }
             : undefined;
         this.options.onRemoteFull(msg.objects, meta);
+        if (typeof msg.themeId === "string" && msg.themeId) {
+          this.options.onRemoteTheme?.(msg.themeId);
+        }
         return;
       }
 
       if (msg.kind === "clear") {
         this.options.onRemoteClear();
+        return;
+      }
+
+      if (msg.kind === "remove") {
+        const ids = Array.isArray(msg.ids)
+          ? msg.ids.filter((id): id is string => typeof id === "string" && id.length > 0)
+          : [];
+        if (ids.length > 0) this.options.onRemoteRemove?.(ids);
+        return;
+      }
+
+      if (msg.kind === "theme") {
+        if (typeof msg.themeId === "string" && msg.themeId) {
+          this.options.onRemoteTheme?.(msg.themeId);
+        }
         return;
       }
 
@@ -468,6 +530,7 @@ export class WallRealtimeSession {
       wallBounds: meta.wallBounds,
       wallpaperOffset: meta.wallpaperOffset,
       wallSizeLocked: meta.wallSizeLocked,
+      themeId: meta.themeId,
     });
   }
 

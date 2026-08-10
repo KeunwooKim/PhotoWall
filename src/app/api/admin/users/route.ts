@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute } from "@/lib/admin/require-admin-route";
-import { parseUserPlan } from "@/lib/auth/user-plan";
+import { resolveEffectivePlan } from "@/lib/auth/user-plan";
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminRoute(request);
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from("profiles")
     .select(
-      "id, display_name, friend_code, created_at, restricted_at, legal_consented_at, legal_version, plan",
+      "id, display_name, friend_code, created_at, restricted_at, legal_consented_at, legal_version, plan, plan_expires_at",
     )
     .order("created_at", { ascending: false })
     .limit(50);
@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
           legalConsentedAt: null as string | null,
           legalVersion: null as string | null,
           plan: "free" as const,
+          planExpiresAt: null as string | null,
         };
       }),
     );
@@ -96,7 +97,8 @@ export async function GET(request: NextRequest) {
         restrictedAt: profile.restricted_at ?? null,
         legalConsentedAt: profile.legal_consented_at ?? null,
         legalVersion: profile.legal_version ?? null,
-        plan: parseUserPlan(profile.plan),
+        plan: resolveEffectivePlan(profile.plan, profile.plan_expires_at),
+        planExpiresAt: profile.plan_expires_at ?? null,
       };
     }),
   );

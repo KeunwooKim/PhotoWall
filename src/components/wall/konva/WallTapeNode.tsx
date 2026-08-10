@@ -5,6 +5,7 @@ import { Group, Rect } from "react-konva";
 import type Konva from "konva";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { wrapKonvaNode } from "@/lib/wall-scene/realtime/wrap-konva-node";
 import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
 import {
   applyGroupDrag,
@@ -15,10 +16,12 @@ import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneTape } from "@/types/wall-scene-v2";
 import { useNodeContextTrigger } from "./useNodeContextTrigger";
+import { selectionStrokeWallPx } from "@/lib/wall-scene/selection-chrome";
 
 interface WallTapeNodeProps {
   object: WallSceneTape;
   readOnly?: boolean;
+  selected?: boolean;
   onSelect: (additive?: boolean) => void;
   onInteractionStart?: () => void;
   onManipulationChange?: (active: boolean, objectId: string) => void;
@@ -35,6 +38,7 @@ function applyTransformToNode(node: Konva.Group, object: WallSceneTape) {
 export default function WallTapeNode({
   object,
   readOnly = false,
+  selected = false,
   onSelect,
   onInteractionStart,
   onManipulationChange,
@@ -43,12 +47,14 @@ export default function WallTapeNode({
   const groupRef = useRef<Konva.Group | null>(null);
   const isDraggingRef = useRef(false);
   const objectId = object.id;
+  const viewportScale = useWallSceneStore((s) => s.viewportScale);
+  const strokeW = selectionStrokeWallPx(viewportScale);
 
   const attachGroupRef = useCallback(
     (node: Konva.Group | null) => {
       groupRef.current = node;
       registerNode(objectId, node);
-      registerWallNode(objectId, node);
+      registerWallNode(objectId, node ? wrapKonvaNode(node) : null);
     },
     [objectId, registerNode],
   );
@@ -85,8 +91,8 @@ export default function WallTapeNode({
   const handleDragMove = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
       const node = e.target;
-      applyDragSnapToNode(node, objectId);
-      applyGroupDrag(node, e.evt);
+      applyDragSnapToNode(wrapKonvaNode(node), objectId);
+      applyGroupDrag(wrapKonvaNode(node), e.evt);
       broadcastLivePosition(objectId, { x: node.x(), y: node.y() });
     },
     [broadcastLivePosition, objectId],
@@ -96,7 +102,7 @@ export default function WallTapeNode({
     (e: Konva.KonvaEventObject<DragEvent>) => {
       clearDragSnapGuides();
       broadcastLivePosition.flush();
-      commitGroupDrag(e.target);
+      commitGroupDrag(wrapKonvaNode(e.target));
       isDraggingRef.current = false;
       setWallNodeDragging(objectId, false);
       onManipulationChange?.(false, objectId);
@@ -144,6 +150,20 @@ export default function WallTapeNode({
         cornerRadius={2}
         perfectDrawEnabled={false}
       />
+      {selected && (
+        <Rect
+          x={-2}
+          y={-2}
+          width={object.width + 4}
+          height={object.height + 4}
+          stroke="#3b82f6"
+          strokeWidth={strokeW}
+          strokeScaleEnabled={false}
+          cornerRadius={3}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      )}
     </Group>
   );
 }

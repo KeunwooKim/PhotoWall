@@ -120,10 +120,59 @@ type StageLike = {
 };
 
 /**
- * Capture wallpaper + Konva objects (photos, stickers, drawings) as JPEG.
+ * Compose wallpaper + a stage scene data URL into a JPEG preview blob.
+ * Used for live stage export and for SPA-leave snapshots after the engine is gone.
+ */
+export async function composeWallPreviewJpeg(options: {
+  wallpaperSrc?: string | null;
+  sceneDataUrl: string;
+  wallWidth: number;
+  wallHeight: number;
+  wallpaperOffsetX?: number;
+  wallpaperOffsetY?: number;
+}): Promise<Blob> {
+  const width = Math.max(1, options.wallWidth);
+  const height = Math.max(1, options.wallHeight);
+  const scale = Math.min(2, PREVIEW_MAX_EDGE / Math.max(width, height));
+  const outW = Math.max(1, Math.round(width * scale));
+  const outH = Math.max(1, Math.round(height * scale));
+
+  const out = document.createElement("canvas");
+  out.width = outW;
+  out.height = outH;
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+
+  await paintWallpaper(
+    ctx,
+    resolveWallpaperSrc(options.wallpaperSrc ?? ""),
+    outW,
+    outH,
+    width,
+    height,
+    options.wallpaperOffsetX ?? 0,
+    options.wallpaperOffsetY ?? 0,
+  );
+
+  const sceneImg = await loadHtmlImage(options.sceneDataUrl);
+  ctx.drawImage(sceneImg, 0, 0, outW, outH);
+  return canvasToJpeg(out);
+}
+
+/** Sync stage → PNG data URL suitable for pending leave capture. */
+export function exportStageSceneDataUrl(stage: StageLike): string {
+  const pixelRatio = Math.min(
+    2,
+    PREVIEW_MAX_EDGE / Math.max(stage.width(), stage.height(), 1),
+  );
+  return stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+}
+
+/**
+ * Capture wallpaper + wall objects (photos, stickers, drawings) as JPEG.
  *
- * CSS wallpaper lives on a transformed wrapper — html2canvas often drops it.
- * We paint the wallpaper ourselves, then overlay scene pixels from Konva.
+ * CSS wallpaper may live on a transformed wrapper — html2canvas often drops it.
+ * We paint the wallpaper ourselves, then overlay scene pixels from the stage export.
  */
 export async function captureWallElementPreview(
   element: HTMLElement,
@@ -132,12 +181,7 @@ export async function captureWallElementPreview(
     stage?: StageLike | null;
   },
 ): Promise<Blob> {
-  const width = element.offsetWidth || element.clientWidth || 1;
-  const height = element.offsetHeight || element.clientHeight || 1;
-  const scale = Math.min(2, PREVIEW_MAX_EDGE / Math.max(width, height));
-  const outW = Math.max(1, Math.round(width * scale));
-  const outH = Math.max(1, Math.round(height * scale));
-
+  const wallpaperOffset = wallpaperOffsetFromElement(element);
   const wallpaperSrc =
     resolveWallpaperSrc(options?.wallpaperSrc ?? "") ??
     resolveWallpaperSrc(
@@ -146,13 +190,35 @@ export async function captureWallElementPreview(
         getComputedStyle(element).backgroundImage,
     );
 
+  // 1) Prefer stage export (Konva or Pixi) — wall-sized, not viewport-sized
+  const stage = options?.stage;
+  if (stage) {
+    try {
+      return await composeWallPreviewJpeg({
+        wallpaperSrc: options?.wallpaperSrc ?? wallpaperSrc,
+        sceneDataUrl: exportStageSceneDataUrl(stage),
+        wallWidth: stage.width(),
+        wallHeight: stage.height(),
+        wallpaperOffsetX: wallpaperOffset.x,
+        wallpaperOffsetY: wallpaperOffset.y,
+      });
+    } catch {
+      // Canvas tainted or export failed — try DOM capture below
+    }
+  }
+
+  const width = element.offsetWidth || element.clientWidth || 1;
+  const height = element.offsetHeight || element.clientHeight || 1;
+  const scale = Math.min(2, PREVIEW_MAX_EDGE / Math.max(width, height));
+  const outW = Math.max(1, Math.round(width * scale));
+  const outH = Math.max(1, Math.round(height * scale));
+
   const out = document.createElement("canvas");
   out.width = outW;
   out.height = outH;
   const ctx = out.getContext("2d");
   if (!ctx) throw new Error("2d context unavailable");
 
-  const wallpaperOffset = wallpaperOffsetFromElement(element);
   await paintWallpaper(
     ctx,
     wallpaperSrc,
@@ -164,39 +230,34 @@ export async function captureWallElementPreview(
     wallpaperOffset.y,
   );
 
-  // 1) Prefer Konva export (includes stickers/photos/drawings at correct layout)
-  const stage = options?.stage;
-  if (stage) {
-    try {
-      const pixelRatio = Math.min(
-        2,
-        PREVIEW_MAX_EDGE / Math.max(stage.width(), stage.height(), 1),
-      );
-      const dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
-      const sceneImg = await loadHtmlImage(dataUrl);
-      ctx.drawImage(sceneImg, 0, 0, outW, outH);
-      return await canvasToJpeg(out);
-    } catch {
-      // Canvas tainted or export failed — try DOM capture below
-    }
-  }
-
-  // 2) Draw Konva layer canvases directly (avoids CSS transform on the frame)
+  // 2) Draw layer canvases directly (Konva .konvajs-content or Pixi canvas)
+  // Skip empty / cleared canvases — a destroyed Pixi buffer is often opaque black
+  // and would wipe the wallpaper we just painted.
   const konvaContent = element.querySelector(".konvajs-content") as HTMLElement | null;
+  const pixiCanvas = element.querySelector("canvas") as HTMLCanvasElement | null;
   const layerRoot = konvaContent ?? element;
-  const layerCanvases = layerRoot.querySelectorAll("canvas");
+  const layerCanvases = konvaContent
+    ? layerRoot.querySelectorAll("canvas")
+    : pixiCanvas
+      ? ([pixiCanvas] as unknown as NodeListOf<HTMLCanvasElement>)
+      : ([] as unknown as NodeListOf<HTMLCanvasElement>);
   if (layerCanvases.length > 0) {
+    let drew = false;
     for (const layer of layerCanvases) {
+      if (!layer.width || !layer.height) continue;
       try {
         ctx.drawImage(layer, 0, 0, outW, outH);
+        drew = true;
       } catch {
         // ignore individual layer failures
       }
     }
-    try {
-      return await canvasToJpeg(out);
-    } catch {
-      // Tainted composite — fall through to html2canvas / wallpaper-only
+    if (drew) {
+      try {
+        return await canvasToJpeg(out);
+      } catch {
+        // Tainted composite — fall through to html2canvas / wallpaper-only
+      }
     }
   }
 

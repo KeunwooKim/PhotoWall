@@ -10,3 +10,20 @@ export const TAPE_COLORS = [
   { id: "cream", color: "#fef3c7", label: "크림" },
   { id: "white", color: "#f5f5f4", label: "화이트" },
 ] as const;
+
+/** Re-export expanded tape style API. */
+export {
+  TAPE_PRESETS,
+  TAPE_SOLID_PRESETS,
+  TAPE_PATTERN_PRESETS,
+  TAPE_END_STYLES,
+  DEFAULT_TAPE_END_STYLE,
+  DEFAULT_TAPE_PATTERN,
+  getTapePreset,
+  tapePresetSwatchStyle,
+  clampTapeEndStyle,
+  clampTapePattern,
+  type TapeEndStyle,
+  type TapePatternId,
+  type TapePreset,
+} from "@/lib/wall-scene/tape-style";

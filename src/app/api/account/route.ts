@@ -1,11 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { deleteUserAccount } from "@/lib/auth/delete-account";
+import { rejectForeignOrigin } from "@/lib/auth/get-site-origin";
 import { checkRateLimitAsync } from "@/lib/rate-limit";
 import { captureException } from "@/lib/monitoring";
 
 /** DELETE — permanently delete the authenticated user's account. */
 export async function DELETE(request: NextRequest) {
+  const foreign = rejectForeignOrigin(request);
+  if (foreign) return foreign;
+
   const routeClient = createRouteClient(request);
   if (!routeClient) {
     return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });

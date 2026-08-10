@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type Konva from "konva";
-import KonvaWallStageClient from "@/components/wall/konva";
+import WallStageClient from "@/components/wall/WallStageClient";
+import type { WallStageExportHandle } from "@/components/wall/pixi/PixiWallStage";
 import WallSocialPanel from "./WallSocialPanel";
 import type { WallThemeId } from "@/types/wall";
 import { shareWallImage } from "@/lib/wall-export";
@@ -39,7 +39,7 @@ export default function WallViewer({
 }: WallViewerProps) {
   const { flags } = useFeatureFlags();
   const wallStageRef = useRef<HTMLDivElement>(null);
-  const konvaStageRef = useRef<Konva.Stage | null>(null);
+  const konvaStageRef = useRef<WallStageExportHandle | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const [interactive, setInteractive] = useState(!previewPath);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -213,7 +213,7 @@ export default function WallViewer({
       )}
 
       {interactive && loadedJson && (
-        <KonvaWallStageClient
+        <WallStageClient
           key={viewerKey}
           themeId={themeId}
           initialJson={loadedJson}

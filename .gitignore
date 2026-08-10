@@ -40,6 +40,12 @@ yarn-error.log*
 # source archives for sticker packs (extracted copies live in public/)
 /stickers-src/
 
+# wallpaper masters (processed copies live in public/wallpapers/)
+/.wallpaper-source/
+
+# local runtime logs (cron / pm2 / deploy)
+/logs/
+
 # design references / obsolete mocks (not shipped)
 /notion-ui/
 /에셋유아이.png

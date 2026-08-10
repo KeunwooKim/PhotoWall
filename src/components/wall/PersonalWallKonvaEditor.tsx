@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import KonvaWallStageClient from "@/components/wall/konva";
+import WallStageClient from "@/components/wall/WallStageClient";
 import EditorAssetsPanel from "@/components/wall/EditorAssetsPanel";
 import EditorToolDock, { MenuIcon } from "@/components/wall/EditorToolDock";
 import EditorToolRail from "@/components/wall/EditorToolRail";
@@ -12,6 +12,7 @@ import AuthButton from "@/components/auth/AuthButton";
 import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { WallThemeId } from "@/types/wall";
 import { useAuth } from "@/hooks/useAuth";
+import { usePersonalWallLease } from "@/hooks/usePersonalWallLease";
 import { fetchCloudWall, saveWallToCloud } from "@/lib/auth/migrate-wall";
 import { sceneRevisionFromJson } from "@/lib/wall-scene/scene-revision";
 import { clearWall, getOrCreateWallId, loadWall, saveWall, setPersonalWallId } from "@/lib/wall-storage";
@@ -41,11 +42,14 @@ import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-impo
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
 import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
 import { registerWallSizeLockBlockedHandler } from "@/lib/wall-scene/wall-size-lock";
+import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
 import { debounce } from "@/lib/debounce";
 import { useWallPreviewFlush } from "@/hooks/useWallPreviewFlush";
+import { usePersistWallViewport } from "@/hooks/usePersistWallViewport";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { EditorMode } from "@/components/wall/editor-types";
-import type Konva from "konva";
+import type { PublishedWall } from "@/types/wall";
+import type { WallStageExportHandle } from "@/components/wall/pixi/PixiWallStage";
 import {
   bringObjectForward,
   bringObjectsToFront,
@@ -69,7 +73,7 @@ import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import GuestSaveBanner from "@/components/wall/GuestSaveBanner";
 import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
-import { HIGHLIGHTER_LENGTH_PRESETS } from "@/lib/wall-scene/highlighter";
+import { TAPE_OPACITY_DEFAULT, TAPE_STROKE_WIDTH_DEFAULT } from "@/lib/wall-scene/highlighter";
 import {
   DEFAULT_PEN_STYLE_ID,
   PEN_COLORS,
@@ -78,18 +82,22 @@ import {
   type PenStyleId,
   type PenWidthByStyle,
 } from "@/lib/wall-scene/pen";
-import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
+import {
+  DEFAULT_TAPE_END_STYLE,
+  getTapePreset,
+  type TapeEndStyle,
+  type TapePreset,
+} from "@/lib/wall-scene/tape-style";
 import { wallTextFontVariables } from "@/lib/fonts/wall-text-fonts";
 
 const PEN_DRAW_COLORS = [...PEN_COLORS];
-const TAPE_DRAW_COLORS = TAPE_COLORS.map((t) => t.color);
 
 export default function PersonalWallKonvaEditor() {
   const { user, isLoading: authLoading } = useAuth();
   const [wallId, setWallId] = useState(() => getOrCreateWallId());
   const wallIdRef = useRef(wallId);
   const wallStageRef = useRef<HTMLDivElement>(null);
-  const konvaStageRef = useRef<Konva.Stage | null>(null);
+  const konvaStageRef = useRef<WallStageExportHandle | null>(null);
 
   const [themeId, setThemeId] = useState<WallThemeId>(DEFAULT_WALL_THEME_ID);
   const [loadedCanvasJson, setLoadedCanvasJson] = useState<object | null>(null);
@@ -105,12 +113,17 @@ export default function PersonalWallKonvaEditor() {
   const [mode, setMode] = useState<EditorMode>("select");
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [penColor, setPenColor] = useState<string>(PEN_DRAW_COLORS[0]);
-  const [tapeColor, setTapeColor] = useState<string>(TAPE_DRAW_COLORS[0]);
+  const [tapePreset, setTapePreset] = useState<TapePreset>(() => getTapePreset(undefined));
+  const [tapeEndStyle, setTapeEndStyle] = useState<TapeEndStyle>(DEFAULT_TAPE_END_STYLE);
   const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE_ID);
   const [penWidthByStyle, setPenWidthByStyle] = useState<PenWidthByStyle>(createDefaultPenWidthByStyle);
-  const [highlighterMaxLength, setHighlighterMaxLength] = useState<number>(
-    HIGHLIGHTER_LENGTH_PRESETS[1],
-  );
+  const [tapeStrokeWidth, setTapeStrokeWidth] = useState(TAPE_STROKE_WIDTH_DEFAULT);
+  const [tapeOpacity, setTapeOpacity] = useState(TAPE_OPACITY_DEFAULT);
+
+  const handleTapePresetChange = (preset: TapePreset) => {
+    setTapePreset(preset);
+    if (preset.opacity != null) setTapeOpacity(preset.opacity);
+  };
   const penStrokeWidth = penWidthByStyle[penStyleId];
   const setPenStrokeWidth = (width: number) => {
     setPenWidthByStyle((prev) => ({
@@ -130,6 +143,12 @@ export default function PersonalWallKonvaEditor() {
   const suppressWallIdReloadRef = useRef(false);
   /** Block autosave until cloud sync finishes (prevents empty local overwriting DB) */
   const cloudSyncDoneRef = useRef(false);
+  /** One cloud write at a time — overlapping saves with stale baseRevision cause 409 loops. */
+  const cloudSaveInFlightRef = useRef(false);
+  /** If edits arrived while a cloud save was in flight, retry once after it finishes. */
+  const pendingCloudSaveRef = useRef(false);
+  /** Exclusive editor lease — false when another device claimed the wall. */
+  const isEditorRef = useRef(true);
 
   themeIdRef.current = themeId;
   userRef.current = user;
@@ -252,67 +271,208 @@ export default function PersonalWallKonvaEditor() {
     isEnabled: () => !!userRef.current,
   });
 
+  const markCleanFromStore = useCallback(() => {
+    lastSavedFingerprintRef.current = fingerprintPersistableScene(
+      useWallSceneStore.getState().document,
+    );
+  }, []);
+
+  const autoSaveCancelRef = useRef<() => void>(() => {});
+  const queueDirtyAutosaveRef = useRef<() => void>(() => {});
+
+  /** Adopt server snapshot on OCC conflict without re-arming autosave. */
+  const adoptConflictWall = useCallback(
+    (conflictWall: PublishedWall, toastMessage?: string) => {
+      // Drop any pending debounce — it still carries a stale baseRevision.
+      autoSaveCancelRef.current();
+
+      const serverRev = sceneRevisionFromJson(conflictWall.canvasJson);
+      serverRevisionRef.current = serverRev;
+
+      // Avoid re-sanitizing before soft-match (same as shared walls).
+      const doc = parseWallScene(conflictWall.canvasJson, { sanitize: false });
+      const conflictFp = fingerprintPersistableScene(doc);
+      const localFp = fingerprintPersistableScene(useWallSceneStore.getState().document);
+
+      if (conflictFp === localFp) {
+        markCleanFromStore();
+        return false;
+      }
+
+      runWithoutWallPersist(() => {
+        useWallSceneStore.getState().loadDocument(doc);
+      }, 500);
+      // Fingerprint AFTER loadDocument sanitize — pre-load fp can re-dirty the store.
+      markCleanFromStore();
+      saveWall(conflictWall.themeId, conflictWall.canvasJson);
+      setThemeId(resolveWallThemeId(conflictWall.themeId));
+      if (toastMessage) showToast(toastMessage);
+      return true;
+    },
+    [markCleanFromStore, showToast],
+  );
+
+  const finishCloudSaveFlight = useCallback(() => {
+    cloudSaveInFlightRef.current = false;
+    if (!pendingCloudSaveRef.current) return;
+    pendingCloudSaveRef.current = false;
+    queueDirtyAutosaveRef.current();
+  }, []);
+
   const autoSave = useMemo(
     () =>
       debounce((json: object, fingerprint: string) => {
         if (!persistEnabledRef.current) return;
+        if (!isEditorRef.current) return;
         persistLocal(json);
-        lastSavedFingerprintRef.current = fingerprint;
         markPreviewDirty();
 
-        if (userRef.current) {
-          // Never autosave an empty scene to cloud — refresh race used to wipe DB
-          // while storage photos still existed. Explicit clear/save can still wipe.
-          const objectCount = useWallSceneStore.getState().document.objects.length;
-          if (objectCount === 0) return;
-
-          void saveWallToCloud(
-            themeIdRef.current,
-            json,
-            wallIdRef.current,
-            serverRevisionRef.current,
-            userRef.current?.id,
-          )
-            .then((result) => {
-              if (result.migratedDocument) {
-                useWallSceneStore.getState().loadDocument(result.migratedDocument);
-                lastSavedFingerprintRef.current = fingerprintPersistableScene(
-                  result.migratedDocument,
-                );
-              }
-              if (result.restricted) {
-                showToast(result.message || "활동이 제한된 계정이에요");
-                return;
-              }
-              if (result.conflictWall) {
-                const doc = parseWallScene(result.conflictWall.canvasJson);
-                useWallSceneStore.getState().loadDocument(doc);
-                serverRevisionRef.current = sceneRevisionFromJson(
-                  result.conflictWall.canvasJson,
-                );
-                lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
-                saveWall(result.conflictWall.themeId, result.conflictWall.canvasJson);
-                showToast(result.message || "다른 기기 저장본으로 맞췄어요");
-                return;
-              }
-              if (result.wall) {
-                adoptWallId(result.wall.id);
-                serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
-                return;
-              }
-              // Local already saved; cloud failed silently before — surface it
-              showToast("클라우드 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
-            })
-            .catch(() => {
-              showToast("클라우드 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
-            });
+        if (!userRef.current) {
+          lastSavedFingerprintRef.current = fingerprint;
+          return;
         }
+
+        // Never autosave an empty scene to cloud — refresh race used to wipe DB
+        // while storage photos still existed. Explicit clear/save can still wipe.
+        const objectCount = useWallSceneStore.getState().document.objects.length;
+        if (objectCount === 0) return;
+
+        if (cloudSaveInFlightRef.current) {
+          pendingCloudSaveRef.current = true;
+          return;
+        }
+
+        cloudSaveInFlightRef.current = true;
+        const baseRevision = serverRevisionRef.current;
+
+        void saveWallToCloud(
+          themeIdRef.current,
+          json,
+          wallIdRef.current,
+          baseRevision,
+          userRef.current?.id,
+        )
+          .then((result) => {
+            if (result.migratedDocument) {
+              runWithoutWallPersist(() => {
+                useWallSceneStore.getState().loadDocument(result.migratedDocument!);
+              }, 500);
+              markCleanFromStore();
+            }
+            if (result.restricted) {
+              showToast(result.message || "활동이 제한된 계정이에요");
+              return;
+            }
+            if (result.conflictWall) {
+              adoptConflictWall(
+                result.conflictWall,
+                result.message || "다른 기기에서 벽이 먼저 저장됐어요. 다시 불러왔어요.",
+              );
+              return;
+            }
+            if (result.wall) {
+              adoptWallId(result.wall.id);
+              serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+              // Only mark clean after a successful cloud write (not before).
+              markCleanFromStore();
+              // Upload while stage is still alive — leave-time flush is race-prone.
+              void flushPreview({ force: true, wallId: result.wall.id });
+              return;
+            }
+            // Local already saved; cloud failed — keep dirty so a later edit/flush retries.
+            showToast("클라우드 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
+          })
+          .catch(() => {
+            showToast("클라우드 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
+          })
+          .finally(() => {
+            finishCloudSaveFlight();
+          });
       }, 1500),
-    [persistLocal, adoptWallId, markPreviewDirty, showToast],
+    [
+      persistLocal,
+      adoptWallId,
+      markPreviewDirty,
+      flushPreview,
+      showToast,
+      adoptConflictWall,
+      markCleanFromStore,
+      finishCloudSaveFlight,
+    ],
   );
+
+  autoSaveCancelRef.current = () => autoSave.cancel();
+  queueDirtyAutosaveRef.current = () => {
+    if (!persistEnabledRef.current || !userRef.current) return;
+    if (!isEditorRef.current) return;
+    const doc = useWallSceneStore.getState().document;
+    if (doc.objects.length === 0) return;
+    const fp = fingerprintPersistableScene(doc);
+    if (fp === lastSavedFingerprintRef.current) return;
+    autoSave(serializeWallScene(doc), fp);
+  };
+
+  const handleLeaseKicked = useCallback(() => {
+    persistEnabledRef.current = false;
+    autoSaveCancelRef.current();
+    showToast("다른 기기에서 편집을 시작했어요");
+  }, [showToast]);
+
+  const {
+    isEditor,
+    reclaim: reclaimEditorLease,
+  } = usePersonalWallLease({
+    wallId,
+    userId: user?.id,
+    enabled: !!user && isReady && !isCloudSyncing && !authLoading,
+    onKicked: handleLeaseKicked,
+  });
+  isEditorRef.current = isEditor;
+
+  useEffect(() => {
+    if (!isEditor) {
+      persistEnabledRef.current = false;
+      autoSaveCancelRef.current();
+      return;
+    }
+    if (user && cloudSyncDoneRef.current) {
+      persistEnabledRef.current = true;
+    }
+  }, [isEditor, user]);
+
+  const handleReclaimEditor = useCallback(async () => {
+    if (!user) {
+      reclaimEditorLease();
+      return;
+    }
+    try {
+      const cloud = await fetchCloudWall();
+      if (cloud) {
+        const doc = parseWallScene(cloud.canvasJson, { sanitize: false });
+        runWithoutWallPersist(() => {
+          useWallSceneStore.getState().loadDocument(doc);
+        }, 500);
+        saveWall(cloud.themeId, cloud.canvasJson);
+        adoptWallId(cloud.id);
+        serverRevisionRef.current = sceneRevisionFromJson(cloud.canvasJson);
+        setThemeId(resolveWallThemeId(cloud.themeId));
+        setLoadedCanvasJson(cloud.canvasJson);
+        lastSavedFingerprintRef.current = fingerprintPersistableScene(
+          useWallSceneStore.getState().document,
+        );
+        await prefetchWallScenePhotoUrls(doc, cloud.id);
+      }
+    } catch {
+      // Still reclaim — OCC remains as safety net.
+    }
+    reclaimEditorLease();
+    if (cloudSyncDoneRef.current) persistEnabledRef.current = true;
+    showToast("이 기기에서 편집을 이어가요");
+  }, [user, reclaimEditorLease, adoptWallId, showToast]);
 
   const handleDocumentChange = useCallback(
     (json: object) => {
+      if (!isEditorRef.current) return;
       const fingerprint = fingerprintPersistableScene(useWallSceneStore.getState().document);
       if (!persistEnabledRef.current || fingerprint === lastSavedFingerprintRef.current) return;
       autoSave(json, fingerprint);
@@ -407,6 +567,9 @@ export default function PersonalWallKonvaEditor() {
       useWallSceneStore.getState().reset();
     };
   }, [autoSave]);
+
+  // After reset-on-unmount so this cleanup saves camera before store.reset().
+  usePersistWallViewport(wallId, isReady);
 
   useEffect(() => {
     if (suppressWallIdReloadRef.current) {
@@ -530,14 +693,29 @@ export default function PersonalWallKonvaEditor() {
           }
         }
 
+        // Cloud wins (or revisions equal) — sync quietly when already showing this wall.
+        const cloudFp = fingerprintPersistableScene(cloudDoc);
+        const storeFp = fingerprintPersistableScene(useWallSceneStore.getState().document);
+        const localFp = localDoc ? fingerprintPersistableScene(localDoc) : null;
+        const alreadySameContent = storeFp === cloudFp || localFp === cloudFp;
+
         // Write local BEFORE adoptWallId so any concurrent reload sees cloud data
         saveWall(cloud.themeId, cloud.canvasJson);
         adoptWallId(cloud.id);
         serverRevisionRef.current = cloudDoc.meta.revision ?? 0;
         setThemeId(resolveWallThemeId(cloud.themeId));
         await prefetchWallScenePhotoUrls(cloudDoc, cloud.id);
+        lastSavedFingerprintRef.current = cloudFp;
+
+        if (alreadySameContent) {
+          // Refs/localStorage updated; skip remount toast spam on every login.
+          if (storeFp !== cloudFp) {
+            setLoadedCanvasJson(cloud.canvasJson);
+          }
+          return;
+        }
+
         setLoadedCanvasJson(cloud.canvasJson);
-        lastSavedFingerprintRef.current = fingerprintPersistableScene(cloudDoc);
         showToast("클라우드 벽을 불러왔어요");
         return;
       }
@@ -962,71 +1140,138 @@ export default function PersonalWallKonvaEditor() {
 
   const handleThemeChange = useCallback(
     (next: WallThemeId) => {
+      if (!isEditorRef.current) {
+        showToast("다른 기기에서 편집 중이에요");
+        return;
+      }
       setThemeId(next);
       themeIdRef.current = next;
       const json = serializeWallScene(useWallSceneStore.getState().document);
       persistLocal(json);
       markPreviewDirty();
       if (userRef.current) {
+        if (cloudSaveInFlightRef.current) {
+          pendingCloudSaveRef.current = true;
+          return;
+        }
+        cloudSaveInFlightRef.current = true;
         void saveWallToCloud(
           next,
           json,
           wallIdRef.current,
           serverRevisionRef.current,
           userRef.current.id,
-        ).then((result) => {
-          if (result.migratedDocument) {
-            useWallSceneStore.getState().loadDocument(result.migratedDocument);
-          }
-          if (result.wall) {
-            adoptWallId(result.wall.id);
-            serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
-          }
-        });
+        )
+          .then((result) => {
+            if (result.migratedDocument) {
+              runWithoutWallPersist(() => {
+                useWallSceneStore.getState().loadDocument(result.migratedDocument!);
+              }, 500);
+              markCleanFromStore();
+            }
+            if (result.conflictWall) {
+              adoptConflictWall(
+                result.conflictWall,
+                result.message || "다른 기기에서 벽이 먼저 저장됐어요. 다시 불러왔어요.",
+              );
+              return;
+            }
+            if (result.wall) {
+              adoptWallId(result.wall.id);
+              serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+              markCleanFromStore();
+            }
+          })
+          .finally(() => {
+            finishCloudSaveFlight();
+          });
       }
     },
-    [persistLocal, adoptWallId, markPreviewDirty],
+    [
+      persistLocal,
+      adoptWallId,
+      markPreviewDirty,
+      adoptConflictWall,
+      markCleanFromStore,
+      finishCloudSaveFlight,
+      showToast,
+    ],
   );
 
   const handleSave = useCallback(async () => {
+    if (!isEditorRef.current) {
+      showToast("다른 기기에서 편집 중이에요");
+      return;
+    }
     const json = serializeWallScene(useWallSceneStore.getState().document);
     persistLocal(json);
     markPreviewDirty();
 
     if (user) {
-      const result = await saveWallToCloud(
-        themeId,
-        json,
-        wallIdRef.current,
-        serverRevisionRef.current,
-        user.id,
-      );
-      if (result.migratedDocument) {
-        useWallSceneStore.getState().loadDocument(result.migratedDocument);
-        lastSavedFingerprintRef.current = fingerprintPersistableScene(result.migratedDocument);
-      }
-      if (result.conflictWall) {
-        const doc = parseWallScene(result.conflictWall.canvasJson);
-        useWallSceneStore.getState().loadDocument(doc);
-        serverRevisionRef.current = sceneRevisionFromJson(result.conflictWall.canvasJson);
-        lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
-        showToast(result.message || "다른 기기 저장본으로 맞췄어요");
+      // Cancel pending autosave so it cannot POST with a stale base after this save.
+      autoSave.cancel();
+
+      if (cloudSaveInFlightRef.current) {
+        pendingCloudSaveRef.current = true;
+        showToast("저장 중이에요. 잠시만 기다려 주세요");
         return;
       }
-      if (result.restricted) {
-        showToast(result.message || "활동이 제한된 계정이에요");
+
+      cloudSaveInFlightRef.current = true;
+      try {
+        const result = await saveWallToCloud(
+          themeId,
+          json,
+          wallIdRef.current,
+          serverRevisionRef.current,
+          user.id,
+        );
+        if (result.migratedDocument) {
+          runWithoutWallPersist(() => {
+            useWallSceneStore.getState().loadDocument(result.migratedDocument!);
+          }, 500);
+          markCleanFromStore();
+        }
+        if (result.conflictWall) {
+          adoptConflictWall(
+            result.conflictWall,
+            result.message || "다른 기기에서 벽이 먼저 저장됐어요. 다시 불러왔어요.",
+          );
+          return;
+        }
+        if (result.restricted) {
+          showToast(result.message || "활동이 제한된 계정이에요");
+          return;
+        }
+        if (result.wall) {
+          adoptWallId(result.wall.id);
+          serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
+          markCleanFromStore();
+          showToast("클라우드에 저장됐어요");
+          return;
+        }
+        showToast("저장됐어요");
+        markCleanFromStore();
         return;
+      } finally {
+        finishCloudSaveFlight();
       }
-      if (result.wall) {
-        adoptWallId(result.wall.id);
-        serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
-      }
-      showToast(result.wall ? "클라우드에 저장됐어요" : "저장됐어요");
-      return;
     }
 
+    markCleanFromStore();
     showToast("저장됐어요");
-  }, [persistLocal, themeId, user, showToast, adoptWallId, markPreviewDirty]);
+  }, [
+    persistLocal,
+    themeId,
+    user,
+    showToast,
+    adoptWallId,
+    markPreviewDirty,
+    autoSave,
+    adoptConflictWall,
+    markCleanFromStore,
+    finishCloudSaveFlight,
+  ]);
 
   const handleClear = useCallback(() => {
     if (!confirm("벽의 모든 꾸미기를 지울까요?")) return;
@@ -1332,11 +1577,12 @@ export default function PersonalWallKonvaEditor() {
             onThemeChange={handleThemeChange}
             onPhotoUpload={handlePhotoUpload}
             onAddSticker={handleAddSticker}
+            returnTo="/wall/edit"
           />
         </div>
 
         <div className="relative min-h-0 min-w-0 flex-1 bg-surface">
-          <KonvaWallStageClient
+          <WallStageClient
             themeId={themeId}
             initialJson={loadedCanvasJson}
             wallId={wallId}
@@ -1346,8 +1592,12 @@ export default function PersonalWallKonvaEditor() {
             wallStageRef={wallStageRef}
             konvaStageRef={konvaStageRef}
             editorMode={mode}
-            drawColor={mode === "pen" ? penColor : tapeColor}
-            highlighterMaxLength={highlighterMaxLength}
+            drawColor={mode === "pen" ? penColor : tapePreset.color}
+            tapeStrokeWidth={tapeStrokeWidth}
+            tapeEndStyle={tapeEndStyle}
+            tapePattern={tapePreset.pattern}
+            tapePatternAccent={tapePreset.accent ?? "#ffffff"}
+            tapeOpacity={tapeOpacity}
             penStyleId={penStyleId}
             penStrokeWidth={penStrokeWidth}
             onGuardQuotaAdd={guardAdd}
@@ -1357,8 +1607,22 @@ export default function PersonalWallKonvaEditor() {
             onStartPhotoCrop={handleStartCrop}
             onContextMenuRequest={handleContextMenuRequest}
             interactionLockId={colorEditPhotoId}
+            readOnly={!isEditor}
             {...konvaCropProps}
           />
+
+          {!isEditor && (
+            <div className="absolute left-1/2 top-3 z-40 flex max-w-[min(92vw,420px)] -translate-x-1/2 items-center gap-2 rounded-full bg-foreground px-3 py-2 text-xs text-background shadow-lg sm:text-sm">
+              <span className="pl-1">다른 기기에서 편집 중이에요</span>
+              <button
+                type="button"
+                onClick={() => void handleReclaimEditor()}
+                className="shrink-0 rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground"
+              >
+                여기서 다시 편집
+              </button>
+            </div>
+          )}
 
           {editingTextObject && mode === "select" && (
             <div className="md:hidden">
@@ -1456,13 +1720,17 @@ export default function PersonalWallKonvaEditor() {
               penColor={penColor}
               penStyleId={penStyleId}
               penStrokeWidth={penStrokeWidth}
-              tapeColor={tapeColor}
-              tapeMaxLength={highlighterMaxLength}
+              tapePresetId={tapePreset.id}
+              tapeEndStyle={tapeEndStyle}
+              tapeStrokeWidth={tapeStrokeWidth}
+              tapeOpacity={tapeOpacity}
               onPenColorChange={setPenColor}
               onPenStyleIdChange={setPenStyleId}
               onPenStrokeWidthChange={setPenStrokeWidth}
-              onTapeColorChange={setTapeColor}
-              onTapeMaxLengthChange={setHighlighterMaxLength}
+              onTapePresetChange={handleTapePresetChange}
+              onTapeEndStyleChange={setTapeEndStyle}
+              onTapeStrokeWidthChange={setTapeStrokeWidth}
+              onTapeOpacityChange={setTapeOpacity}
             />
           </div>
 
@@ -1501,13 +1769,17 @@ export default function PersonalWallKonvaEditor() {
             penColor={penColor}
             penStyleId={penStyleId}
             penStrokeWidth={penStrokeWidth}
-            tapeColor={tapeColor}
-            tapeMaxLength={highlighterMaxLength}
+            tapePresetId={tapePreset.id}
+            tapeEndStyle={tapeEndStyle}
+            tapeStrokeWidth={tapeStrokeWidth}
+            tapeOpacity={tapeOpacity}
             onPenColorChange={setPenColor}
             onPenStyleIdChange={setPenStyleId}
             onPenStrokeWidthChange={setPenStrokeWidth}
-            onTapeColorChange={setTapeColor}
-            onTapeMaxLengthChange={setHighlighterMaxLength}
+            onTapePresetChange={handleTapePresetChange}
+            onTapeEndStyleChange={setTapeEndStyle}
+            onTapeStrokeWidthChange={setTapeStrokeWidth}
+            onTapeOpacityChange={setTapeOpacity}
             selectionCount={selectedIds.length}
             showGrid={showGrid}
             snapToGrid={snapToGrid}
@@ -1557,6 +1829,7 @@ export default function PersonalWallKonvaEditor() {
         onThemeChange={handleThemeChange}
         onPhotoUpload={handlePhotoUpload}
         onAddSticker={handleAddSticker}
+        returnTo="/wall/edit"
       />
     </div>
   );

@@ -54,7 +54,7 @@ export async function fetchActiveAnnouncements(
 
   const { data, error } = await supabase
     .from("announcements")
-    .select("id, title, message, severity, target, starts_at, ends_at")
+    .select("id, title, message, severity, target, starts_at, ends_at, created_at")
     .eq("active", true)
     .order("created_at", { ascending: false });
 
@@ -67,6 +67,9 @@ export async function fetchActiveAnnouncements(
       title: row.title,
       message: row.message,
       severity: row.severity as AnnouncementSeverity,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      createdAt: row.created_at,
     }));
 }
 

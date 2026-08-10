@@ -39,6 +39,9 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
           strokeWidth: object.strokeWidth,
           opacity: object.opacity,
           tool: object.tool ?? null,
+          tapeEndStyle: object.tapeEndStyle ?? null,
+          tapePattern: object.tapePattern ?? null,
+          tapePatternAccent: object.tapePatternAccent ?? null,
         };
       }
       return base;

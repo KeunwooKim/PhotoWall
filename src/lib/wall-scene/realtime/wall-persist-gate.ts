@@ -15,7 +15,7 @@ export function shouldSkipWallPersist(): boolean {
   return suppressDepth > 0 || Date.now() < cooldownUntilMs;
 }
 
-export function runWithoutWallPersist<T>(fn: () => T, cooldownMs = 300): T {
+export function runWithoutWallPersist<T>(fn: () => T, cooldownMs = 1200): T {
   beginRemotePersistSuppress();
   try {
     return fn();

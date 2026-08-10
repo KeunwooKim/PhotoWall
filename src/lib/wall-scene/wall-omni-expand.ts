@@ -2,8 +2,13 @@ import {
   DEFAULT_WALL_BOUNDS,
   WALL_EXPAND_MARGIN,
   WALL_EXPAND_STEP,
-  clampWallBounds,
+  clampWallBoundsAnchored,
   getSceneObjectsBounds,
+  wallBottom,
+  wallExpandEdgeLimits,
+  wallLeft,
+  wallRight,
+  wallTop,
   type ObjectBounds,
   type WallBounds,
 } from "@/lib/wall-bounds";
@@ -11,13 +16,13 @@ import type { WallSceneObject } from "@/types/wall-scene-v2";
 
 export type OmniWallGrow = {
   bounds: WallBounds;
-  /** Add to every object x so new space appears on the west. */
+  /** @deprecated Center-origin walls never shift objects. Always 0. */
   shiftX: number;
-  /** Add to every object y so new space appears on the north. */
+  /** @deprecated Center-origin walls never shift objects. Always 0. */
   shiftY: number;
 };
 
-/** Shift object position (path points stay local to x/y). */
+/** Shift object position (path points stay local to x/y). Kept for callers/tests. */
 export function shiftSceneObject(
   object: WallSceneObject,
   dx: number,
@@ -37,16 +42,17 @@ export function shiftSceneObjects(
 }
 
 /**
- * Grow wall by `step` on the east and south only.
- * Keeps the default-size home frame anchored at the top-left (no content shift).
+ * Grow wall by `step` on the east and south only (home frame stays put).
  */
 export function computeCenteredWallExpand(
   current: WallBounds,
-  max: WallBounds,
+  max: Pick<WallBounds, "width" | "height">,
   step = WALL_EXPAND_STEP,
 ): OmniWallGrow | null {
-  const next = clampWallBounds(
+  const next = clampWallBoundsAnchored(
     {
+      x: current.x,
+      y: current.y,
       width: current.width + step,
       height: current.height + step,
     },
@@ -57,212 +63,262 @@ export function computeCenteredWallExpand(
 }
 
 /**
- * Shrink wall toward default.
- * Trims east/south, and reclaims west/north only when homeOrigin has budget
- * (from prior left/up expands) so the default home frame stays anchored.
+ * Shrink wall toward default home frame, trimming overflow on all sides
+ * without moving objects (AABB edges move inward toward content / home).
  */
 export function computeCenteredWallShrink(
   current: WallBounds,
   _objectBounds: ObjectBounds | null,
-  max: WallBounds,
+  max: Pick<WallBounds, "width" | "height">,
   step = WALL_EXPAND_STEP,
   homeOrigin: { x: number; y: number } = { x: 0, y: 0 },
 ): OmniWallGrow | null {
-  const next = clampWallBounds(
+  void homeOrigin;
+  const home = DEFAULT_WALL_BOUNDS;
+  // Pull each edge toward the home frame by up to `step`.
+  const nextLeft = Math.min(wallLeft(current) + step, home.x);
+  const nextTop = Math.min(wallTop(current) + step, home.y);
+  const nextRight = Math.max(wallRight(current) - step, wallRight(home));
+  const nextBottom = Math.max(wallBottom(current) - step, wallBottom(home));
+
+  const next = clampWallBoundsAnchored(
     {
-      width: current.width - step,
-      height: current.height - step,
+      x: nextLeft,
+      y: nextTop,
+      width: nextRight - nextLeft,
+      height: nextBottom - nextTop,
     },
     max,
   );
-  if (next.width === current.width && next.height === current.height) return null;
 
-  const dw = current.width - next.width;
-  const dh = current.height - next.height;
-  const shiftX = -Math.min(Math.max(0, homeOrigin.x), dw);
-  const shiftY = -Math.min(Math.max(0, homeOrigin.y), dh);
-
-  return { bounds: next, shiftX, shiftY };
+  if (
+    next.x === current.x &&
+    next.y === current.y &&
+    next.width === current.width &&
+    next.height === current.height
+  ) {
+    return null;
+  }
+  return { bounds: next, shiftX: 0, shiftY: 0 };
 }
 
 /**
- * Fit wall around content in all directions (grow and shrink).
- * West/north changes use shiftX/shiftY so origin stays top-left.
+ * Fit wall AABB around content in all directions (grow and shrink).
+ * Objects are never shifted — only wall edges move.
  */
 export function computeOmniWallFitFromContent(
   objectBounds: ObjectBounds | null,
   current: WallBounds,
-  max: WallBounds,
+  max: Pick<WallBounds, "width" | "height">,
   margin = WALL_EXPAND_MARGIN,
 ): OmniWallGrow | null {
   if (!objectBounds) {
-    const next = clampWallBounds({ ...DEFAULT_WALL_BOUNDS }, max);
-    if (next.width === current.width && next.height === current.height) return null;
-    return {
-      bounds: next,
-      shiftX: -Math.floor((current.width - next.width) / 2),
-      shiftY: -Math.floor((current.height - next.height) / 2),
-    };
+    const next = { ...DEFAULT_WALL_BOUNDS };
+    if (
+      next.x === current.x &&
+      next.y === current.y &&
+      next.width === current.width &&
+      next.height === current.height
+    ) {
+      return null;
+    }
+    return { bounds: next, shiftX: 0, shiftY: 0 };
   }
 
   const spanW = Math.max(0, objectBounds.maxX - objectBounds.minX);
   const spanH = Math.max(0, objectBounds.maxY - objectBounds.minY);
-  const next = clampWallBounds(
-    { width: spanW + margin * 2, height: spanH + margin * 2 },
-    max,
-  );
+  let width = spanW + margin * 2;
+  let height = spanH + margin * 2;
+  width = Math.max(DEFAULT_WALL_BOUNDS.width, width);
+  height = Math.max(DEFAULT_WALL_BOUNDS.height, height);
 
-  let desiredMinX = margin;
-  let desiredMinY = margin;
-  if (spanW + margin * 2 > next.width) {
-    desiredMinX = Math.max(0, (next.width - spanW) / 2);
+  let x = objectBounds.minX - margin;
+  let y = objectBounds.minY - margin;
+  if (spanW + margin * 2 < width) {
+    x = (objectBounds.minX + objectBounds.maxX) / 2 - width / 2;
   }
-  if (spanH + margin * 2 > next.height) {
-    desiredMinY = Math.max(0, (next.height - spanH) / 2);
+  if (spanH + margin * 2 < height) {
+    y = (objectBounds.minY + objectBounds.maxY) / 2 - height / 2;
   }
 
-  const shiftX = desiredMinX - objectBounds.minX;
-  const shiftY = desiredMinY - objectBounds.minY;
-
+  const next = clampWallBoundsAnchored({ x, y, width, height }, max);
   if (
+    next.x === current.x &&
+    next.y === current.y &&
     next.width === current.width &&
-    next.height === current.height &&
-    shiftX === 0 &&
-    shiftY === 0
+    next.height === current.height
   ) {
     return null;
   }
-
-  return { bounds: next, shiftX, shiftY };
+  return { bounds: next, shiftX: 0, shiftY: 0 };
 }
 
 /**
- * Live drag follow: grow when overflowing; shrink east/south when leaving those edges.
- * West/north shrink only when `reclaimBudget` allows (prior west/north expands via homeOrigin).
+ * Live drag follow: grow/shrink wall AABB when content presses edges.
+ * No object shifts — west/north growth moves `bounds.x` / `bounds.y`.
+ *
+ * Shrink is same-edge only (home ∪ content):
+ * - Pull back near the east edge → east shrinks; west stays.
+ * - Press west to expand → east stays put (no cross-wall reclaim).
+ * `allowReclaim` is kept for callers; when false, grow-only.
  */
 export function computeOmniWallFollowFromContent(
   objectBounds: ObjectBounds | null,
   current: WallBounds,
-  max: WallBounds,
+  max: Pick<WallBounds, "width" | "height">,
   margin = WALL_EXPAND_MARGIN,
   reclaimBudget: { x: number; y: number } = { x: 0, y: 0 },
+  homeOrigin: { x: number; y: number } = { x: 0, y: 0 },
+  allowReclaim = true,
 ): OmniWallGrow | null {
+  void reclaimBudget;
+  void homeOrigin;
   if (!objectBounds) return null;
 
-  const pressingEast = objectBounds.maxX > current.width - margin;
-  const pressingWest = objectBounds.minX < margin;
-  const pressingSouth = objectBounds.maxY > current.height - margin;
-  const pressingNorth = objectBounds.minY < margin;
+  const left = wallLeft(current);
+  const top = wallTop(current);
+  const right = wallRight(current);
+  const bottom = wallBottom(current);
+  const home = DEFAULT_WALL_BOUNDS;
+  const homeLeft = wallLeft(home);
+  const homeTop = wallTop(home);
+  const homeRight = wallRight(home);
+  const homeBottom = wallBottom(home);
+  const minW = home.width;
+  const minH = home.height;
 
-  let shiftX = 0;
-  let shiftY = 0;
+  const pressingEast = objectBounds.maxX > right - margin;
+  const pressingWest = objectBounds.minX < left + margin;
+  const pressingSouth = objectBounds.maxY > bottom - margin;
+  const pressingNorth = objectBounds.minY < top + margin;
 
-  if (pressingWest) {
-    shiftX = margin - objectBounds.minX;
-  } else if (
-    reclaimBudget.x > 0 &&
-    objectBounds.minX > margin &&
-    !pressingEast
-  ) {
-    // Undo prior west expand — only up to the home budget so the home frame stays put.
-    shiftX = Math.max(margin - objectBounds.minX, -reclaimBudget.x);
+  let nextLeft = left;
+  let nextTop = top;
+  let nextRight = right;
+  let nextBottom = bottom;
+
+  if (pressingWest) nextLeft = objectBounds.minX - margin;
+  if (pressingEast) nextRight = objectBounds.maxX + margin;
+  if (pressingNorth) nextTop = objectBounds.minY - margin;
+  if (pressingSouth) nextBottom = objectBounds.maxY + margin;
+
+  // Per-side caps from home — east max does not consume west budget (and vice versa).
+  const limits = wallExpandEdgeLimits(max);
+  nextLeft = Math.max(nextLeft, limits.minLeft);
+  nextRight = Math.min(nextRight, limits.maxRight);
+  nextTop = Math.max(nextTop, limits.minTop);
+  nextBottom = Math.min(nextBottom, limits.maxBottom);
+
+  // Same-edge reclaim toward home ∪ content. Only while content is still on
+  // that half — crossing to expand the opposite side must not drag this edge.
+  if (allowReclaim) {
+    const midX = (left + right) / 2;
+    const midY = (top + bottom) / 2;
+    const targetLeft = Math.min(homeLeft, objectBounds.minX - margin);
+    const targetRight = Math.max(homeRight, objectBounds.maxX + margin);
+    const targetTop = Math.min(homeTop, objectBounds.minY - margin);
+    const targetBottom = Math.max(homeBottom, objectBounds.maxY + margin);
+
+    const nearEast = objectBounds.maxX >= midX;
+    const nearWest = objectBounds.minX <= midX;
+    const nearSouth = objectBounds.maxY >= midY;
+    const nearNorth = objectBounds.minY <= midY;
+
+    if (!pressingWest && nearEast && targetRight < nextRight) {
+      nextRight = Math.max(targetRight, nextLeft + minW);
+    }
+    if (!pressingEast && nearWest && targetLeft > nextLeft) {
+      nextLeft = Math.min(targetLeft, nextRight - minW);
+    }
+    if (!pressingNorth && nearSouth && targetBottom < nextBottom) {
+      nextBottom = Math.max(targetBottom, nextTop + minH);
+    }
+    if (!pressingSouth && nearNorth && targetTop > nextTop) {
+      nextTop = Math.min(targetTop, nextBottom - minH);
+    }
   }
 
-  if (pressingNorth) {
-    shiftY = margin - objectBounds.minY;
-  } else if (
-    reclaimBudget.y > 0 &&
-    objectBounds.minY > margin &&
-    !pressingSouth
-  ) {
-    shiftY = Math.max(margin - objectBounds.minY, -reclaimBudget.y);
+  // Minimum size — pad the non-pressed side (never recenter both edges).
+  if (nextRight - nextLeft < minW) {
+    if (pressingWest && !pressingEast) nextRight = Math.min(nextLeft + minW, limits.maxRight);
+    else if (pressingEast && !pressingWest) nextLeft = Math.max(nextRight - minW, limits.minLeft);
+    else nextRight = Math.min(nextLeft + minW, limits.maxRight);
+  }
+  if (nextBottom - nextTop < minH) {
+    if (pressingNorth && !pressingSouth) nextBottom = Math.min(nextTop + minH, limits.maxBottom);
+    else if (pressingSouth && !pressingNorth) nextTop = Math.max(nextBottom - minH, limits.minTop);
+    else nextBottom = Math.min(nextTop + minH, limits.maxBottom);
   }
 
-  const roomW = Math.max(0, max.width - current.width);
-  const roomH = Math.max(0, max.height - current.height);
-  if (shiftX > 0) shiftX = Math.min(shiftX, roomW);
-  if (shiftY > 0) shiftY = Math.min(shiftY, roomH);
-
-  const maxX = objectBounds.maxX + shiftX;
-  const maxY = objectBounds.maxY + shiftY;
-
-  let nextW = Math.max(current.width + Math.max(0, shiftX), maxX + margin);
-  let nextH = Math.max(current.height + Math.max(0, shiftY), maxY + margin);
-
-  if (shiftX < 0) {
-    nextW = Math.max(DEFAULT_WALL_BOUNDS.width, current.width + shiftX);
-    nextW = Math.max(nextW, maxX + margin);
+  // Safety: total AABB still within max (directional limits already enforce this).
+  if (nextRight - nextLeft > max.width) {
+    if (pressingWest && !pressingEast) nextLeft = nextRight - max.width;
+    else nextRight = nextLeft + max.width;
   }
-  if (shiftY < 0) {
-    nextH = Math.max(DEFAULT_WALL_BOUNDS.height, current.height + shiftY);
-    nextH = Math.max(nextH, maxY + margin);
+  if (nextBottom - nextTop > max.height) {
+    if (pressingNorth && !pressingSouth) nextTop = nextBottom - max.height;
+    else nextBottom = nextTop + max.height;
   }
 
-  // East/south reclaim (no content shift).
-  if (!pressingEast && !pressingWest && shiftX === 0 && maxX + margin < current.width) {
-    nextW = Math.max(DEFAULT_WALL_BOUNDS.width, maxX + margin);
-  }
-  if (!pressingSouth && !pressingNorth && shiftY === 0 && maxY + margin < current.height) {
-    nextH = Math.max(DEFAULT_WALL_BOUNDS.height, maxY + margin);
-  }
+  const bounds = clampWallBoundsAnchored(
+    {
+      x: nextLeft,
+      y: nextTop,
+      width: nextRight - nextLeft,
+      height: nextBottom - nextTop,
+    },
+    max,
+  );
 
-  nextW = Math.min(max.width, Math.max(DEFAULT_WALL_BOUNDS.width, nextW));
-  nextH = Math.min(max.height, Math.max(DEFAULT_WALL_BOUNDS.height, nextH));
-
-  const bounds = clampWallBounds({ width: nextW, height: nextH }, max);
   if (
+    bounds.x === current.x &&
+    bounds.y === current.y &&
     bounds.width === current.width &&
-    bounds.height === current.height &&
-    shiftX === 0 &&
-    shiftY === 0
+    bounds.height === current.height
   ) {
     return null;
   }
 
-  return { bounds, shiftX, shiftY };
+  return { bounds, shiftX: 0, shiftY: 0 };
 }
 
 /**
  * Fit wall around live object bounds in all directions (grow-only).
- * West/north growth is expressed as shiftX/shiftY + larger bounds.
+ * West/north growth moves bounds.x/y — no object shift.
  */
 export function computeOmniWallGrowFromContent(
   objectBounds: ObjectBounds | null,
   current: WallBounds,
-  max: WallBounds,
+  max: Pick<WallBounds, "width" | "height">,
   margin = WALL_EXPAND_MARGIN,
 ): OmniWallGrow | null {
   if (!objectBounds) return null;
 
-  let shiftX = 0;
-  let shiftY = 0;
-  if (objectBounds.minX < margin) shiftX = margin - objectBounds.minX;
-  if (objectBounds.minY < margin) shiftY = margin - objectBounds.minY;
+  const nextLeft = Math.min(wallLeft(current), objectBounds.minX - margin);
+  const nextTop = Math.min(wallTop(current), objectBounds.minY - margin);
+  const nextRight = Math.max(wallRight(current), objectBounds.maxX + margin);
+  const nextBottom = Math.max(wallBottom(current), objectBounds.maxY + margin);
 
-  const roomW = Math.max(0, max.width - current.width);
-  const roomH = Math.max(0, max.height - current.height);
-  shiftX = Math.min(shiftX, roomW);
-  shiftY = Math.min(shiftY, roomH);
+  const bounds = clampWallBoundsAnchored(
+    {
+      x: nextLeft,
+      y: nextTop,
+      width: nextRight - nextLeft,
+      height: nextBottom - nextTop,
+    },
+    max,
+  );
 
-  const maxX = objectBounds.maxX + shiftX;
-  const maxY = objectBounds.maxY + shiftY;
-
-  let nextW = Math.max(current.width + shiftX, maxX + margin);
-  let nextH = Math.max(current.height + shiftY, maxY + margin);
-  nextW = Math.min(max.width, Math.max(current.width + shiftX, nextW));
-  nextH = Math.min(max.height, Math.max(current.height + shiftY, nextH));
-
-  const bounds = clampWallBounds({ width: nextW, height: nextH }, max);
   if (
+    bounds.x === current.x &&
+    bounds.y === current.y &&
     bounds.width === current.width &&
-    bounds.height === current.height &&
-    shiftX === 0 &&
-    shiftY === 0
+    bounds.height === current.height
   ) {
     return null;
   }
 
-  return { bounds, shiftX, shiftY };
+  return { bounds, shiftX: 0, shiftY: 0 };
 }
 
 export function contentNeedsOmniGrow(
@@ -272,10 +328,10 @@ export function contentNeedsOmniGrow(
 ): boolean {
   if (!objectBounds) return false;
   return (
-    objectBounds.minX < margin ||
-    objectBounds.minY < margin ||
-    objectBounds.maxX > wall.width - margin ||
-    objectBounds.maxY > wall.height - margin
+    objectBounds.minX < wallLeft(wall) + margin ||
+    objectBounds.minY < wallTop(wall) + margin ||
+    objectBounds.maxX > wallRight(wall) - margin ||
+    objectBounds.maxY > wallBottom(wall) - margin
   );
 }
 

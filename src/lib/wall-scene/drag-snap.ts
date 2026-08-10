@@ -1,5 +1,5 @@
-import type Konva from "konva";
 import { getSceneObjectExtents } from "@/lib/wall-bounds";
+import type { WallDisplayNode } from "@/lib/wall-scene/realtime/wall-display-node";
 import { computeSnapResult, type SnapGuide } from "@/lib/wall-scene/snap-guides";
 import { getEffectiveWallBounds } from "@/lib/wall-scene/wall-drag-expand";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
@@ -51,7 +51,7 @@ export function beginDragSnap(objectId: string): void {
 }
 
 /** Snap a dragged node to nearby edges/centers and show alignment guides. */
-export function applyDragSnapToNode(node: Konva.Node, objectId: string): void {
+export function applyDragSnapToNode(node: WallDisplayNode, objectId: string): void {
   const { document, snapToGrid, gridSize } = useWallSceneStore.getState();
   const object = document.objects.find((item) => item.id === objectId);
   if (!object) return;

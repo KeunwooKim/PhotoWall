@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Friend, Profile } from "@/types/profile";
-import { parseUserPlan } from "@/lib/auth/user-plan";
+import { resolveEffectivePlan } from "@/lib/auth/user-plan";
 import {
   fetchPersonalWallIdForOwner,
   fetchPersonalWallMetaForOwner,
@@ -29,6 +29,7 @@ function mapProfile(row: {
   friend_code: string;
   allow_wall_visits?: boolean;
   plan?: string | null;
+  plan_expires_at?: string | null;
   theme_mode?: string | null;
   color_palette?: string | null;
   legal_consented_at?: string | null;
@@ -40,7 +41,7 @@ function mapProfile(row: {
     avatarUrl: row.avatar_url,
     friendCode: row.friend_code,
     allowWallVisits: row.allow_wall_visits ?? false,
-    plan: parseUserPlan(row.plan),
+    plan: resolveEffectivePlan(row.plan, row.plan_expires_at),
     themeMode: parseThemeMode(row.theme_mode),
     colorPalette: parseColorPalette(row.color_palette),
     legalConsentedAt: row.legal_consented_at ?? null,
@@ -61,10 +62,10 @@ async function withWallMeta(
 }
 
 const PROFILE_SELECT =
-  "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, theme_mode, color_palette, legal_consented_at, legal_version";
+  "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, plan_expires_at, theme_mode, color_palette, legal_consented_at, legal_version";
 
 const PROFILE_SELECT_LEGACY =
-  "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, legal_consented_at, legal_version";
+  "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, plan_expires_at, legal_consented_at, legal_version";
 
 function isMissingColumnError(message: string | undefined, column: string): boolean {
   return !!message && message.includes(column);
@@ -84,13 +85,25 @@ export async function ensureProfile(
     existingError &&
     (isMissingColumnError(existingError.message, "theme_mode") ||
       isMissingColumnError(existingError.message, "color_palette") ||
-      isMissingColumnError(existingError.message, "plan"))
+      isMissingColumnError(existingError.message, "plan") ||
+      isMissingColumnError(existingError.message, "plan_expires_at"))
   ) {
     if (isMissingColumnError(existingError.message, "plan")) {
       const legacy = await supabase
         .from("profiles")
         .select(
           "id, display_name, avatar_url, friend_code, allow_wall_visits, legal_consented_at, legal_version",
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+      if (legacy.data) {
+        return withWallMeta(supabase, mapProfile(legacy.data));
+      }
+    } else if (isMissingColumnError(existingError.message, "plan_expires_at")) {
+      const legacy = await supabase
+        .from("profiles")
+        .select(
+          "id, display_name, avatar_url, friend_code, allow_wall_visits, plan, theme_mode, color_palette, legal_consented_at, legal_version",
         )
         .eq("id", user.id)
         .maybeSingle();

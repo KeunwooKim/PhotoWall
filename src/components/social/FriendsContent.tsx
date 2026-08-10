@@ -114,7 +114,13 @@ export default function FriendsContent({
   const isInline = variant === "inline";
 
   return (
-    <div className={isInline ? "space-y-5" : "flex flex-1 flex-col gap-6 overflow-y-auto px-5 pb-6"}>
+    <div
+      className={
+        isInline
+          ? "space-y-5"
+          : "flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-5 pb-6"
+      }
+    >
       {!isInline && (
         <div className="sr-only" aria-live="polite">
           친구

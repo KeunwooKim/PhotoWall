@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute } from "@/lib/admin/require-admin-route";
-import type { Inquiry, InquiryCategory, InquiryStatus } from "@/types/inquiry";
+import type { BusinessStage, Inquiry, InquiryCategory, InquiryStatus } from "@/types/inquiry";
 
 function mapInquiry(row: {
   id: string;
@@ -12,6 +12,9 @@ function mapInquiry(row: {
   related_wall_id: string | null;
   status: string;
   admin_note: string | null;
+  admin_reply?: string | null;
+  admin_replied_at?: string | null;
+  business_stage?: string | null;
   created_at: string;
   resolved_at: string | null;
 }): Inquiry {
@@ -25,6 +28,9 @@ function mapInquiry(row: {
     relatedWallId: row.related_wall_id,
     status: row.status as InquiryStatus,
     adminNote: row.admin_note,
+    adminReply: row.admin_reply ?? null,
+    adminRepliedAt: row.admin_replied_at ?? null,
+    businessStage: (row.business_stage as BusinessStage | null) ?? null,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
   };
@@ -46,8 +52,10 @@ export async function GET(request: NextRequest) {
 
   if (category === "abuse") {
     query = query.eq("category", "abuse");
+  } else if (category === "business") {
+    query = query.eq("category", "business");
   } else if (category === "other") {
-    query = query.neq("category", "abuse");
+    query = query.neq("category", "abuse").neq("category", "business");
   }
 
   const { data, error } = await query.limit(100);

@@ -1,0 +1,213 @@
+/* PhotoWall promo landing — scoped under .promo-landing */
+.promo-landing {
+  --promo-cream: #faf7f2;
+  --promo-charcoal: #1c1917;
+  --promo-rose: #ff5b8d;
+  --promo-rose-light: #ffd6e5;
+  --promo-cork: #c9a97a;
+  --promo-mint: #b8e0d2;
+  --promo-mint-dark: #4a9b83;
+  --promo-lavender: #c5b4e3;
+  --promo-yellow: #ffd166;
+  --promo-muted: #9b8e82;
+  --promo-border: rgba(28, 25, 23, 0.1);
+
+  background: var(--promo-cream);
+  color: var(--promo-charcoal);
+  line-height: 1.5;
+}
+
+.promo-landing .promo-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
+}
+
+.promo-landing .promo-reveal.promo-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.promo-landing .promo-tape {
+  position: absolute;
+  height: 12px;
+  border-radius: 2px;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.75;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.25) 3px,
+    rgba(255, 255, 255, 0.25) 4px
+  );
+}
+
+.promo-landing .promo-pin {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.promo-landing .canvas-cork {
+  background: #c8935a;
+  background-image:
+    radial-gradient(ellipse at 30% 50%, rgba(180, 120, 60, 0.3) 0%, transparent 60%),
+    radial-gradient(circle at 70% 30%, rgba(200, 150, 80, 0.2) 0%, transparent 40%);
+}
+
+.promo-landing .canvas-night {
+  background: #12102a;
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(124, 77, 255, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 30%, rgba(255, 91, 141, 0.1) 0%, transparent 40%);
+}
+
+.promo-landing .canvas-spring {
+  background: #d4edd6;
+  background-image: radial-gradient(
+    circle at 60% 40%,
+    rgba(168, 230, 207, 0.4) 0%,
+    transparent 50%
+  );
+}
+
+.promo-landing .canvas-friends {
+  background: #f5f0e8;
+}
+
+/* ── Collab demo ── */
+.promo-landing .promo-collab-board {
+  background: #c8935a;
+  background-image:
+    radial-gradient(ellipse at 30% 50%, rgba(180, 120, 60, 0.3) 0%, transparent 60%),
+    radial-gradient(circle at 70% 30%, rgba(200, 150, 80, 0.2) 0%, transparent 40%),
+    radial-gradient(circle, rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+  background-size: auto, auto, 11px 11px;
+}
+
+.promo-landing .promo-collab-photo {
+  opacity: 0;
+  animation: promo-collab-place 0.55s ease forwards;
+}
+
+.promo-landing .promo-collab-pulse {
+  animation: promo-collab-pulse 1.6s ease-in-out infinite;
+}
+
+.promo-landing .promo-collab-toast {
+  animation: promo-collab-toast-in 0.4s ease;
+}
+
+.promo-landing .promo-collab-cursor-a {
+  top: 22%;
+  left: 20%;
+  animation: promo-collab-move-a 7s ease-in-out infinite;
+}
+
+.promo-landing .promo-collab-cursor-b {
+  top: 55%;
+  left: 55%;
+  animation: promo-collab-move-b 8.5s ease-in-out infinite;
+}
+
+.promo-landing .promo-collab-cursor-c {
+  top: 30%;
+  left: 72%;
+  animation: promo-collab-move-c 6.5s ease-in-out infinite;
+}
+
+@keyframes promo-collab-place {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes promo-collab-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes promo-collab-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes promo-collab-move-a {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(48px, 36px);
+  }
+}
+
+@keyframes promo-collab-move-b {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-40px, -28px);
+  }
+}
+
+@keyframes promo-collab-move-c {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-32px, 40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-landing .promo-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .promo-landing .promo-collab-photo,
+  .promo-landing .promo-collab-toast,
+  .promo-landing .promo-collab-pulse,
+  .promo-landing .promo-collab-cursor-a,
+  .promo-landing .promo-collab-cursor-b,
+  .promo-landing .promo-collab-cursor-c {
+    animation: none;
+  }
+
+  .promo-landing .promo-collab-photo {
+    opacity: 1;
+  }
+}

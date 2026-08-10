@@ -1,24 +1,30 @@
 "use client";
 
 import type { MutableRefObject, RefObject } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Layer, Line, Rect, Stage, Transformer } from "react-konva";
 import type Konva from "konva";
 import { configureKonvaForWallEditor, syncKonvaPixelRatioForWall } from "@/lib/konva-device";
+import { installKonvaDragOffsetSync } from "@/lib/wall-scene/konva-drag-offset-sync";
+import { stashWallPreviewFromStage } from "@/hooks/useWallPreviewFlush";
 import {
   applyOmniWallExpandAfterDrag,
+  getEffectivePan,
   getEffectiveWallBounds,
+  getEffectiveWallpaperOffset,
   registerLiveWallBoundsApplier,
+  setLiveContentShiftMode,
 } from "@/lib/wall-scene/wall-drag-expand";
+import { setViewportWorldCenterGetter } from "@/lib/wall-scene/wall-home-placement";
 import type { WallThemeId } from "@/types/wall";
 import type { EditorMode } from "@/components/wall/editor-types";
 import { getWallTheme } from "@/lib/wall-themes";
-import { computeFitScale } from "@/lib/wall-bounds";
+import { computeFitScale, wallpaperDisplayOffset } from "@/lib/wall-bounds";
 import { debounce } from "@/lib/debounce";
 import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene, fingerprintSceneObjects } from "@/lib/wall-scene/scene-fingerprint";
 import {
-  clampLineEndpoints,
+  finalizeTapeEndpoints,
   HIGHLIGHTER_OPACITY,
   type LineEndpoints,
   endpointsToPoints,
@@ -33,9 +39,11 @@ import {
 } from "@/lib/wall-scene/pen";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
+import { OBJECT_MAX_VISUAL_EDGE, clampObjectScalePair } from "@/lib/wall-scene/object-scale";
+import { selectionStrokeWallPx } from "@/lib/wall-scene/selection-chrome";
 import { containerCenter } from "@/lib/wall-scene/viewport-zoom";
-import { peerHighlightLayout, peerLockedObjectIds, peerSelectionsByObjectId } from "@/lib/wall-scene/presence-utils";
-import { setWallNodeDragging, isAnyWallNodeDragging, getWallNode, registerPeerHighlightNode } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { setWallNodeDragging, isAnyWallNodeDragging, getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { usePeerLockedObjectIds } from "@/lib/wall-scene/realtime/wall-presence-store";
 import { shouldSkipWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
@@ -43,7 +51,6 @@ import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-objec
 import { isTransformableObject } from "@/lib/wall-scene/selectable-objects";
 import { objectsInMarquee, primarySelectedId } from "@/lib/wall-scene/selection-utils";
 import {
-  WallPresenceState,
   WallSceneObject,
 } from "@/types/wall-scene-v2";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
@@ -56,9 +63,15 @@ import WallEmojiNode from "./WallEmojiNode";
 import WallTextNode from "./WallTextNode";
 import WallTapeNode from "./WallTapeNode";
 import WallPathNode from "./WallPathNode";
-import WallHighlighterRect from "./WallHighlighterRect";
+import WallTapeShape from "./WallTapeShape";
 import WallPresenceOverlay from "./WallPresenceOverlay";
-import PeerObjectHighlight from "./PeerObjectHighlight";
+import {
+  DEFAULT_TAPE_END_STYLE,
+  DEFAULT_TAPE_PATTERN,
+  type TapeEndStyle,
+  type TapePatternId,
+} from "@/lib/wall-scene/tape-style";
+import PeerHighlightsLayer from "./PeerHighlightsLayer";
 import SnapGuideLines from "./SnapGuideLines";
 import {
   WallContextMenuProvider,
@@ -84,7 +97,7 @@ export interface KonvaWallStageProps {
   readOnly?: boolean;
   wallId?: string;
   resolvePhotoSrc?: (src: string) => Promise<string>;
-  peers?: WallPresenceState[];
+  /** Presence peers come from wall-presence-store — do not pass as props (iOS re-render). */
   currentSessionId?: string;
   onDocumentChange?: (json: object) => void;
   onPointerMove?: (x: number, y: number) => void;
@@ -93,10 +106,24 @@ export interface KonvaWallStageProps {
   onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onReady?: () => void;
   wallStageRef?: RefObject<HTMLDivElement | null>;
-  konvaStageRef?: RefObject<Konva.Stage | null>;
+  /** Stage export handle — Konva.Stage implements width/height/toDataURL. */
+  konvaStageRef?: RefObject<{
+    width: () => number;
+    height: () => number;
+    toDataURL: (config?: {
+      pixelRatio?: number;
+      mimeType?: string;
+      quality?: number;
+    }) => string;
+  } | null>;
   editorMode?: EditorMode;
   drawColor?: string;
-  highlighterMaxLength?: number;
+  /** Masking-tape stroke width in wall px. */
+  tapeStrokeWidth?: number;
+  tapeEndStyle?: TapeEndStyle;
+  tapePattern?: TapePatternId;
+  tapePatternAccent?: string;
+  tapeOpacity?: number;
   penStyleId?: PenStyleId;
   /** Absolute stroke width for the active brush (after size level). */
   penStrokeWidth?: number;
@@ -119,13 +146,12 @@ export interface KonvaWallStageProps {
   onCropNaturalSize?: (width: number, height: number) => void;
 }
 
-export default function KonvaWallStage({
+function KonvaWallStage({
   themeId,
   initialJson,
   readOnly = false,
   wallId,
   resolvePhotoSrc,
-  peers = [],
   currentSessionId,
   onDocumentChange,
   onPointerMove,
@@ -137,7 +163,11 @@ export default function KonvaWallStage({
   konvaStageRef,
   editorMode = "select",
   drawColor = "#fff59d",
-  highlighterMaxLength = 160,
+  tapeStrokeWidth = 16,
+  tapeEndStyle = DEFAULT_TAPE_END_STYLE,
+  tapePattern = DEFAULT_TAPE_PATTERN,
+  tapePatternAccent = "#ffffff",
+  tapeOpacity,
   penStyleId = "ink",
   penStrokeWidth,
   onGuardQuotaAdd,
@@ -161,13 +191,21 @@ export default function KonvaWallStage({
   const freehandRef = useRef<number[] | null>(null);
   const editorModeRef = useRef(editorMode);
   const drawColorRef = useRef(drawColor);
-  const highlighterMaxLengthRef = useRef(highlighterMaxLength);
+  const tapeStrokeWidthRef = useRef(tapeStrokeWidth);
+  const tapeEndStyleRef = useRef(tapeEndStyle);
+  const tapePatternRef = useRef(tapePattern);
+  const tapePatternAccentRef = useRef(tapePatternAccent);
+  const tapeOpacityRef = useRef(tapeOpacity);
   const penStyleIdRef = useRef(penStyleId);
   const penStrokeWidthRef = useRef(penStrokeWidth);
 
   editorModeRef.current = editorMode;
   drawColorRef.current = drawColor;
-  highlighterMaxLengthRef.current = highlighterMaxLength;
+  tapeStrokeWidthRef.current = tapeStrokeWidth;
+  tapeEndStyleRef.current = tapeEndStyle;
+  tapePatternRef.current = tapePattern;
+  tapePatternAccentRef.current = tapePatternAccent;
+  tapeOpacityRef.current = tapeOpacity;
   penStyleIdRef.current = penStyleId;
   penStrokeWidthRef.current = penStrokeWidth;
 
@@ -185,8 +223,9 @@ export default function KonvaWallStage({
   const viewportScale = useWallSceneStore((s) => s.viewportScale);
   const userZoom = useWallSceneStore((s) => s.userZoom);
   const setViewportZoomAtPoint = useWallSceneStore((s) => s.setViewportZoomAtPoint);
-  const panX = useWallSceneStore((s) => s.panX);
-  const panY = useWallSceneStore((s) => s.panY);
+  // Subscribe — display pan reads getEffectivePan() (includes live expand compensation).
+  useWallSceneStore((s) => s.panX);
+  useWallSceneStore((s) => s.panY);
   const addPan = useWallSceneStore((s) => s.addPan);
   const patchObject = useWallSceneStore((s) => s.patchObject);
 
@@ -198,19 +237,32 @@ export default function KonvaWallStage({
     height: number;
   } | null>(null);
   const marqueeStartRef = useRef<{ x1: number; y1: number; shiftKey: boolean } | null>(null);
+  // Live expand updates bounds + pan together. Reading store pan alone with live
+  // bounds makes the opposite edge drift on React re-render during west/north grow.
   const wallBounds = getEffectiveWallBounds();
-  const wallpaperOffset = document.meta.wallpaperOffset ?? { x: 0, y: 0 };
+  const effectivePan = getEffectivePan();
+  const wallpaperOffset = getEffectiveWallpaperOffset();
+  const wallpaperTile = wallpaperDisplayOffset(wallBounds, wallpaperOffset);
+  const displayPanX = effectivePan.x;
+  const displayPanY = effectivePan.y;
+
+  useEffect(() => installKonvaDragOffsetSync(), []);
 
   useEffect(() => {
+    setLiveContentShiftMode("immediate");
     registerLiveWallBoundsApplier((layout) => {
       const wrapper = wallStageRef?.current;
-      const stage = konvaStageRef?.current;
+      const stage = konvaStageRef?.current as Konva.Stage | null | undefined;
       if (wrapper) {
         wrapper.style.width = `${layout.bounds.width}px`;
         wrapper.style.height = `${layout.bounds.height}px`;
         wrapper.style.transform = `translate(calc(-50% + ${layout.panX}px), calc(-50% + ${layout.panY}px)) scale(${layout.viewportScale})`;
         if (!showGrid) {
-          wrapper.style.backgroundPosition = `${layout.wallpaperOffsetX}px ${layout.wallpaperOffsetY}px`;
+          const tile = wallpaperDisplayOffset(layout.bounds, {
+            x: layout.wallpaperOffsetX,
+            y: layout.wallpaperOffsetY,
+          });
+          wrapper.style.backgroundPosition = `${tile.x}px ${tile.y}px`;
         }
       }
       if (
@@ -221,17 +273,43 @@ export default function KonvaWallStage({
         stage.height(layout.bounds.height);
       }
     });
-    return () => registerLiveWallBoundsApplier(null);
+    return () => {
+      registerLiveWallBoundsApplier(null);
+      setLiveContentShiftMode("immediate");
+    };
   }, [konvaStageRef, wallStageRef, showGrid]);
+
+  useEffect(() => {
+    setViewportWorldCenterGetter(() => {
+      const bounds = getEffectiveWallBounds();
+      const pan = getEffectivePan();
+      const scale = useWallSceneStore.getState().viewportScale;
+      if (!(scale > 0)) return null;
+      return {
+        x: bounds.x + bounds.width / 2 - pan.x / scale,
+        y: bounds.y + bounds.height / 2 - pan.y / scale,
+      };
+    });
+    return () => setViewportWorldCenterGetter(null);
+  }, []);
 
   useEffect(() => {
     if (isAnyWallNodeDragging()) return;
     const stored = useWallSceneStore.getState().document.meta.wallBounds;
-    syncKonvaPixelRatioForWall(stored.width, stored.height, konvaStageRef?.current);
+    const stage = konvaStageRef?.current as Konva.Stage | null | undefined;
+    syncKonvaPixelRatioForWall(stored.width, stored.height, stage ?? null);
   }, [document.meta.wallBounds.width, document.meta.wallBounds.height, konvaStageRef]);
 
   const attachStageRef = useCallback(
     (node: Konva.Stage | null) => {
+      const prev = konvaStageRef?.current as Konva.Stage | null | undefined;
+      if (!node && prev && !readOnly) {
+        stashWallPreviewFromStage({
+          wallId,
+          themeId,
+          stage: prev,
+        });
+      }
       if (konvaStageRef) {
         (konvaStageRef as MutableRefObject<Konva.Stage | null>).current = node;
       }
@@ -240,20 +318,12 @@ export default function KonvaWallStage({
         syncKonvaPixelRatioForWall(stored.width, stored.height, node);
       }
     },
-    [konvaStageRef],
+    [konvaStageRef, readOnly, themeId, wallId],
   );
 
   const primaryId = primarySelectedId(selectedIds);
 
-  const peerLockedIds = useMemo(
-    () => peerLockedObjectIds(peers, currentSessionId),
-    [peers, currentSessionId],
-  );
-
-  const peerHighlightsByObjectId = useMemo(
-    () => peerSelectionsByObjectId(peers, currentSessionId),
-    [peers, currentSessionId],
-  );
+  const peerLockedIds = usePeerLockedObjectIds(currentSessionId);
 
   useEffect(() => {
     if (peerLockedIds.size === 0) return;
@@ -360,10 +430,9 @@ export default function KonvaWallStage({
     [containerSize.width, containerSize.height, wallBounds.width, wallBounds.height],
   );
 
-  /** Fit used for display. Local expand re-fits; remote expand keeps the previous fit so peers' cameras don't zoom. */
+  /** Fit used for display. Kept across local expand so opposite edges stay screen-fixed. */
   const layoutFitRef = useRef<number | null>(null);
   const prevContainerSizeRef = useRef({ width: 0, height: 0 });
-  const prevWallSizeRef = useRef({ width: 0, height: 0 });
   const prevUserZoomRef = useRef(userZoom);
   const frozenFitScaleRef = useRef<number | null>(null);
 
@@ -377,20 +446,9 @@ export default function KonvaWallStage({
       height: containerSize.height,
     };
 
-    const prevWall = prevWallSizeRef.current;
-    const wallSizeChanged =
-      prevWall.width > 0 &&
-      (prevWall.width !== wallBounds.width || prevWall.height !== wallBounds.height);
-    prevWallSizeRef.current = {
-      width: wallBounds.width,
-      height: wallBounds.height,
-    };
-
     // Zoom reset button → re-fit to the current wall size.
     const zoomResetToDefault = userZoom === 1 && prevUserZoomRef.current !== 1;
     prevUserZoomRef.current = userZoom;
-
-    const remoteWallLayout = shouldSkipWallPersist();
 
     if (
       containerSize.width > 0 &&
@@ -398,10 +456,9 @@ export default function KonvaWallStage({
       (layoutFitRef.current == null || containerChanged || zoomResetToDefault)
     ) {
       layoutFitRef.current = fitScale;
-    } else if (wallSizeChanged && !remoteWallLayout) {
-      // I expanded/shrunk — allow my viewport to re-fit. Peers keep their frozen fit.
-      layoutFitRef.current = fitScale;
     }
+    // Do not re-fit on local wall expand/shrink — pan already locks the opposite
+    // edge (west grow → right stays). Re-fitting zooms out and slides that edge.
 
     const displayFit = layoutFitRef.current ?? fitScale;
 
@@ -755,6 +812,7 @@ export default function KonvaWallStage({
       const objectReadOnly =
         readOnly ||
         isStrokeMode(editorMode) ||
+        editorMode === "hand" ||
         editorMode === "text" ||
         peerLockedIds.has(object.id) ||
         object.id === cropPhotoId;
@@ -833,6 +891,7 @@ export default function KonvaWallStage({
             key={object.id}
             object={object}
             readOnly={objectReadOnly}
+            selected={isSelected}
             onSelect={select}
             onInteractionStart={() => broadcastSelection()}
             onManipulationChange={setManipulating}
@@ -895,6 +954,20 @@ export default function KonvaWallStage({
         rotation: node.rotation(),
       };
       if (object) {
+        const baseW =
+          "width" in object && typeof object.width === "number"
+            ? object.width
+            : "fontSize" in object && typeof object.fontSize === "number"
+              ? object.fontSize
+              : 40;
+        const baseH =
+          "height" in object && typeof object.height === "number"
+            ? object.height
+            : baseW;
+        const scales = clampObjectScalePair(patch.scaleX, patch.scaleY, baseW, baseH);
+        patch = { ...patch, ...scales };
+        node.scaleX(scales.scaleX);
+        node.scaleY(scales.scaleY);
         const candidate = { ...object, ...patch };
         const clamped = hardClampObjectPositionToWall(candidate, wall);
         if (clamped) {
@@ -937,9 +1010,9 @@ export default function KonvaWallStage({
       if (!stage || !onPointerMove) return;
       const pos = stage.getPointerPosition();
       if (!pos) return;
-      onPointerMove(pos.x, pos.y);
+      onPointerMove(pos.x + wallBounds.x, pos.y + wallBounds.y);
     },
-    [onPointerMove],
+    [onPointerMove, wallBounds.x, wallBounds.y],
   );
 
   const reportPointerFromClient = useCallback(
@@ -953,11 +1026,11 @@ export default function KonvaWallStage({
       if (rect.width <= 0 || rect.height <= 0) return;
 
       onPointerMove(
-        ((clientX - rect.left) / rect.width) * wallBounds.width,
-        ((clientY - rect.top) / rect.height) * wallBounds.height,
+        ((clientX - rect.left) / rect.width) * wallBounds.width + wallBounds.x,
+        ((clientY - rect.top) / rect.height) * wallBounds.height + wallBounds.y,
       );
     },
-    [onPointerMove, wallBounds.height, wallBounds.width, wallStageRef],
+    [onPointerMove, wallBounds.height, wallBounds.width, wallBounds.x, wallBounds.y, wallStageRef],
   );
 
   useEffect(() => {
@@ -1000,11 +1073,8 @@ export default function KonvaWallStage({
 
     drawingRef.current = { x1: draft.x1, y1: draft.y1, x2: pos.x, y2: pos.y };
 
-    const preview =
-      clampLineEndpoints(draft.x1, draft.y1, pos.x, pos.y, highlighterMaxLengthRef.current) ??
-      { x1: draft.x1, y1: draft.y1, x2: pos.x, y2: pos.y };
-
-    setDraftPoints(endpointsToPoints(preview));
+    // Tape length follows the finger — no fixed max preset.
+    setDraftPoints(endpointsToPoints(drawingRef.current));
   }, [getWallPointer]);
 
   const finishDrawing = useCallback(() => {
@@ -1030,16 +1100,16 @@ export default function KonvaWallStage({
 
     if (!draft) return;
 
-    const clamped = clampLineEndpoints(
-      draft.x1,
-      draft.y1,
-      draft.x2,
-      draft.y2,
-      highlighterMaxLengthRef.current,
-    );
-    if (!clamped) return;
+    const finalized = finalizeTapeEndpoints(draft.x1, draft.y1, draft.x2, draft.y2);
+    if (!finalized) return;
 
-    commitTapeStroke(clamped, drawColorRef.current);
+    commitTapeStroke(finalized, drawColorRef.current, {
+      strokeWidth: tapeStrokeWidthRef.current,
+      opacity: tapeOpacityRef.current,
+      tapeEndStyle: tapeEndStyleRef.current,
+      tapePattern: tapePatternRef.current,
+      tapePatternAccent: tapePatternAccentRef.current,
+    });
   }, []);
 
   const startDrawing = useCallback(
@@ -1225,14 +1295,14 @@ export default function KonvaWallStage({
         style={{
           width: wallBounds.width,
           height: wallBounds.height,
-          transform: `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px)) scale(${viewportScale})`,
+          transform: `translate(calc(-50% + ${displayPanX}px), calc(-50% + ${displayPanY}px)) scale(${viewportScale})`,
           background: showGrid ? undefined : theme.background,
           backgroundSize: showGrid
             ? `${gridSize}px ${gridSize}px`
             : theme.backgroundSize,
           backgroundPosition: showGrid
             ? undefined
-            : `${wallpaperOffset.x}px ${wallpaperOffset.y}px`,
+            : `${wallpaperTile.x}px ${wallpaperTile.y}px`,
           backgroundRepeat: showGrid ? undefined : theme.backgroundRepeat,
         }}
       >
@@ -1269,6 +1339,7 @@ export default function KonvaWallStage({
             }}
           >
           <Layer listening={!readOnly && editorMode === "select"}>
+            <Group x={-wallBounds.x} y={-wallBounds.y}>
             {visibleObjects.map((object) => renderSceneObject(object))}
             {cropPhoto && onCropDraftChange && onCropNaturalSize && (
               <PhotoCropLayer
@@ -1301,6 +1372,9 @@ export default function KonvaWallStage({
                 ref={transformerRef}
                 rotateEnabled={editorMode === "select"}
                 resizeEnabled={editorMode === "select"}
+                borderStroke="#3b82f6"
+                borderStrokeWidth={selectionStrokeWallPx(viewportScale)}
+                anchorSize={Math.max(8, 12 / Math.max(viewportScale, 0.05))}
                 enabledAnchors={
                   editorMode === "select"
                     ? ["top-left", "top-right", "bottom-left", "bottom-right"]
@@ -1309,6 +1383,17 @@ export default function KonvaWallStage({
                 listening={editorMode === "select"}
                 boundBoxFunc={(oldBox, newBox) => {
                   if (newBox.width < 24 || newBox.height < 24) return oldBox;
+                  if (newBox.width > OBJECT_MAX_VISUAL_EDGE || newBox.height > OBJECT_MAX_VISUAL_EDGE) {
+                    const scale = Math.min(
+                      OBJECT_MAX_VISUAL_EDGE / Math.max(1, newBox.width),
+                      OBJECT_MAX_VISUAL_EDGE / Math.max(1, newBox.height),
+                    );
+                    return {
+                      ...newBox,
+                      width: newBox.width * scale,
+                      height: newBox.height * scale,
+                    };
+                  }
                   return newBox;
                 }}
                 onTransformStart={() => {
@@ -1336,57 +1421,20 @@ export default function KonvaWallStage({
                 }}
               />
             )}
+            </Group>
           </Layer>
-          <Layer listening={false}>
-            {visibleObjects.map((object) => {
-              // Prefer live Konva node transform so peer frames track remote drag
-              // at patch rate (~32ms), not the throttled Zustand store (~120ms).
-              const live = getWallNode(object.id);
-              const layoutObject = live
-                ? {
-                    ...object,
-                    x: live.x(),
-                    y: live.y(),
-                    rotation: live.rotation(),
-                    scaleX: live.scaleX(),
-                    scaleY: live.scaleY(),
-                  }
-                : object;
-              const layout = peerHighlightLayout(layoutObject);
-              if (!layout) return null;
-
-              const highlights = peerHighlightsByObjectId.get(object.id);
-              if (!highlights?.length) return null;
-
-              return (
-                <Group
-                  key={`peer-highlight-${object.id}`}
-                  ref={(node) => registerPeerHighlightNode(object.id, node)}
-                  x={layout.x}
-                  y={layout.y}
-                  rotation={layout.rotation}
-                  scaleX={layout.scaleX}
-                  scaleY={layout.scaleY}
-                  offsetY={layout.offsetY ?? 0}
-                >
-                  <PeerObjectHighlight
-                    peers={highlights}
-                    width={layout.width}
-                    height={layout.height}
-                    scaleX={layout.scaleX}
-                    scaleY={layout.scaleY}
-                  />
-                </Group>
-              );
-            })}
-          </Layer>
+          <PeerHighlightsLayer currentSessionId={currentSessionId} />
           {!readOnly && isStrokeMode(editorMode) && (
             <Layer>
               {editorMode === "tape" && draftPoints && draftPoints.length === 4 && (
-                <WallHighlighterRect
+                <WallTapeShape
                   points={draftPoints}
                   fill={drawColor}
-                  opacity={HIGHLIGHTER_OPACITY}
+                  opacity={tapeOpacity ?? HIGHLIGHTER_OPACITY}
+                  height={tapeStrokeWidth}
+                  endStyle={tapeEndStyle}
+                  pattern={tapePattern}
+                  patternAccent={tapePatternAccent}
                 />
               )}
               {editorMode === "pen" && draftPoints && draftPoints.length >= 4 && (() => {
@@ -1451,19 +1499,15 @@ export default function KonvaWallStage({
         </WallContextMenuProvider>
       </div>
 
-      {wallId && currentSessionId && peers.length > 0 && (
+      {wallId && currentSessionId && (
         <WallPresenceOverlay
-          peers={peers}
           currentSessionId={currentSessionId}
-          wallWidth={wallBounds.width}
-          wallHeight={wallBounds.height}
           containerWidth={containerSize.width}
           containerHeight={containerSize.height}
-          wallScale={viewportScale}
-          panX={panX}
-          panY={panY}
         />
       )}
     </div>
   );
 }
+
+export default memo(KonvaWallStage);

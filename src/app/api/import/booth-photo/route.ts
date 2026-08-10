@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { importPhotosFromBoothUrl } from "@/lib/booth-import/fetch-booth-images";
+import { logImportEvent } from "@/lib/booth-import/log-import-event";
 import { restrictedResponse } from "@/lib/auth/account-restrict";
+import { createAdminClient } from "@/lib/admin/service-client";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { checkRateLimitAsync } from "@/lib/rate-limit";
 import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
@@ -34,6 +36,12 @@ export async function POST(request: NextRequest) {
 
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? user.id;
   if (!(await checkRateLimitAsync(`booth-import:${ip}`, 10, 60_000))) {
+    const admin = createAdminClient();
+    void logImportEvent(admin, {
+      userId: user.id,
+      ok: false,
+      errorCode: "rate_limited",
+    });
     return NextResponse.json(
       { ok: false, error: "rate_limited", message: "요청이 너무 많아요. 잠시 후 다시 시도해 주세요" },
       { status: 429 },
@@ -58,12 +66,25 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await importPhotosFromBoothUrl(body.url);
+  const admin = createAdminClient();
 
   if (!result.ok) {
+    void logImportEvent(admin, {
+      userId: user.id,
+      ok: false,
+      errorCode: result.error,
+      sourceUrl: body.url,
+    });
     const status =
       result.error === "invalid_url" || result.error === "domain_not_allowed" ? 400 : 422;
     return NextResponse.json(result, { status });
   }
+
+  void logImportEvent(admin, {
+    userId: user.id,
+    ok: true,
+    sourceUrl: result.sourceUrl,
+  });
 
   return routeClient.applyCookies(NextResponse.json(result));
 }

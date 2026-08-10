@@ -3,9 +3,10 @@ import { subscribeWithSelector } from "zustand/middleware";
 import type { WallBounds } from "@/lib/wall-bounds";
 import {
   DEFAULT_WALL_BOUNDS,
-  clampWallBounds,
+  asWallBounds,
+  clampWallBoundsAnchored,
 } from "@/lib/wall-bounds";
-import { memorySafeWallMax } from "@/lib/konva-device";
+import { memorySafeWallMax } from "@/lib/wall-device";
 import type { WallSceneDocument, WallSceneObject } from "@/types/wall-scene-v2";
 import { mergeObjectPatch } from "@/lib/wall-scene/merge-object-patch";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
@@ -74,6 +75,8 @@ export interface WallSceneStore {
     containerCenterY: number,
   ) => void;
   addPan: (dx: number, dy: number) => void;
+  /** Restore pan/zoom from a persisted camera snapshot. */
+  setCamera: (camera: { panX: number; panY: number; userZoom: number }) => void;
   resetUserZoom: () => void;
   recordHistory: () => void;
   undo: () => void;
@@ -259,7 +262,7 @@ export const useWallSceneStore = create<WallSceneStore>()(
       })),
 
     removeSelectedObjects: () => {
-      const { selectedIds, document } = get();
+      const { selectedIds } = get();
       if (selectedIds.length === 0) return;
 
       get().recordHistory();
@@ -293,13 +296,21 @@ export const useWallSceneStore = create<WallSceneStore>()(
       }),
     addPan: (dx, dy) =>
       set((state) => ({ panX: state.panX + dx, panY: state.panY + dy })),
+    setCamera: (camera) =>
+      set({
+        panX: camera.panX,
+        panY: camera.panY,
+        userZoom: clampUserZoom(camera.userZoom),
+      }),
     resetUserZoom: () => set({ userZoom: 1, panX: 0, panY: 0 }),
 
     upsertObject: (object) =>
       set((state) => {
         const exists = state.document.objects.some((o) => o.id === object.id);
+        // Replace (do not shallow-merge): callers pass a full object, and omitted
+        // optional fields (e.g. cleared `crop`) must actually disappear.
         const objects = exists
-          ? state.document.objects.map((o) => (o.id === object.id ? { ...o, ...object } : o))
+          ? state.document.objects.map((o) => (o.id === object.id ? object : o))
           : [...state.document.objects, object];
         return {
           document: withReconciledWallBounds({
@@ -353,7 +364,10 @@ export const useWallSceneStore = create<WallSceneStore>()(
           ...state.document,
           meta: {
             ...state.document.meta,
-            wallBounds: clampWallBounds(bounds, memorySafeWallMax()),
+            wallBounds: clampWallBoundsAnchored(
+              asWallBounds(bounds),
+              memorySafeWallMax(),
+            ),
           },
         },
       })),
@@ -386,58 +400,14 @@ export const useWallSceneStore = create<WallSceneStore>()(
       })),
 
     shiftWallHomeAnchors: (dx, dy) => {
-      if (dx === 0 && dy === 0) return;
-      set((state) => {
-        const wallpaper = state.document.meta.wallpaperOffset ?? { x: 0, y: 0 };
-        const home = state.document.meta.homeOrigin ?? { x: 0, y: 0 };
-        return {
-          document: {
-            ...state.document,
-            meta: {
-              ...state.document.meta,
-              wallpaperOffset: { x: wallpaper.x + dx, y: wallpaper.y + dy },
-              homeOrigin: { x: home.x + dx, y: home.y + dy },
-            },
-          },
-        };
-      });
+      void dx;
+      void dy;
+      // no-op — center-origin walls do not shift content/home on expand
     },
 
-    normalizeWallHomeOrigin: () =>
-      set((state) => {
-        const { wallBounds, homeOrigin, wallpaperOffset } = state.document.meta;
-        const home = homeOrigin ?? { x: 0, y: 0 };
-        if (home.x === 0 && home.y === 0) return state;
-        if (
-          wallBounds.width > DEFAULT_WALL_BOUNDS.width ||
-          wallBounds.height > DEFAULT_WALL_BOUNDS.height
-        ) {
-          return state;
-        }
-
-        const dx = -home.x;
-        const dy = -home.y;
-        const wallpaper = wallpaperOffset ?? { x: 0, y: 0 };
-        return {
-          document: {
-            ...state.document,
-            meta: {
-              ...state.document.meta,
-              homeOrigin: { x: 0, y: 0 },
-              wallpaperOffset: { x: wallpaper.x + dx, y: wallpaper.y + dy },
-            },
-            objects: state.document.objects.map(
-              (object) =>
-                ({
-                  ...object,
-                  x: object.x + dx,
-                  y: object.y + dy,
-                }) as typeof object,
-            ),
-          },
-        };
-      }),
-
+    normalizeWallHomeOrigin: () => {
+      // no-op — home frame is fixed at DEFAULT_WALL_BOUNDS
+    },
     reconcileWallBoundsFromObjects: () =>
       set((state) => {
         const document = withReconciledWallBounds(state.document);
@@ -490,7 +460,10 @@ export const useWallSceneStore = create<WallSceneStore>()(
           ...state.document,
           meta: {
             ...state.document.meta,
-            wallBounds: clampWallBounds(meta.wallBounds, memorySafeWallMax()),
+            wallBounds: clampWallBoundsAnchored(
+              asWallBounds(meta.wallBounds),
+              memorySafeWallMax(),
+            ),
             ...(meta.wallpaperOffset !== undefined
               ? { wallpaperOffset: meta.wallpaperOffset }
               : {}),

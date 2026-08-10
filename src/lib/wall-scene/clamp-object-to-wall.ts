@@ -1,5 +1,5 @@
 import type { WallBounds } from "@/lib/wall-bounds";
-import { getSceneObjectExtents } from "@/lib/wall-bounds";
+import { getSceneObjectExtents, wallBottom, wallLeft, wallRight, wallTop } from "@/lib/wall-bounds";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 
 /** Minimum overlap (px) kept inside the wall so objects stay selectable. */
@@ -13,11 +13,15 @@ export function isObjectOutsideWall(
   const ext = getSceneObjectExtents(object);
   const keepX = Math.min(margin, Math.max(1, ext.maxX - ext.minX));
   const keepY = Math.min(margin, Math.max(1, ext.maxY - ext.minY));
+  const left = wallLeft(wall);
+  const top = wallTop(wall);
+  const right = wallRight(wall);
+  const bottom = wallBottom(wall);
   return (
-    ext.maxX < keepX ||
-    ext.minX > wall.width - keepX ||
-    ext.maxY < keepY ||
-    ext.minY > wall.height - keepY
+    ext.maxX < left + keepX ||
+    ext.minX > right - keepX ||
+    ext.maxY < top + keepY ||
+    ext.minY > bottom - keepY
   );
 }
 
@@ -35,15 +39,19 @@ export function clampObjectPositionToWall(
   const h = Math.max(1, ext.maxY - ext.minY);
   const keepX = Math.min(margin, w);
   const keepY = Math.min(margin, h);
+  const left = wallLeft(wall);
+  const top = wallTop(wall);
+  const right = wallRight(wall);
+  const bottom = wallBottom(wall);
 
   let dx = 0;
   let dy = 0;
 
-  if (ext.maxX < keepX) dx = keepX - ext.maxX;
-  else if (ext.minX > wall.width - keepX) dx = wall.width - keepX - ext.minX;
+  if (ext.maxX < left + keepX) dx = left + keepX - ext.maxX;
+  else if (ext.minX > right - keepX) dx = right - keepX - ext.minX;
 
-  if (ext.maxY < keepY) dy = keepY - ext.maxY;
-  else if (ext.minY > wall.height - keepY) dy = wall.height - keepY - ext.minY;
+  if (ext.maxY < top + keepY) dy = top + keepY - ext.maxY;
+  else if (ext.minY > bottom - keepY) dy = bottom - keepY - ext.minY;
 
   if (dx === 0 && dy === 0) return null;
   return { x: object.x + dx, y: object.y + dy };
@@ -63,17 +71,21 @@ export function hardClampObjectPositionToWall(
   const h = Math.max(1, ext.maxY - ext.minY);
   const cx = (ext.minX + ext.maxX) / 2;
   const cy = (ext.minY + ext.maxY) / 2;
+  const left = wallLeft(wall);
+  const top = wallTop(wall);
+  const right = wallRight(wall);
+  const bottom = wallBottom(wall);
 
   let dx = 0;
   let dy = 0;
 
-  if (w >= wall.width) dx = wall.width / 2 - cx;
-  else if (ext.minX < 0) dx = -ext.minX;
-  else if (ext.maxX > wall.width) dx = wall.width - ext.maxX;
+  if (w >= wall.width) dx = left + wall.width / 2 - cx;
+  else if (ext.minX < left) dx = left - ext.minX;
+  else if (ext.maxX > right) dx = right - ext.maxX;
 
-  if (h >= wall.height) dy = wall.height / 2 - cy;
-  else if (ext.minY < 0) dy = -ext.minY;
-  else if (ext.maxY > wall.height) dy = wall.height - ext.maxY;
+  if (h >= wall.height) dy = top + wall.height / 2 - cy;
+  else if (ext.minY < top) dy = top - ext.minY;
+  else if (ext.maxY > bottom) dy = bottom - ext.maxY;
 
   if (dx === 0 && dy === 0) return null;
   return { x: object.x + dx, y: object.y + dy };
@@ -88,8 +100,8 @@ export function bringObjectOntoWall(
   const cx = (ext.minX + ext.maxX) / 2;
   const cy = (ext.minY + ext.maxY) / 2;
   return {
-    x: object.x + (wall.width / 2 - cx),
-    y: object.y + (wall.height / 2 - cy),
+    x: object.x + (wall.x + wall.width / 2 - cx),
+    y: object.y + (wall.y + wall.height / 2 - cy),
   };
 }
 

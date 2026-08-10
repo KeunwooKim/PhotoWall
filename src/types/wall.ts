@@ -1,11 +1,9 @@
 export type WallThemeId =
   | "linen-cream"
-  | "studio-pink"
-  | "sage-room"
-  | "starry-dream"
-  | "cafe-chalkboard"
-  | "cafe-cork"
-  | "cafe-brick";
+  | "white-brick"
+  | "red-brick"
+  | "cork-board"
+  | "magic-partition";
 
 export type WallObjectType = "photo" | "sticker" | "tape" | "drawing";
 

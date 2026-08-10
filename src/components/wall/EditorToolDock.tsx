@@ -8,9 +8,16 @@ import {
   PEN_STYLES,
   type PenStyleId,
 } from "@/lib/wall-scene/pen";
-import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
-import { HIGHLIGHTER_LENGTH_PRESETS } from "@/lib/wall-scene/highlighter";
 import PenStrokeWidthControl from "./PenStrokeWidthControl";
+import TapeStrokeWidthControl from "./TapeStrokeWidthControl";
+import TapeOpacityControl from "./TapeOpacityControl";
+import TapeStyleControls from "./TapeStyleControls";
+import {
+  DEFAULT_TAPE_END_STYLE,
+  getTapePreset,
+  type TapeEndStyle,
+  type TapePreset,
+} from "@/lib/wall-scene/tape-style";
 
 interface EditorToolDockProps {
   mode: EditorMode;
@@ -23,13 +30,17 @@ interface EditorToolDockProps {
   penColor?: string;
   penStyleId?: PenStyleId;
   penStrokeWidth?: number;
-  tapeColor?: string;
-  tapeMaxLength?: number;
+  tapePresetId?: string;
+  tapeEndStyle?: TapeEndStyle;
+  tapeStrokeWidth?: number;
+  tapeOpacity?: number;
   onPenColorChange?: (color: string) => void;
   onPenStyleIdChange?: (id: PenStyleId) => void;
   onPenStrokeWidthChange?: (width: number) => void;
-  onTapeColorChange?: (color: string) => void;
-  onTapeMaxLengthChange?: (length: number) => void;
+  onTapePresetChange?: (preset: TapePreset) => void;
+  onTapeEndStyleChange?: (style: TapeEndStyle) => void;
+  onTapeStrokeWidthChange?: (width: number) => void;
+  onTapeOpacityChange?: (opacity: number) => void;
 }
 
 const dockBtn =
@@ -58,13 +69,17 @@ export default function EditorToolDock({
   penColor = PEN_COLORS[0],
   penStyleId = DEFAULT_PEN_STYLE_ID,
   penStrokeWidth = PEN_STYLES[1].strokeWidth,
-  tapeColor = TAPE_COLORS[0].color,
-  tapeMaxLength = HIGHLIGHTER_LENGTH_PRESETS[1],
+  tapePresetId = getTapePreset(undefined).id,
+  tapeEndStyle = DEFAULT_TAPE_END_STYLE,
+  tapeStrokeWidth = 16,
+  tapeOpacity = 0.42,
   onPenColorChange,
   onPenStyleIdChange,
   onPenStrokeWidthChange,
-  onTapeColorChange,
-  onTapeMaxLengthChange,
+  onTapePresetChange,
+  onTapeEndStyleChange,
+  onTapeStrokeWidthChange,
+  onTapeOpacityChange,
 }: EditorToolDockProps) {
   const [settingsOpen, setSettingsOpen] = useState(true);
 
@@ -162,7 +177,7 @@ export default function EditorToolDock({
       {showTapePicker && (
         <div className={panelShell}>
           <div className="flex items-center justify-between gap-2">
-            <p className={panelLabel}>테이프 길이</p>
+            <p className={panelLabel}>테이프 두께</p>
             <button
               type="button"
               onClick={() => setSettingsOpen(false)}
@@ -171,36 +186,25 @@ export default function EditorToolDock({
               접기
             </button>
           </div>
-          <div className="flex gap-1.5">
-            {HIGHLIGHTER_LENGTH_PRESETS.map((length) => (
-              <button
-                key={length}
-                type="button"
-                onClick={() => onTapeMaxLengthChange?.(length)}
-                className={`flex h-9 flex-1 items-center justify-center rounded-full text-[11px] font-medium transition ${
-                  tapeMaxLength === length ? activeChip : idleChip
-                }`}
-              >
-                {length < 100 ? "짧게" : length < 200 ? "보통" : "길게"}
-              </button>
-            ))}
-          </div>
-          <p className={panelLabel}>색상</p>
-          <div className="flex flex-wrap gap-2">
-            {TAPE_COLORS.map((tape) => (
-              <button
-                key={tape.id}
-                type="button"
-                title={tape.label}
-                onClick={() => onTapeColorChange?.(tape.color)}
-                className={`h-8 w-10 rounded-md ring-2 transition ${
-                  tapeColor === tape.color ? "ring-foreground scale-105" : "ring-foreground/10"
-                }`}
-                style={{ background: tape.color }}
-                aria-label={`테이프 ${tape.label}`}
-              />
-            ))}
-          </div>
+          <TapeStrokeWidthControl
+            value={tapeStrokeWidth}
+            onChange={(width) => onTapeStrokeWidthChange?.(width)}
+            compact
+          />
+          <p className={panelLabel}>진하기</p>
+          <TapeOpacityControl
+            value={tapeOpacity}
+            onChange={(opacity) => onTapeOpacityChange?.(opacity)}
+            compact
+          />
+          <p className="text-[10px] text-muted">길이는 드래그를 멈춘 지점까지예요</p>
+          <TapeStyleControls
+            tapePresetId={tapePresetId}
+            tapeEndStyle={tapeEndStyle}
+            onTapePresetChange={(preset) => onTapePresetChange?.(preset)}
+            onTapeEndStyleChange={(style) => onTapeEndStyleChange?.(style)}
+            compact
+          />
           <p className="text-[10px] text-muted">테이프를 다시 누르면 설정을 접을 수 있어요</p>
         </div>
       )}

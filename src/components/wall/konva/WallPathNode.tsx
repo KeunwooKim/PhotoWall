@@ -5,6 +5,7 @@ import type Konva from "konva";
 import { Group, Line, Rect } from "react-konva";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { wrapKonvaNode } from "@/lib/wall-scene/realtime/wrap-konva-node";
 import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
 import {
   applyGroupDrag,
@@ -19,8 +20,14 @@ import {
   linePointsToHighlighterRect,
 } from "@/lib/wall-scene/highlighter";
 import { getPenStyle, inferPenStyleId, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
-import WallHighlighterRect from "./WallHighlighterRect";
+import WallTapeShape from "./WallTapeShape";
 import { useNodeContextTrigger } from "./useNodeContextTrigger";
+import {
+  DEFAULT_TAPE_END_STYLE,
+  DEFAULT_TAPE_PATTERN,
+} from "@/lib/wall-scene/tape-style";
+import { useWallSceneStore } from "@/stores/wall-scene-store";
+import { selectionStrokeWallPx } from "@/lib/wall-scene/selection-chrome";
 
 interface WallPathNodeProps {
   object: WallScenePath;
@@ -49,7 +56,7 @@ export default function WallPathNode({
     (node: Konva.Group | null) => {
       groupRef.current = node;
       registerNode(objectId, node);
-      registerWallNode(objectId, node);
+      registerWallNode(objectId, node ? wrapKonvaNode(node) : null);
     },
     [objectId, registerNode],
   );
@@ -90,6 +97,8 @@ export default function WallPathNode({
   const hitLayout = isHighlighter ? linePointsToHighlighterRect(object.points, strokeWidth + 28) : null;
 
   const contextEnabled = !readOnly;
+  const viewportScale = useWallSceneStore((s) => s.viewportScale);
+  const selectionStroke = selectionStrokeWallPx(viewportScale);
   const {
     handlePointerDown: handleContextPointerDown,
     handlePointerMove: handleContextPointerMove,
@@ -122,8 +131,8 @@ export default function WallPathNode({
     (e: Konva.KonvaEventObject<DragEvent>) => {
       if (!isHighlighter) return;
       const node = e.target;
-      applyDragSnapToNode(node, objectId);
-      applyGroupDrag(node, e.evt);
+      applyDragSnapToNode(wrapKonvaNode(node), objectId);
+      applyGroupDrag(wrapKonvaNode(node), e.evt);
       broadcastLivePosition(objectId, { x: node.x(), y: node.y() });
     },
     [broadcastLivePosition, isHighlighter, objectId],
@@ -134,7 +143,7 @@ export default function WallPathNode({
       if (!isHighlighter) return;
       clearDragSnapGuides();
       broadcastLivePosition.flush();
-      commitGroupDrag(e.target);
+      commitGroupDrag(wrapKonvaNode(e.target));
       isDraggingRef.current = false;
       setWallNodeDragging(objectId, false);
       onManipulationChange?.(false, objectId);
@@ -186,11 +195,14 @@ export default function WallPathNode({
     >
       {isHighlighter ? (
         <>
-          <WallHighlighterRect
+          <WallTapeShape
             points={object.points}
             fill={object.stroke}
             height={strokeWidth}
             opacity={opacity}
+            endStyle={object.tapeEndStyle ?? DEFAULT_TAPE_END_STYLE}
+            pattern={object.tapePattern ?? DEFAULT_TAPE_PATTERN}
+            patternAccent={object.tapePatternAccent ?? "#ffffff"}
             listening={false}
           />
           {hitLayout && (
@@ -241,8 +253,10 @@ export default function WallPathNode({
           height={selectionLayout.height}
           offsetY={selectionLayout.height / 2}
           rotation={selectionLayout.rotation}
-          fill="#4a90d9"
-          opacity={0.28}
+          stroke="#3b82f6"
+          strokeWidth={selectionStroke}
+          strokeScaleEnabled={false}
+          fillEnabled={false}
           listening={false}
           perfectDrawEnabled={false}
         />
@@ -250,9 +264,9 @@ export default function WallPathNode({
       {selected && !isHighlighter && (
         <Line
           points={object.points}
-          stroke="#4a90d9"
-          strokeWidth={strokeWidth + 6}
-          opacity={0.3}
+          stroke="#3b82f6"
+          strokeWidth={Math.max(strokeWidth + 4, selectionStroke * 2)}
+          opacity={0.85}
           tension={penStyle?.tension ?? 0}
           lineCap={penStyle?.lineCap ?? "round"}
           lineJoin={penStyle?.lineJoin ?? "round"}

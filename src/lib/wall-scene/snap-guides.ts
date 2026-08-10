@@ -37,12 +37,24 @@ function collectSnapTargets(
   snapToGrid: boolean,
   gridSize: number,
 ): { x: number[]; y: number[] } {
-  const xTargets = new Set<number>([0, wallBounds.width / 2, wallBounds.width]);
-  const yTargets = new Set<number>([0, wallBounds.height / 2, wallBounds.height]);
+  const xTargets = new Set<number>([
+    wallBounds.x,
+    wallBounds.x + wallBounds.width / 2,
+    wallBounds.x + wallBounds.width,
+  ]);
+  const yTargets = new Set<number>([
+    wallBounds.y,
+    wallBounds.y + wallBounds.height / 2,
+    wallBounds.y + wallBounds.height,
+  ]);
 
   if (snapToGrid) {
-    for (const pos of collectGridTargets(gridSize, wallBounds.width)) xTargets.add(pos);
-    for (const pos of collectGridTargets(gridSize, wallBounds.height)) yTargets.add(pos);
+    for (const pos of collectGridTargets(gridSize, wallBounds.width)) {
+      xTargets.add(wallBounds.x + pos);
+    }
+    for (const pos of collectGridTargets(gridSize, wallBounds.height)) {
+      yTargets.add(wallBounds.y + pos);
+    }
   }
 
   for (const object of objects) {

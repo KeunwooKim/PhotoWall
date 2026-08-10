@@ -1,4 +1,5 @@
 import { isTransformableObject } from "@/lib/wall-scene/selectable-objects";
+import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 
 export interface FlipPatch {
@@ -37,7 +38,7 @@ function flipDimensions(object: WallSceneObject): { width: number; height: numbe
   if (object.type === "text") {
     return {
       width: object.width * scaleX,
-      height: object.fontSize * 1.4 * scaleY,
+      height: estimateTextBlockHeight(object) * scaleY,
     };
   }
 

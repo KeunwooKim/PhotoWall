@@ -6,27 +6,22 @@ type WallLayoutMeta = {
 };
 
 /**
- * Pan delta that keeps the on-screen view locked when wall size / content shift
- * changes under a center-anchored stage (same math as local omni-expand).
+ * Pan delta that keeps on-screen world points locked when the wall AABB
+ * changes under a center-anchored stage.
  */
 export function panDeltaForWallLayoutChange(
   prev: WallLayoutMeta,
   next: WallLayoutMeta,
   viewportScale: number,
 ): { dx: number; dy: number } {
-  const prevWp = prev.wallpaperOffset ?? { x: 0, y: 0 };
-  const nextWp = next.wallpaperOffset ?? { x: 0, y: 0 };
-  const shiftX = nextWp.x - prevWp.x;
-  const shiftY = nextWp.y - prevWp.y;
-  const dW = next.wallBounds.width - prev.wallBounds.width;
-  const dH = next.wallBounds.height - prev.wallBounds.height;
-
-  if (dW === 0 && dH === 0 && shiftX === 0 && shiftY === 0) {
+  const prevCx = prev.wallBounds.x + prev.wallBounds.width / 2;
+  const prevCy = prev.wallBounds.y + prev.wallBounds.height / 2;
+  const nextCx = next.wallBounds.x + next.wallBounds.width / 2;
+  const nextCy = next.wallBounds.y + next.wallBounds.height / 2;
+  const dx = (nextCx - prevCx) * viewportScale;
+  const dy = (nextCy - prevCy) * viewportScale;
+  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) {
     return { dx: 0, dy: 0 };
   }
-
-  return {
-    dx: (dW / 2 - shiftX) * viewportScale,
-    dy: (dH / 2 - shiftY) * viewportScale,
-  };
+  return { dx, dy };
 }

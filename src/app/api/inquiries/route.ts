@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       subject,
       body: text,
       related_wall_id: body.relatedWallId ?? null,
+      ...(category === "business" ? { business_stage: "lead" } : {}),
     })
     .select("id")
     .single();
@@ -76,6 +77,15 @@ export async function POST(request: NextRequest) {
       subject,
       wallId: body.relatedWallId,
       reporterId: user.id,
+    });
+  }
+
+  if (category === "business") {
+    const { notifyBusinessInquiry } = await import("@/lib/discord/notify");
+    notifyBusinessInquiry({
+      subject,
+      userId: user.id,
+      email: user.email,
     });
   }
 

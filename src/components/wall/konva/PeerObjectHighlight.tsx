@@ -2,6 +2,8 @@
 
 import { Group, Label, Rect, Tag, Text } from "react-konva";
 import type { WallPresenceState } from "@/types/wall-scene-v2";
+import { useWallSceneStore } from "@/stores/wall-scene-store";
+import { selectionStrokeWallPx } from "@/lib/wall-scene/selection-chrome";
 
 interface PeerObjectHighlightProps {
   peers: WallPresenceState[];
@@ -12,7 +14,6 @@ interface PeerObjectHighlightProps {
   scaleY?: number;
 }
 
-const STROKE_WIDTH = 2.5;
 const PAD_PX = 3;
 const STACK_PX = 4;
 const LABEL_OFFSET_PX = 26;
@@ -28,6 +29,9 @@ export default function PeerObjectHighlight({
   scaleX = 1,
   scaleY = 1,
 }: PeerObjectHighlightProps) {
+  const viewportScale = useWallSceneStore((s) => s.viewportScale);
+  const strokeWidth = selectionStrokeWallPx(viewportScale);
+
   if (peers.length === 0) return null;
 
   const sx = Math.abs(scaleX) || 1;
@@ -53,7 +57,7 @@ export default function PeerObjectHighlight({
               width={width + (padX + insetX) * 2}
               height={height + (padY + insetY) * 2}
               stroke={peer.color}
-              strokeWidth={STROKE_WIDTH}
+              strokeWidth={strokeWidth}
               strokeScaleEnabled={false}
               cornerRadius={cornerRadius}
               listening={false}
@@ -77,7 +81,7 @@ export default function PeerObjectHighlight({
                 text={peer.displayName}
                 fontSize={FONT_SIZE}
                 fontStyle="600"
-                fill="#ffffff"
+                fill="#3f3f46"
                 padding={5}
               />
             </Label>

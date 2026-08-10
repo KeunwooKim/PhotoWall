@@ -14,17 +14,21 @@ export type WallSceneObjectType =
 
 export interface WallSceneMeta {
   version: typeof WALL_SCENE_VERSION;
+  /**
+   * Wall AABB in world coordinates.
+   * World origin (0,0) is the center of the default home frame.
+   */
   wallBounds: WallBounds;
   /** Monotonic revision for DB persist / conflict detection */
   revision: number;
   /**
-   * Wallpaper tile offset in wall coordinates.
-   * Updated when content shifts for west/north expand so the pattern stays under objects.
+   * Wallpaper tile offset in wall coordinates (decorative).
+   * No longer coupled to west/north expand content shifts.
    */
   wallpaperOffset?: { x: number; y: number };
   /**
-   * Top-left of the stable default-size (780×1200) home frame in wall coordinates.
-   * Updated with west/north content shifts so placement and “home” stay put.
+   * @deprecated Center-origin walls use a fixed home frame at DEFAULT_WALL_BOUNDS.
+   * Kept for migrate-on-load of legacy scenes.
    */
   homeOrigin?: { x: number; y: number };
   /**
@@ -65,6 +69,8 @@ export interface WallScenePhoto extends WallSceneObjectBase {
   height: number;
   /** Visible region of the source image (defaults to full image) */
   crop?: PhotoCropRect;
+  /** Set when posted via guestbook API — used for admin scrub */
+  source?: "guestbook";
 }
 
 export interface WallSceneEmoji extends WallSceneObjectBase {
@@ -115,6 +121,12 @@ export interface WallScenePath extends WallSceneObjectBase {
   tool?: "pen" | "tape";
   /** Freehand pen variant — drives opacity / cap / tension when rendering */
   penStyle?: "fine" | "ink" | "marker" | "brush";
+  /** Masking-tape end cap style */
+  tapeEndStyle?: "round" | "square" | "pinking";
+  /** Masking-tape fill pattern (solid = translucent color only) */
+  tapePattern?: "solid" | "stripe" | "dot" | "grid" | "diagonal";
+  /** Accent color for tapePattern overlays */
+  tapePatternAccent?: string;
 }
 
 export type WallSceneObject =

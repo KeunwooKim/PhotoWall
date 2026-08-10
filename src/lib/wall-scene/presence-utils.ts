@@ -4,6 +4,7 @@ import {
   isStraightHighlighterPath,
   linePointsToHighlighterRect,
 } from "@/lib/wall-scene/highlighter";
+import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
 
 export interface PeerHighlightLayout {
   x: number;
@@ -52,7 +53,7 @@ export function peerHighlightLayout(object: WallSceneObject): PeerHighlightLayou
     return {
       ...base,
       width: object.width,
-      height: object.fontSize * 1.4,
+      height: estimateTextBlockHeight(object),
     };
   }
 

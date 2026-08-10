@@ -1,4 +1,10 @@
-import { DEFAULT_WALL_BOUNDS, clampWallBounds } from "@/lib/wall-bounds";
+import {
+  DEFAULT_WALL_BOUNDS,
+  asWallBounds,
+  clampWallBounds,
+  needsLegacyWallMigration,
+  migrateLegacyWallToCenterOrigin,
+} from "@/lib/wall-bounds";
 import { normalizeImageSrcForStorage } from "@/lib/storage/wall-photos";
 import { unpackCanvasJson } from "@/lib/wall-canvas-json";
 import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
@@ -177,7 +183,8 @@ function importFabricJson(fabricJson: object, wallBounds = DEFAULT_WALL_BOUNDS):
   return {
     meta: {
       version: WALL_SCENE_VERSION,
-      wallBounds: clampWallBounds(wallBounds),
+      // Size-only — sanitize migrates to center-origin.
+      wallBounds: { width: wallBounds.width, height: wallBounds.height } as typeof DEFAULT_WALL_BOUNDS,
       revision: 0,
     },
     objects,
@@ -194,15 +201,34 @@ export function parseWallScene(
 
   let doc: WallSceneDocument;
   if (envelope.photowallScene && isSceneDocument(envelope.photowallScene)) {
-    doc = {
-      ...envelope.photowallScene,
-      meta: {
-        ...envelope.photowallScene.meta,
-        wallBounds: clampWallBounds(envelope.photowallScene.meta.wallBounds),
-      },
-    };
+    const rawBounds = envelope.photowallScene.meta.wallBounds;
+    if (needsLegacyWallMigration(rawBounds)) {
+      const migrated = migrateLegacyWallToCenterOrigin({
+        wallBounds: rawBounds,
+        homeOrigin: envelope.photowallScene.meta.homeOrigin,
+        objects: envelope.photowallScene.objects,
+      });
+      doc = {
+        ...envelope.photowallScene,
+        meta: {
+          ...envelope.photowallScene.meta,
+          wallBounds: clampWallBounds(migrated.wallBounds),
+          homeOrigin: undefined,
+        },
+        objects: migrated.objects,
+      };
+    } else {
+      doc = {
+        ...envelope.photowallScene,
+        meta: {
+          ...envelope.photowallScene.meta,
+          wallBounds: clampWallBounds(asWallBounds(rawBounds)),
+        },
+      };
+    }
   } else {
     const { fabricJson, wallBounds } = unpackCanvasJson(json);
+    // Legacy Fabric packs are top-left — migrate via sanitize.
     doc = importFabricJson(fabricJson, wallBounds);
   }
 

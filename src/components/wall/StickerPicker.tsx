@@ -1,19 +1,46 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getStickerPacks, getStickerPreviewSrc } from "@/lib/stickers";
+import Link from "next/link";
+import { getStickerPacks, getStickerPreviewSrc, getInstalledUgcPacks, loadStickerPack, preloadDefaultStickerPack } from "@/lib/stickers";
+import { useUgcStickerLibrary } from "@/hooks/useUgcStickerLibrary";
+import { useAuth } from "@/hooks/useAuth";
+import { useStickerStoreGate } from "@/hooks/useStickerStoreGate";
 
 interface StickerPickerProps {
   onSelect: (stickerId: string) => void;
 }
 
 export default function StickerPicker({ onSelect }: StickerPickerProps) {
-  const packs = getStickerPacks();
+  const { user } = useAuth();
+  const { handleStoreClick, Toast } = useStickerStoreGate();
+  const { revision } = useUgcStickerLibrary();
+  void revision;
+
+  const [packEpoch, setPackEpoch] = useState(0);
+  const packs = useMemo(() => getStickerPacks(), [revision, packEpoch]);
+  const ugcPacks = useMemo(() => getInstalledUgcPacks(), [revision]);
+
+  useEffect(() => {
+    void preloadDefaultStickerPack().then(() => setPackEpoch((n) => n + 1));
+  }, []);
+
   const [activePackId, setActivePackId] = useState(packs[0]?.id ?? "basic");
   const activePack = packs.find((pack) => pack.id === activePackId) ?? packs[0];
 
+  useEffect(() => {
+    if (!activePackId) return;
+    void loadStickerPack(activePackId).then(() => setPackEpoch((n) => n + 1));
+  }, [activePackId]);
+
   const categories = activePack?.categories ?? [];
   const [activeCategoryId, setActiveCategoryId] = useState(categories[0]?.id ?? "");
+
+  useEffect(() => {
+    if (!packs.some((p) => p.id === activePackId) && packs[0]) {
+      setActivePackId(packs[0].id);
+    }
+  }, [packs, activePackId]);
 
   useEffect(() => {
     const nextCategories = activePack?.categories ?? [];
@@ -32,6 +59,24 @@ export default function StickerPicker({ onSelect }: StickerPickerProps) {
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-muted">
+          {user
+            ? ugcPacks.length > 0
+              ? `내 팩 ${ugcPacks.length}개`
+              : "스토어에서 팩을 설치해 보세요"
+            : "로그인하면 커뮤니티 팩을 쓸 수 있어요"}
+        </p>
+        <Link
+          href="/stickers"
+          onClick={handleStoreClick}
+          className="shrink-0 text-[11px] font-medium text-foreground underline-offset-2 hover:underline"
+        >
+          스티커 스토어
+        </Link>
+      </div>
+      {Toast}
+
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         {packs.map((pack) => (
           <button
@@ -44,7 +89,6 @@ export default function StickerPicker({ onSelect }: StickerPickerProps) {
                 : "bg-foreground/[0.06] text-foreground hover:bg-foreground/10"
             }`}
           >
-            {pack.emoji ? `${pack.emoji} ` : ""}
             {pack.name}
           </button>
         ))}

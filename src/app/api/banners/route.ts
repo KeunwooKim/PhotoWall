@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { jsonWithPublicCache } from "@/lib/api-cache-headers";
 import { fetchActiveHouseBanners } from "@/lib/house-banners-server";
 import type { HouseBannerPlacement } from "@/types/house-banner";
 
@@ -15,5 +15,5 @@ export async function GET(request: Request) {
   const isPremium = searchParams.get("plan") === "premium";
 
   const banners = await fetchActiveHouseBanners(placement, { isPremium });
-  return NextResponse.json(banners);
+  return jsonWithPublicCache(banners);
 }

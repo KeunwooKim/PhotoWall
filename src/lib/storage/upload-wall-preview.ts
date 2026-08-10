@@ -1,7 +1,16 @@
 import { authFetch } from "@/lib/auth/api-fetch";
 import { captureWallElementPreview } from "@/lib/storage/wall-preview";
 import { getWallTheme } from "@/lib/wall-themes";
-import type Konva from "konva";
+
+type StageExportLike = {
+  width: () => number;
+  height: () => number;
+  toDataURL: (config?: {
+    pixelRatio?: number;
+    mimeType?: string;
+    quality?: number;
+  }) => string;
+};
 
 /** Upload a wall preview JPEG; returns storage path on success. */
 export async function uploadWallPreviewBlob(
@@ -22,13 +31,13 @@ export async function uploadWallPreviewBlob(
   return body?.previewPath ?? null;
 }
 
-/** Capture wallpaper + stickers/photos from the wall frame (+ optional Konva stage). */
+/** Capture wallpaper + stickers/photos from the wall frame (+ optional stage export). */
 export async function uploadWallPreviewFromElement(
   wallId: string,
   element: HTMLElement | null | undefined,
   options?: {
     themeId?: string | null;
-    stage?: Konva.Stage | null;
+    stage?: StageExportLike | null;
   },
 ): Promise<string | null> {
   if (!element) return null;

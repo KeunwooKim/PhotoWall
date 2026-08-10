@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Jua } from "next/font/google";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
+import { useStickerStoreGate } from "@/hooks/useStickerStoreGate";
 import type { Profile } from "@/types/profile";
 
 const displayFont = Jua({
@@ -16,6 +17,7 @@ const displayFont = Jua({
 const SIDE_NAV = [
   { href: "/", label: "홈", icon: "home" as const },
   { href: "/walls", label: "벽꾸미기", icon: "wall" as const },
+  { href: "/stickers", label: "스티커 스토어", icon: "sticker" as const },
   { href: "/profile", label: "내 프로필", icon: "user" as const },
   { href: "/settings", label: "설정", icon: "settings" as const },
 ];
@@ -29,6 +31,7 @@ interface AppDesktopSidebarProps {
 export default function AppDesktopSidebar({ wallsBadge }: AppDesktopSidebarProps) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { handleStoreClick, Toast } = useStickerStoreGate();
   const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
@@ -73,11 +76,14 @@ export default function AppDesktopSidebar({ wallsBadge }: AppDesktopSidebarProps
                 ? pathname === "/walls" ||
                   pathname === "/wall/edit" ||
                   pathname.startsWith("/shared/")
-                : pathname === href || pathname.startsWith(`${href}/`);
+                : href === "/stickers"
+                  ? pathname === "/stickers" || pathname.startsWith("/stickers/")
+                  : pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
               key={href}
               href={href}
+              onClick={href === "/stickers" ? handleStoreClick : undefined}
               className={`mb-1 flex w-full items-center gap-3 rounded-[14px] px-3.5 py-2.5 text-sm transition ${
                 active
                   ? "bg-accent/20 font-bold text-accent-dark"
@@ -129,11 +135,12 @@ export default function AppDesktopSidebar({ wallsBadge }: AppDesktopSidebarProps
           </p>
         </div>
       </Link>
+      {Toast}
     </aside>
   );
 }
 
-function SideIcon({ name }: { name: "home" | "wall" | "user" | "settings" }) {
+function SideIcon({ name }: { name: "home" | "wall" | "sticker" | "user" | "settings" }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none" as const };
   if (name === "home") {
     return (
@@ -151,6 +158,19 @@ function SideIcon({ name }: { name: "home" | "wall" | "user" | "settings" }) {
       <svg {...common} aria-hidden>
         <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
         <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (name === "sticker") {
+    return (
+      <svg {...common} aria-hidden>
+        <path
+          d="M12 3l1.2 5.2L18 9.5l-4.8 1.3L12 16l-1.2-5.2L6 9.5l4.8-1.3L12 3z"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+        <circle cx="18.5" cy="17.5" r="2.2" stroke="currentColor" strokeWidth="1.5" />
       </svg>
     );
   }

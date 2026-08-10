@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute } from "@/lib/admin/require-admin-route";
+import { rejectForeignOrigin } from "@/lib/auth/get-site-origin";
 import { wipeUserContent } from "@/lib/auth/delete-account";
 import { notifyAccountRestricted } from "@/lib/discord/notify";
 
@@ -8,6 +9,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const foreign = rejectForeignOrigin(request);
+  if (foreign) return foreign;
+
   const auth = await requireAdminRoute(request);
   if (!auth.ok) return auth.response;
 

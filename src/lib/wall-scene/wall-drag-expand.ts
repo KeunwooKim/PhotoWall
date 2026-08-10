@@ -4,13 +4,12 @@ import {
   WALL_EXPAND_MARGIN,
   type WallBounds,
 } from "@/lib/wall-bounds";
-import { memorySafeWallMax } from "@/lib/konva-device";
+import { memorySafeWallMax } from "@/lib/wall-device";
 import { computeOmniWallFollowFromContent } from "@/lib/wall-scene/wall-omni-expand";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
-import { broadcastWallPatch, broadcastWallLive } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
+import { broadcastWallLive } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
-import { DD } from "konva/lib/DragAndDrop";
 import { throttle } from "@/lib/throttle";
 import { LIVE_PATCH_MS } from "@/lib/wall-scene/realtime/live-object-patch";
 import { allowWallSizeChange } from "@/lib/wall-scene/wall-size-lock";
@@ -29,16 +28,28 @@ export type LiveWallLayoutApplier = (layout: LiveWallLayout) => void;
 /** Grows/shrinks during drag without Zustand — avoids React re-renders that flash images. */
 let liveWallBoundsDuringDrag: WallBounds | null = null;
 let liveWallLayoutApplier: LiveWallLayoutApplier | null = null;
-/** Accumulated content shift applied to nodes during this drag (west/north). */
-let liveContentShiftX = 0;
-let liveContentShiftY = 0;
 /** Imperative pan baked on commit — keeps finger lock when the centered wall grows. */
 let livePanX = 0;
 let livePanY = 0;
-let contentShiftListener: ((dx: number, dy: number) => void) | null = null;
+/** Who owns the live bounds preview — remote must not fight a local drag session. */
+let liveBoundsSource: "local" | "remote" | null = null;
 
 /** Skip sub-pixel stage thrash. */
 const LIVE_EXPAND_MIN_DELTA = 1;
+
+/**
+ * @deprecated Center-origin walls never shift content. Kept so Konva/Pixi
+ * can still register no-ops without branching call sites.
+ */
+export function setLiveContentShiftMode(mode: "immediate" | "deferred"): void {
+  void mode;
+}
+
+export function registerLiveContentShiftListener(
+  listener: ((dx: number, dy: number) => void) | null,
+): void {
+  void listener;
+}
 
 const broadcastLiveWall = throttle(
   (payload: {
@@ -56,18 +67,10 @@ export function registerLiveWallBoundsApplier(applier: LiveWallLayoutApplier | n
   liveWallLayoutApplier = applier;
 }
 
-/** group-drag updates session start positions when live west/north shifts content. */
-export function registerLiveContentShiftListener(
-  listener: ((dx: number, dy: number) => void) | null,
-): void {
-  contentShiftListener = listener;
-}
-
 /** Reset live offsets at drag start. */
 export function beginLiveWallExpandSession(): void {
+  liveBoundsSource = "local";
   liveWallBoundsDuringDrag = null;
-  liveContentShiftX = 0;
-  liveContentShiftY = 0;
   livePanX = 0;
   livePanY = 0;
 }
@@ -76,9 +79,69 @@ export function endLiveWallExpandSession(): void {
   // clear happens on commit/revert
 }
 
-/** Wall bounds for clamping / layout — live preview wins while dragging. */
+function clearLiveOffsets(): void {
+  liveWallBoundsDuringDrag = null;
+  livePanX = 0;
+  livePanY = 0;
+  liveBoundsSource = null;
+  broadcastLiveWall.flush();
+}
+
+/**
+ * Peer is live-expanding — update stage imperatively (no Zustand).
+ */
+export function applyRemoteWallLivePreview(live: {
+  wallBounds: WallBounds;
+  wallpaperOffset?: { x: number; y: number };
+  wallSizeLocked?: boolean;
+}): void {
+  if (liveBoundsSource === "local") return;
+
+  const store = useWallSceneStore.getState();
+  const base = store.document.meta;
+  const locked =
+    base.wallSizeLocked === true || live.wallSizeLocked === true;
+  const nextBounds = locked ? base.wallBounds : live.wallBounds;
+  const baseWp = base.wallpaperOffset ?? { x: 0, y: 0 };
+  const nextWp = locked ? baseWp : (live.wallpaperOffset ?? baseWp);
+
+  liveBoundsSource = "remote";
+  liveWallBoundsDuringDrag = nextBounds;
+  // Center-origin: keep the camera still during live expand — pan tracking
+  // fights object drag and stops further growth.
+  livePanX = 0;
+  livePanY = 0;
+
+  liveWallLayoutApplier?.({
+    bounds: nextBounds,
+    panX: store.panX,
+    panY: store.panY,
+    wallpaperOffsetX: nextWp.x,
+    wallpaperOffsetY: nextWp.y,
+    viewportScale: store.viewportScale,
+  });
+}
+
+export function clearRemoteWallLivePreview(): void {
+  if (liveBoundsSource !== "remote") return;
+  clearLiveOffsets();
+}
+
+export function refreshWallLayoutFromStore(): void {
+  restoreLayoutFromStore();
+}
+
 export function getEffectiveWallBounds(): WallBounds {
   return liveWallBoundsDuringDrag ?? useWallSceneStore.getState().document.meta.wallBounds;
+}
+
+export function getEffectivePan(): { x: number; y: number } {
+  const store = useWallSceneStore.getState();
+  return { x: store.panX + livePanX, y: store.panY + livePanY };
+}
+
+export function getEffectiveWallpaperOffset(): { x: number; y: number } {
+  return useWallSceneStore.getState().document.meta.wallpaperOffset ?? { x: 0, y: 0 };
 }
 
 export function isLiveWallBoundsActive(): boolean {
@@ -87,12 +150,9 @@ export function isLiveWallBoundsActive(): boolean {
 
 function objectsWithLivePositions(): WallSceneObject[] {
   const { document } = useWallSceneStore.getState();
-  // Prefer Konva node transforms for every object — west/north live shift moves
-  // stationary nodes too, and store positions lag until commit.
   return document.objects.map((object) => {
     const node = getWallNode(object.id);
     if (!node) return object;
-
     return {
       ...object,
       x: node.x(),
@@ -104,41 +164,24 @@ function objectsWithLivePositions(): WallSceneObject[] {
   });
 }
 
-function readBaseWallpaperOffset(): { x: number; y: number } {
-  return useWallSceneStore.getState().document.meta.wallpaperOffset ?? { x: 0, y: 0 };
-}
-
-function pushLiveLayout(bounds: WallBounds, includePositions = false): void {
+function pushLiveLayout(bounds: WallBounds): void {
+  liveBoundsSource = "local";
   liveWallBoundsDuringDrag = bounds;
   const store = useWallSceneStore.getState();
-  const wallpaper = readBaseWallpaperOffset();
-  const wallpaperOffset = {
-    x: wallpaper.x + liveContentShiftX,
-    y: wallpaper.y + liveContentShiftY,
-  };
+  const wallpaper = store.document.meta.wallpaperOffset ?? { x: 0, y: 0 };
   liveWallLayoutApplier?.({
     bounds,
-    panX: store.panX + livePanX,
-    panY: store.panY + livePanY,
-    wallpaperOffsetX: wallpaperOffset.x,
-    wallpaperOffsetY: wallpaperOffset.y,
+    panX: store.panX,
+    panY: store.panY,
+    wallpaperOffsetX: wallpaper.x,
+    wallpaperOffsetY: wallpaper.y,
     viewportScale: store.viewportScale,
   });
 
-  let positions: Array<{ id: string; x: number; y: number }> | undefined;
-  if (includePositions) {
-    positions = objectsWithLivePositions().map((object) => ({
-      id: object.id,
-      x: object.x,
-      y: object.y,
-    }));
-  }
-
   broadcastLiveWall({
     wallBounds: bounds,
-    wallpaperOffset,
+    wallpaperOffset: wallpaper,
     wallSizeLocked: store.document.meta.wallSizeLocked,
-    positions,
   });
 }
 
@@ -156,201 +199,137 @@ function restoreLayoutFromStore(): void {
   });
 }
 
-function clearLiveOffsets(): void {
-  liveWallBoundsDuringDrag = null;
-  liveContentShiftX = 0;
-  liveContentShiftY = 0;
-  livePanX = 0;
-  livePanY = 0;
-  broadcastLiveWall.flush();
+let konvaDragOffsetSync: ((evt?: Event) => void) | null = null;
+let pixiDragOffsetSync: ((evt?: Event) => void) | null = null;
+
+export function registerKonvaDragOffsetSync(fn: ((evt?: Event) => void) | null): void {
+  konvaDragOffsetSync = fn;
 }
 
-/**
- * After live wall/pan changes, Konva's pointer→node drag offset is stale.
- * Rebind offset to the current pointer so the next move does not undo west/north shift.
- */
-export function syncKonvaDragOffsets(evt?: Event): void {
-  DD._dragElements.forEach((elem) => {
-    if (elem.dragStatus !== "dragging" && elem.dragStatus !== "ready") return;
-    const node = elem.node;
-    const stage = node.getStage();
-    if (!stage) return;
-    if (evt) {
-      stage.setPointersPositions(evt);
-    }
-    const pos =
-      stage._getPointerById(elem.pointerId) || stage.getPointerPosition();
-    if (!pos) return;
-    const ap = node.getAbsolutePosition();
-    elem.offset.x = pos.x - ap.x;
-    elem.offset.y = pos.y - ap.y;
-  });
+export function registerPixiDragOffsetSync(fn: ((evt?: Event) => void) | null): void {
+  pixiDragOffsetSync = fn;
+}
+
+function syncDragOffsetsAfterWallExpand(evt?: Event): void {
+  konvaDragOffsetSync?.(evt);
+  pixiDragOffsetSync?.(evt);
 }
 
 /**
  * Live omni grow/shrink while dragging.
- * Shrinks when content leaves an edge; never shrinks an axis while pressing it.
+ * Center-origin: only the wall AABB moves — objects keep world coordinates.
+ * Same-edge reclaim stays on so pulling back shrinks naturally; expanding the
+ * opposite side does not drag the far edge (see computeOmniWallFollowFromContent).
  */
-export function applyWallExpandDuringDrag(movingIds: Iterable<string>): boolean {
+export function applyWallExpandDuringDrag(
+  movingIds: Iterable<string>,
+  options?: { allowReclaim?: boolean },
+): boolean {
   const ids = movingIds instanceof Set ? movingIds : new Set(movingIds);
   if (ids.size === 0) return false;
 
+  // Default on — callers may pass false for grow-only previews.
+  const allowReclaim = options?.allowReclaim !== false;
   const current = getEffectiveWallBounds();
   const liveObjects = objectsWithLivePositions();
   const objectBounds = getSceneObjectsBounds(liveObjects);
-  const home = useWallSceneStore.getState().document.meta.homeOrigin ?? { x: 0, y: 0 };
   const grow = computeOmniWallFollowFromContent(
     objectBounds,
     current,
     memorySafeWallMax(),
     WALL_EXPAND_MARGIN,
-    {
-      // Prior west/north expands (persisted) + this drag's live shifts.
-      x: home.x + liveContentShiftX,
-      y: home.y + liveContentShiftY,
-    },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    allowReclaim,
   );
   if (!grow) return false;
 
-  const { shiftX, shiftY, bounds } = grow;
+  const { bounds } = grow;
   const dW = bounds.width - current.width;
   const dH = bounds.height - current.height;
+  const dX = bounds.x - current.x;
+  const dY = bounds.y - current.y;
   if (
     Math.abs(dW) < LIVE_EXPAND_MIN_DELTA &&
     Math.abs(dH) < LIVE_EXPAND_MIN_DELTA &&
-    shiftX === 0 &&
-    shiftY === 0
+    Math.abs(dX) < LIVE_EXPAND_MIN_DELTA &&
+    Math.abs(dY) < LIVE_EXPAND_MIN_DELTA
   ) {
     return false;
   }
 
-  // Size lock: freeze wall dimensions (no grow, no shrink).
-  if (
-    (Math.abs(dW) >= LIVE_EXPAND_MIN_DELTA || Math.abs(dH) >= LIVE_EXPAND_MIN_DELTA) &&
-    !allowWallSizeChange()
-  ) {
+  const isGrow =
+    dW > LIVE_EXPAND_MIN_DELTA ||
+    dH > LIVE_EXPAND_MIN_DELTA ||
+    dX < -LIVE_EXPAND_MIN_DELTA ||
+    dY < -LIVE_EXPAND_MIN_DELTA;
+
+  if (isGrow && !allowWallSizeChange()) {
     return false;
   }
 
-  if (shiftX !== 0 || shiftY !== 0) {
-    for (const object of liveObjects) {
-      const node = getWallNode(object.id);
-      if (!node) continue;
-      node.position({ x: node.x() + shiftX, y: node.y() + shiftY });
-    }
-    liveContentShiftX += shiftX;
-    liveContentShiftY += shiftY;
-    contentShiftListener?.(shiftX, shiftY);
-  }
-
-  // Keep the opposite edges of the wall fixed on screen (center-anchored wrapper).
-  // East grow → left stays; north grow (with shift) → bottom stays.
-  const scale = useWallSceneStore.getState().viewportScale;
-  livePanX += (dW / 2 - shiftX) * scale;
-  livePanY += (dH / 2 - shiftY) * scale;
-
-  pushLiveLayout(bounds, shiftX !== 0 || shiftY !== 0);
+  // Do not adjust pan/camera during expand — world-stable objects + a moving
+  // viewport fight the finger and make growth stop after one step.
+  pushLiveLayout(bounds);
   return true;
 }
 
 /**
- * On drag end: finish any pending omni adjust, bake live pan/wallpaper/bounds into the store,
- * and persist shifts for non-moving objects.
+ * On drag end: bake live bounds into the store.
+ * No object position patches for stationary nodes (world coords are stable).
+ * No pan changes — the viewport stays world-locked through expand/shrink.
  */
 export function applyOmniWallExpandAfterDrag(movingIds: Iterable<string>): boolean {
   const ids = movingIds instanceof Set ? movingIds : new Set(movingIds);
-  applyWallExpandDuringDrag(ids);
+  applyWallExpandDuringDrag(ids, { allowReclaim: true });
 
   const store = useWallSceneStore.getState();
-  const hadLive =
-    liveWallBoundsDuringDrag != null ||
-    liveContentShiftX !== 0 ||
-    liveContentShiftY !== 0 ||
-    livePanX !== 0 ||
-    livePanY !== 0;
+  const hadLive = liveWallBoundsDuringDrag != null;
 
   if (!hadLive) return false;
 
-  const shiftX = liveContentShiftX;
-  const shiftY = liveContentShiftY;
   const bounds = liveWallBoundsDuringDrag ?? store.document.meta.wallBounds;
-
-  if (shiftX !== 0 || shiftY !== 0) {
-    for (const object of store.document.objects) {
-      if (ids.has(object.id)) continue;
-      const node = getWallNode(object.id);
-      const x = node?.x() ?? object.x + shiftX;
-      const y = node?.y() ?? object.y + shiftY;
-      store.patchObject(object.id, { x, y });
-      broadcastWallPatch(object.id, { x, y });
-    }
-    store.shiftWallHomeAnchors(shiftX, shiftY);
-  }
-
-  if (livePanX !== 0 || livePanY !== 0) {
-    store.addPan(livePanX, livePanY);
-  }
 
   store.setWallBounds(bounds);
 
   if (
     bounds.width <= DEFAULT_WALL_BOUNDS.width &&
-    bounds.height <= DEFAULT_WALL_BOUNDS.height
+    bounds.height <= DEFAULT_WALL_BOUNDS.height &&
+    Math.abs(bounds.x - DEFAULT_WALL_BOUNDS.x) < 1 &&
+    Math.abs(bounds.y - DEFAULT_WALL_BOUNDS.y) < 1
   ) {
-    store.normalizeWallHomeOrigin();
-    for (const object of useWallSceneStore.getState().document.objects) {
-      getWallNode(object.id)?.position({ x: object.x, y: object.y });
-    }
+    store.setWallBounds({ ...DEFAULT_WALL_BOUNDS });
   }
 
   clearLiveOffsets();
+  restoreLayoutFromStore();
   return true;
 }
 
-/** Apply live wall adjust during drag; rebind Konva drag offsets when layout changes. */
 export function scheduleWallExpandDuringDrag(
   movingIds: Iterable<string>,
   evt?: Event,
 ): void {
   const grew = applyWallExpandDuringDrag(movingIds);
-  if (grew) syncKonvaDragOffsets(evt);
+  if (grew) syncDragOffsetsAfterWallExpand(evt);
 }
 
 export function cancelWallExpandDuringDrag(): void {
   // Sync path — nothing async to cancel.
 }
 
-/** Persist live preview into the store (call once at drag end). */
 export function commitLiveWallBoundsToStore(): void {
   applyOmniWallExpandAfterDrag([]);
 }
 
-/** Drop live preview and restore stage to stored bounds (drag cancel). */
 export function revertLiveWallBounds(): void {
-  if (liveContentShiftX !== 0 || liveContentShiftY !== 0) {
-    const { document } = useWallSceneStore.getState();
-    for (const object of document.objects) {
-      const node = getWallNode(object.id);
-      if (!node) continue;
-      node.position({
-        x: node.x() - liveContentShiftX,
-        y: node.y() - liveContentShiftY,
-      });
-    }
-  }
   clearLiveOffsets();
   restoreLayoutFromStore();
 
-  // Tell peers to drop the live expand preview.
   const store = useWallSceneStore.getState();
   const wallpaper = store.document.meta.wallpaperOffset ?? { x: 0, y: 0 };
   broadcastWallLive({
     wallBounds: store.document.meta.wallBounds,
     wallpaperOffset: wallpaper,
-    positions: store.document.objects.map((object) => ({
-      id: object.id,
-      x: object.x,
-      y: object.y,
-    })),
   });
 }

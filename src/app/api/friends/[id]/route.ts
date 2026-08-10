@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
+import { restrictedResponse } from "@/lib/auth/account-restrict";
 import { getFriends, removeFriendship } from "@/lib/supabase/profiles";
 
 export async function DELETE(
@@ -18,6 +19,9 @@ export async function DELETE(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await restrictedResponse(supabase, user.id);
+  if (blocked) return applyCookies(blocked);
 
   const removed = await removeFriendship(supabase, user.id, friendId);
   if (!removed) {

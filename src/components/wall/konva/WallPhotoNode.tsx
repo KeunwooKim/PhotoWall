@@ -9,6 +9,7 @@ import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import type { PhotoCropRect, WallScenePhoto } from "@/types/wall-scene-v2";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { wrapKonvaNode } from "@/lib/wall-scene/realtime/wrap-konva-node";
 import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
 import {
   applyGroupDrag,
@@ -61,7 +62,7 @@ export default function WallPhotoNode({
     (node: Konva.Group | null) => {
       groupRef.current = node;
       registerNode(objectId, node);
-      registerWallNode(objectId, node);
+      registerWallNode(objectId, node ? wrapKonvaNode(node) : null);
     },
     [objectId, registerNode],
   );
@@ -98,8 +99,8 @@ export default function WallPhotoNode({
   const handleDragMove = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
       const node = e.target;
-      applyDragSnapToNode(node, objectId);
-      applyGroupDrag(node, e.evt);
+      applyDragSnapToNode(wrapKonvaNode(node), objectId);
+      applyGroupDrag(wrapKonvaNode(node), e.evt);
       broadcastLivePosition(objectId, { x: node.x(), y: node.y() });
     },
     [broadcastLivePosition, objectId],
@@ -109,7 +110,7 @@ export default function WallPhotoNode({
     (e: Konva.KonvaEventObject<DragEvent>) => {
       clearDragSnapGuides();
       broadcastLivePosition.flush();
-      commitGroupDrag(e.target);
+      commitGroupDrag(wrapKonvaNode(e.target));
       isDraggingRef.current = false;
       setWallNodeDragging(objectId, false);
       onManipulationChange?.(false, objectId);
@@ -215,6 +216,8 @@ export default function WallPhotoNode({
           width={object.width}
           height={object.height}
           crop={konvaCrop}
+          // Prefer smoother sampling when the stage pixelRatio is < 1 (memory cap).
+          imageSmoothingEnabled
           perfectDrawEnabled={false}
           shadowForStrokeEnabled={false}
         />

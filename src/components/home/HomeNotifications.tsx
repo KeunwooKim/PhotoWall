@@ -4,18 +4,21 @@ import Link from "next/link";
 import type { PublicAnnouncement } from "@/types/announcement";
 import type { WallMemberInvite } from "@/types/shared-wall";
 import type { WallActivityNotice } from "@/types/wall-activity-notice";
+import type { InboxNotice } from "@/lib/supabase/user-inbox";
 import { authFetch } from "@/lib/auth/api-fetch";
 
 export type HomeNotice =
   | { kind: "invite"; invite: WallMemberInvite }
   | { kind: "announcement"; item: PublicAnnouncement }
-  | { kind: "wall_activity"; activity: WallActivityNotice };
+  | { kind: "wall_activity"; activity: WallActivityNotice }
+  | { kind: "inbox"; notice: InboxNotice };
 
 interface HomeNotificationsProps {
   open: boolean;
   onClose: () => void;
   notices: HomeNotice[];
   onDismissActivity?: (id: string) => void;
+  onDismissInbox?: (id: string) => void;
 }
 
 async function dismissActivity(id: string) {
@@ -30,11 +33,24 @@ async function dismissActivity(id: string) {
   }
 }
 
+async function dismissInbox(id: string) {
+  try {
+    await authFetch("/api/notifications/inbox", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [id] }),
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function HomeNotifications({
   open,
   onClose,
   notices,
   onDismissActivity,
+  onDismissInbox,
 }: HomeNotificationsProps) {
   if (!open) return null;
 
@@ -129,6 +145,28 @@ export default function HomeNotifications({
                       <p className="mt-1 text-[10px] text-muted">공동 벽 열기</p>
                     </div>
                   </Link>
+                );
+              }
+
+              if (notice.kind === "inbox") {
+                const item = notice.notice;
+                return (
+                  <button
+                    key={`inbox-${item.id}`}
+                    type="button"
+                    onClick={() => {
+                      onDismissInbox?.(item.id);
+                      void dismissInbox(item.id);
+                      onClose();
+                    }}
+                    className="w-full rounded-2xl border border-rose-200/60 bg-rose-50/50 px-3.5 py-3 text-left dark:border-rose-900/40 dark:bg-rose-950/30"
+                  >
+                    <p className="text-[12.5px] font-semibold text-foreground">{item.title}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">
+                      {item.body}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted">운영팀 답변 · 탭하여 닫기</p>
+                  </button>
                 );
               }
 

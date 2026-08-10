@@ -1,6 +1,6 @@
-import type Konva from "konva";
 import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
+import type { WallDisplayNode } from "@/lib/wall-scene/realtime/wall-display-node";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
 import {
@@ -87,7 +87,7 @@ export function beginGroupDrag(leaderId: string): void {
 }
 
 export function applyGroupDrag(
-  leaderNode: Konva.Node,
+  leaderNode: WallDisplayNode,
   evt?: Event,
 ): void {
   if (!session || session.leaderId !== leaderNode.id()) return;
@@ -112,7 +112,7 @@ export function applyGroupDrag(
   scheduleWallExpandDuringDrag(session.startPositions.keys(), evt);
 }
 
-export function commitGroupDrag(leaderNode: Konva.Node): void {
+export function commitGroupDrag(leaderNode: WallDisplayNode): void {
   liveBroadcast.flush();
 
   if (!session) {
@@ -152,7 +152,7 @@ export function commitGroupDrag(leaderNode: Konva.Node): void {
   store.bumpRevision();
 }
 
-function commitSingleDrag(node: Konva.Node): void {
+function commitSingleDrag(node: WallDisplayNode): void {
   const id = node.id();
   const store = useWallSceneStore.getState();
   const object = store.document.objects.find((item) => item.id === id);

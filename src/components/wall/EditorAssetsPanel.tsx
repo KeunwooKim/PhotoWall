@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import type { WallThemeId } from "@/types/wall";
 import { WALL_THEMES } from "@/lib/wall-themes";
+import { hrefWithWallReturn } from "@/lib/wall-return-path";
 import StickerPicker from "./StickerPicker";
 
 interface EditorAssetsPanelProps {
@@ -13,6 +14,8 @@ interface EditorAssetsPanelProps {
   onThemeChange: (id: WallThemeId) => void;
   onPhotoUpload: (file: File) => void;
   onAddSticker: (stickerId: string) => void;
+  /** Where QR / scan should return (personal edit or shared editor). */
+  returnTo?: string;
   /** docked = desktop column beside tool rail; drawer = mobile slide-over */
   variant?: "docked" | "drawer";
 }
@@ -25,9 +28,12 @@ export default function EditorAssetsPanel({
   onThemeChange,
   onPhotoUpload,
   onAddSticker,
+  returnTo = "/wall/edit",
   variant = "docked",
 }: EditorAssetsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importHref = hrefWithWallReturn("/import", returnTo);
+  const captureHref = hrefWithWallReturn("/capture", returnTo);
 
   useEffect(() => {
     if (!isOpen || variant !== "drawer") return;
@@ -85,14 +91,14 @@ export default function EditorAssetsPanel({
             사진 올리기
           </button>
           <Link
-            href="/import"
+            href={importHref}
             onClick={onClose}
             className="block w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2.5 text-center text-xs font-medium text-foreground transition hover:bg-foreground/5"
           >
             QR로 네컷 가져오기
           </Link>
           <Link
-            href="/capture"
+            href={captureHref}
             onClick={onClose}
             className="block w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2.5 text-center text-xs font-medium text-foreground transition hover:bg-foreground/5"
           >

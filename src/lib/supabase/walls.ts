@@ -5,6 +5,7 @@ import { sceneRevisionFromJson } from "@/lib/wall-scene/scene-revision";
 import { getSupabaseEnv } from "./env";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { canEditWall } from "./wall-role";
+import { voidSchedulePhotoGcAfterWallSave } from "@/lib/storage/pending-delete";
 
 export function getSupabaseServer(): SupabaseClient | null {
   const { url, key } = getSupabaseEnv();
@@ -139,32 +140,27 @@ export async function savePersonalWallToDb(
     updated_at: new Date().toISOString(),
   };
 
-  const checkConflict = async (
-    id: string,
-  ): Promise<SaveWallResult | null> => {
-    if (typeof wall.baseRevision !== "number") return null;
-    const { data: row } = await supabase
+  const updateById = async (id: string): Promise<SaveWallResult> => {
+    const { data: beforeRow } = await supabase
       .from("walls")
       .select("id, theme_id, canvas_json, updated_at, preview_path")
       .eq("id", id)
       .eq("owner_id", wall.ownerId!)
       .eq("is_shared", false)
       .maybeSingle();
-    if (!row) return null;
-    const currentRevision = sceneRevisionFromJson(row.canvas_json);
-    if (currentRevision !== wall.baseRevision) {
-      return {
-        status: "conflict",
-        currentRevision,
-        wall: mapRow(row),
-      };
-    }
-    return null;
-  };
 
-  const updateById = async (id: string): Promise<SaveWallResult> => {
-    const conflict = await checkConflict(id);
-    if (conflict) return conflict;
+    if (!beforeRow) return { status: "error" };
+
+    if (typeof wall.baseRevision === "number") {
+      const currentRevision = sceneRevisionFromJson(beforeRow.canvas_json);
+      if (currentRevision !== wall.baseRevision) {
+        return {
+          status: "conflict",
+          currentRevision,
+          wall: mapRow(beforeRow),
+        };
+      }
+    }
 
     const { data, error } = await supabase
       .from("walls")
@@ -176,6 +172,13 @@ export async function savePersonalWallToDb(
       .maybeSingle();
 
     if (error || !data) return { status: "error" };
+
+    voidSchedulePhotoGcAfterWallSave({
+      previousCanvas: beforeRow.canvas_json,
+      nextCanvas: wall.canvasJson,
+      wallId: data.id as string,
+    });
+
     return { status: "ok", wall: mapRow(data) };
   };
 
@@ -276,6 +279,13 @@ export async function saveSharedWallToDb(
     .single();
 
   if (error || !data) return { status: "error" };
+
+  voidSchedulePhotoGcAfterWallSave({
+    previousCanvas: existing.canvas_json,
+    nextCanvas: wall.canvasJson,
+    wallId,
+  });
+
   return { status: "ok", wall: mapRow(data) };
 }
 

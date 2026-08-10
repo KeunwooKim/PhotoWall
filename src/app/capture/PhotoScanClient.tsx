@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { autoLevelCanvas } from "@/lib/photo-scan/auto-level";
 import { detectDocumentCorners, loadCornerDetector } from "@/lib/photo-scan/detect-corners";
@@ -14,11 +14,17 @@ import {
 import { resampleCanvas } from "@/lib/photo-scan/resample";
 import { savePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import type { Point2, QuadPoints, ScanEnhanceMode } from "@/lib/photo-scan/types";
+import { sanitizeWallReturnPath } from "@/lib/wall-return-path";
 
 type Phase = "pick" | "detecting" | "review" | "processing";
 
 export default function PhotoScanClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const wallReturnPath = useMemo(
+    () => sanitizeWallReturnPath(searchParams.get("returnTo")),
+    [searchParams],
+  );
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const reviewWrapRef = useRef<HTMLDivElement>(null);
@@ -161,12 +167,12 @@ export default function PhotoScanClient() {
       }
 
       savePendingScanFiles([file]);
-      router.replace("/wall/edit");
+      router.replace(wallReturnPath);
     } catch {
       setPhase("review");
       setErrorMessage("평탄화에 실패했어요. 모서리를 다시 맞춰 보세요");
     }
-  }, [sourceUrl, reviewQuad, finishScanCanvas, enhanceMode, autoLevel, upscale, router]);
+  }, [sourceUrl, reviewQuad, finishScanCanvas, enhanceMode, autoLevel, upscale, router, wallReturnPath]);
 
   const retake = useCallback(() => {
     revokeSource();
@@ -222,7 +228,7 @@ export default function PhotoScanClient() {
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
         <Link
-          href="/wall/edit"
+          href={wallReturnPath}
           className="rounded-full bg-black/50 px-3 py-1.5 text-sm backdrop-blur-sm"
         >
           닫기

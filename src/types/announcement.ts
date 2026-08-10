@@ -19,4 +19,7 @@ export interface PublicAnnouncement {
   title: string;
   message: string;
   severity: AnnouncementSeverity;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
 }
