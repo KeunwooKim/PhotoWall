@@ -78,6 +78,10 @@ export type WallObjectPatch = Partial<
 > & {
   /** Set to null to remove group membership on peers */
   groupId?: string | null;
+  /** Text wrap width (baked from horizontal resize). */
+  width?: number;
+  /** Text / emoji font size (baked from vertical or uniform resize). */
+  fontSize?: number;
 };
 
 type SyncPayload =

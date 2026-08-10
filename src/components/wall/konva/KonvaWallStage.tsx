@@ -40,6 +40,7 @@ import {
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { OBJECT_MAX_VISUAL_EDGE, clampObjectScalePair } from "@/lib/wall-scene/object-scale";
+import { bakeTextTransformScale } from "@/lib/wall-scene/bake-text-transform";
 import { selectionStrokeWallPx } from "@/lib/wall-scene/selection-chrome";
 import { containerCenter } from "@/lib/wall-scene/viewport-zoom";
 import { setWallNodeDragging, isAnyWallNodeDragging, getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
@@ -348,6 +349,20 @@ function KonvaWallStage({
       )
       .map((object) => object.id);
   }, [cropPhotoId, interactionLockId, document.objects, selectedIds, peerLockedIds]);
+
+  const transformerAnchors = useMemo(() => {
+    const corners = ["top-left", "top-right", "bottom-left", "bottom-right"];
+    if (transformableSelectedIds.length !== 1) return corners;
+    const obj = document.objects.find((o) => o.id === transformableSelectedIds[0]);
+    if (obj?.type !== "text") return corners;
+    return [
+      ...corners,
+      "middle-left",
+      "middle-right",
+      "top-center",
+      "bottom-center",
+    ];
+  }, [document.objects, transformableSelectedIds]);
 
   const cropPhoto = useMemo(() => {
     if (!cropPhotoId) return null;
@@ -946,14 +961,30 @@ function KonvaWallStage({
 
       const object = store.document.objects.find((item) => item.id === id);
       const wall = getEffectiveWallBounds();
-      let patch = {
+      let patch: WallObjectPatch = {
         x: node.x(),
         y: node.y(),
         scaleX: node.scaleX(),
         scaleY: node.scaleY(),
         rotation: node.rotation(),
       };
-      if (object) {
+      if (object?.type === "text") {
+        const baked = bakeTextTransformScale(
+          object,
+          node.scaleX(),
+          node.scaleY(),
+          "axes",
+        );
+        patch = { ...patch, ...baked };
+        node.scaleX(baked.scaleX);
+        node.scaleY(baked.scaleY);
+        const candidate = { ...object, ...patch } as WallSceneObject;
+        const clamped = hardClampObjectPositionToWall(candidate, wall);
+        if (clamped) {
+          patch = { ...patch, ...clamped };
+          node.position(clamped);
+        }
+      } else if (object) {
         const baseW =
           "width" in object && typeof object.width === "number"
             ? object.width
@@ -964,11 +995,16 @@ function KonvaWallStage({
           "height" in object && typeof object.height === "number"
             ? object.height
             : baseW;
-        const scales = clampObjectScalePair(patch.scaleX, patch.scaleY, baseW, baseH);
+        const scales = clampObjectScalePair(
+          node.scaleX(),
+          node.scaleY(),
+          baseW,
+          baseH,
+        );
         patch = { ...patch, ...scales };
         node.scaleX(scales.scaleX);
         node.scaleY(scales.scaleY);
-        const candidate = { ...object, ...patch };
+        const candidate = { ...object, ...patch } as WallSceneObject;
         const clamped = hardClampObjectPositionToWall(candidate, wall);
         if (clamped) {
           patch = { ...patch, ...clamped };
@@ -1376,9 +1412,7 @@ function KonvaWallStage({
                 borderStrokeWidth={selectionStrokeWallPx(viewportScale)}
                 anchorSize={Math.max(8, 12 / Math.max(viewportScale, 0.05))}
                 enabledAnchors={
-                  editorMode === "select"
-                    ? ["top-left", "top-right", "bottom-left", "bottom-right"]
-                    : []
+                  editorMode === "select" ? transformerAnchors : []
                 }
                 listening={editorMode === "select"}
                 boundBoxFunc={(oldBox, newBox) => {
