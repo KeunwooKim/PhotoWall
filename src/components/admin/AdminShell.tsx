@@ -12,19 +12,23 @@ const NAV = [
   { href: "/admin/users", label: "유저" },
   { href: "/admin/plans", label: "플랜" },
   { href: "/admin/announcements", label: "공지" },
+  { href: "/admin/events", label: "이벤트" },
   { href: "/admin/banners", label: "광고" },
+  { href: "/admin/sticker-packs", label: "스티커팩" },
   { href: "/admin/operations", label: "기능 설정" },
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [hasServiceRole, setHasServiceRole] = useState(true);
+  const [rateLimitBackend, setRateLimitBackend] = useState<"upstash" | "memory" | null>(null);
 
   useEffect(() => {
     authFetch("/api/admin/me")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { hasServiceRole?: boolean } | null) => {
+      .then((data: { hasServiceRole?: boolean; rateLimitBackend?: "upstash" | "memory" } | null) => {
         setHasServiceRole(data?.hasServiceRole !== false);
+        if (data?.rateLimitBackend) setRateLimitBackend(data.rateLimitBackend);
       })
       .catch(() => {});
   }, []);
@@ -71,6 +75,12 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             insert into app_admins (user_id) values (&apos;본인-UUID&apos;);
           </code>
           를 실행하세요.
+        </div>
+      )}
+      {rateLimitBackend === "memory" && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Rate limit이 인메모리입니다. 프로덕션에서는{" "}
+          <code className="rounded bg-amber-100 px-1">UPSTASH_REDIS_REST_*</code> 를 설정하세요.
         </div>
       )}
       <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>

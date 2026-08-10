@@ -1,38 +1,42 @@
 "use client";
 
-import type { WallPresenceState } from "@/types/wall-scene-v2";
-import { dedupePresencePeers, shouldShowPeerCursor } from "@/lib/wall-scene/presence-utils";
+import {
+  dedupePresencePeers,
+  shouldShowPeerCursor,
+} from "@/lib/wall-scene/presence-utils";
+import {
+  getEffectivePan,
+  getEffectiveWallBounds,
+} from "@/lib/wall-scene/wall-drag-expand";
+import { useWallPresencePeers } from "@/lib/wall-scene/realtime/wall-presence-store";
+import { useWallSceneStore } from "@/stores/wall-scene-store";
 
 interface WallPresenceOverlayProps {
-  peers: WallPresenceState[];
   currentSessionId: string;
-  wallWidth: number;
-  wallHeight: number;
   containerWidth: number;
   containerHeight: number;
-  wallScale: number;
-  panX: number;
-  panY: number;
 }
 
 export default function WallPresenceOverlay({
-  peers,
   currentSessionId,
-  wallWidth,
-  wallHeight,
   containerWidth,
   containerHeight,
-  wallScale,
-  panX,
-  panY,
 }: WallPresenceOverlayProps) {
-  // Match wall stage: centered + pan + scale (see KonvaWallStage transform).
-  const offsetX = containerWidth / 2 - (wallWidth * wallScale) / 2 + panX;
-  const offsetY = containerHeight / 2 - (wallHeight * wallScale) / 2 + panY;
+  const peers = useWallPresencePeers();
+  // Read live layout so cursors stay aligned during remote wall-live expand
+  // without forcing the Konva Stage to React-render on every presence tick.
+  const wall = getEffectiveWallBounds();
+  const pan = getEffectivePan();
+  const wallScale = useWallSceneStore((s) => s.viewportScale);
+
+  const offsetX = containerWidth / 2 - (wall.width * wallScale) / 2 + pan.x;
+  const offsetY = containerHeight / 2 - (wall.height * wallScale) / 2 + pan.y;
 
   const visiblePeers = dedupePresencePeers(peers).filter((peer) =>
     shouldShowPeerCursor(peer, { currentSessionId }),
   );
+
+  if (visiblePeers.length === 0) return null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
@@ -55,7 +59,7 @@ export default function WallPresenceOverlay({
               style={{ backgroundColor: peer.color }}
             />
             <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-medium text-background shadow-sm"
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium text-foreground/85 shadow-sm"
               style={{ backgroundColor: peer.color }}
             >
               {peer.displayName}

@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { getSiteOrigin } from "@/lib/auth/get-site-origin";
+import { getSiteOrigin, sanitizeAuthNextPath } from "@/lib/auth/get-site-origin";
 import { isLikelyNewAuthUser, notifyNewUser } from "@/lib/discord/notify";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const next = sanitizeAuthNextPath(searchParams.get("next"));
   const siteOrigin = getSiteOrigin(request);
 
   if (code) {

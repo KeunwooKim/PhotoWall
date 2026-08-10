@@ -8,6 +8,7 @@ import {
   updateTextObject,
 } from "@/lib/wall-scene/add-text";
 import type { WallSceneText } from "@/types/wall-scene-v2";
+import TextContentField from "@/components/wall/TextContentField";
 
 interface TextStyleBarProps {
   object: WallSceneText;
@@ -53,13 +54,7 @@ export default function TextStyleBar({ object, onClose }: TextStyleBarProps) {
             </div>
           </div>
 
-          <input
-            value={object.text}
-            onChange={(e) => updateTextObject(object.id, { text: e.target.value || " " })}
-            className="w-full rounded-xl border border-foreground/10 bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
-            placeholder="텍스트 입력"
-            aria-label="텍스트 내용"
-          />
+          <TextContentField objectId={object.id} value={object.text} autoFocus />
 
           <p className="text-[11px] font-medium text-muted">글꼴</p>
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">

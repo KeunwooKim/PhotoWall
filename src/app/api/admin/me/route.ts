@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { isAdminUser } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/admin/service-client";
+import { getRateLimitBackend } from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   const routeClient = createRouteClient(request);
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
     NextResponse.json({
       isAdmin: true,
       hasServiceRole: !!createAdminClient(),
+      rateLimitBackend: getRateLimitBackend(),
     }),
   );
 }

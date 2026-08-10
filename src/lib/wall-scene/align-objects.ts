@@ -103,8 +103,8 @@ export function computeWallCenterPatches(
   if (selected.length === 0) return [];
 
   const union = unionExtents(selected);
-  const targetCenterX = wallBounds.width / 2;
-  const targetCenterY = wallBounds.height / 2;
+  const targetCenterX = wallBounds.x + wallBounds.width / 2;
+  const targetCenterY = wallBounds.y + wallBounds.height / 2;
   const currentCenterX = (union.minX + union.maxX) / 2;
   const currentCenterY = (union.minY + union.maxY) / 2;
 

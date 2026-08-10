@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Extract 무한도전 sticker ZIPs into category folders and generate catalog TS."""
+"""Extract 무한도전 sticker ZIPs into category folders and generate catalog TS.
+
+After extraction, run `node scripts/trim-mudo-stickers.mjs` to crop transparent
+padding and write aspect-aware defaultWidth/defaultHeight into the catalog.
+"""
 
 from __future__ import annotations
 

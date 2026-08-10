@@ -1,5 +1,6 @@
+/** userZoom is relative to fit-to-wall. 1 = wall fills the view (with padding). */
 export const USER_ZOOM_MIN = 0.5;
-export const USER_ZOOM_MAX = 4;
+export const USER_ZOOM_MAX = 8;
 
 export function clampUserZoom(zoom: number): number {
   return Math.max(USER_ZOOM_MIN, Math.min(USER_ZOOM_MAX, zoom));

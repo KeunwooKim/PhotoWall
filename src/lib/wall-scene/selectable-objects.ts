@@ -19,15 +19,32 @@ export function isCanvasSelectableObject(object: WallSceneObject): boolean {
   return isSelectableObject(object);
 }
 
+/**
+ * Resize / rotate transformer (photo, sticker, emoji, text).
+ * Tape + pen paths are move-only — see isMoveOnlyObject.
+ */
 export function isTransformableObject(object: WallSceneObject): boolean {
-  if (object.type !== "path") return true;
-  // Paths (pen / tape stroke): move only — no resize handles
-  return false;
+  return (
+    object.type === "photo" ||
+    object.type === "sticker" ||
+    object.type === "emoji" ||
+    object.type === "text"
+  );
 }
 
 /** Straight masking-tape stroke — move only, no resize */
 export function isMovableHighlighterObject(object: WallSceneObject): boolean {
   return object.type === "path" && isStraightHighlighterPath(object.points);
+}
+
+/** Tape (legacy rect or path stroke) — selection frame + drag, no resize handles. */
+export function isMoveOnlyObject(object: WallSceneObject): boolean {
+  if (object.type === "tape") return true;
+  if (object.type !== "path") return false;
+  return (
+    object.tool === "tape" ||
+    (object.tool !== "pen" && isStraightHighlighterPath(object.points))
+  );
 }
 
 export function getSelectableObjectIds(objects: WallSceneObject[]): string[] {

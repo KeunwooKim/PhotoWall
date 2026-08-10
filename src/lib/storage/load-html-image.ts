@@ -1,3 +1,5 @@
+import { preferWebpSrc } from "@/lib/optimized-image-src";
+
 /** Load an HTMLImageElement for canvas display.
  * Prefer CORS mode for http(s) so Konva stage.toDataURL / preview export stays untainted.
  * Fall back without crossOrigin if the server rejects CORS (image still displays, export may fail).
@@ -45,6 +47,17 @@ export function loadHtmlImage(src: string): Promise<HTMLImageElement> {
 
   inflight.set(src, promise);
   return promise;
+}
+
+/** Prefer WebP for same-origin static assets; fall back to PNG/JPEG. */
+export async function loadOptimizedHtmlImage(src: string): Promise<HTMLImageElement> {
+  const webp = preferWebpSrc(src);
+  if (webp === src) return loadHtmlImage(src);
+  try {
+    return await loadHtmlImage(webp);
+  } catch {
+    return loadHtmlImage(src);
+  }
 }
 
 /** Warm the in-memory image cache (e.g. after signed URL prefetch). */

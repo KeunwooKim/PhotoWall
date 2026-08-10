@@ -202,3 +202,32 @@ export function isOwnWallPhotoPath(path: string, userId: string): boolean {
 export function allPathsOwnedByUser(paths: string[], userId: string): boolean {
   return paths.length > 0 && paths.every((path) => isOwnWallPhotoPath(path, userId));
 }
+
+/** Loose UUID shape (hex + dashes) — avoid rejecting valid crypto.randomUUID() edge cases. */
+const UUID_LIKE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PHOTO_FILE_LIKE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpe?g|png|webp|gif)$/i;
+
+/**
+ * Storage layout from upload-photo: `{userId}/{uuid}.{ext}`
+ * Also allows preview paths: `{userId}/previews/{wallId}.jpg`
+ * Rejects traversal / odd shapes used for IDOR probes.
+ */
+export function isSafeWallPhotoStoragePath(path: string): boolean {
+  if (!path || path.includes("..") || path.includes("//") || path.startsWith("/")) {
+    return false;
+  }
+  const parts = path.split("/");
+  if (parts.length === 2) {
+    return UUID_LIKE.test(parts[0]) && PHOTO_FILE_LIKE.test(parts[1]);
+  }
+  if (parts.length === 3 && parts[1] === "previews") {
+    return (
+      UUID_LIKE.test(parts[0]) &&
+      UUID_LIKE.test(parts[2].replace(/\.jpe?g$/i, "")) &&
+      /\.jpe?g$/i.test(parts[2])
+    );
+  }
+  return false;
+}

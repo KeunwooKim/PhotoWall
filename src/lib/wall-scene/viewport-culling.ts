@@ -1,4 +1,5 @@
 import type { WallSceneObject } from "@/types/wall-scene-v2";
+import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
 
 export interface ViewportRect {
   x: number;
@@ -30,7 +31,7 @@ function objectBounds(obj: WallSceneObject): ViewportRect {
       x: obj.x,
       y: obj.y,
       width: obj.width * scaleX,
-      height: obj.fontSize * 1.4 * scaleY,
+      height: estimateTextBlockHeight(obj) * scaleY,
     };
   }
 

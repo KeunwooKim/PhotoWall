@@ -13,13 +13,24 @@ import {
 import {
   applyRemoteObjectsToNodes,
   applyRemotePatchToNode,
+  applyRemotePatchesToNodes,
   isAnyWallNodeDragging,
+  isWallNodeDragging,
+  removeRemoteWallNodes,
 } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
-import { panDeltaForWallLayoutChange } from "@/lib/wall-scene/viewport-stabilize";
+import {
+  applyRemoteWallLivePreview,
+  clearRemoteWallLivePreview,
+  refreshWallLayoutFromStore,
+} from "@/lib/wall-scene/wall-drag-expand";
 import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
 import { isWallSizeLocked } from "@/lib/wall-scene/wall-size-lock";
 import { presenceColorForUser } from "@/lib/wall-scene/presence-colors";
+import {
+  clearWallPresencePeers,
+  setWallPresencePeersWithColors,
+} from "@/lib/wall-scene/realtime/wall-presence-store";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { structuralSceneFingerprint } from "@/lib/wall-scene/scene-fingerprint";
 import type { WallPresenceState } from "@/types/wall-scene-v2";
@@ -31,6 +42,12 @@ interface UseWallRealtimeOptions {
   enabled?: boolean;
   /** Peer completed a DB save — keep local OCC baseRevision in sync. */
   onRemoteSaved?: (revision: number) => void;
+  /** Remote scene applied to the store — skip echo autosave/toast. */
+  onRemoteSceneApplied?: () => void;
+  /** Current wallpaper theme for hello/full sync. */
+  getThemeId?: () => string;
+  /** Peer changed wallpaper — apply locally without waiting for reload. */
+  onRemoteTheme?: (themeId: string) => void;
 }
 
 function structuralFingerprint(objects: Parameters<typeof structuralSceneFingerprint>[0]): string {
@@ -46,13 +63,49 @@ function wallMetaFingerprint(meta: {
   return `${meta.wallBounds.width}x${meta.wallBounds.height}:${offset.x},${offset.y}:L${meta.wallSizeLocked ? 1 : 0}`;
 }
 
-function readLocalMeta() {
+function readLocalMeta(themeId?: string) {
   const meta = useWallSceneStore.getState().document.meta;
   return {
     wallBounds: meta.wallBounds,
     wallpaperOffset: meta.wallpaperOffset,
     wallSizeLocked: meta.wallSizeLocked,
+    themeId,
   };
+}
+
+/**
+ * Apply live peer transforms to Konva only — never touch Zustand mid-drag.
+ * Store updates re-render the full Stage; at max wall size Safari reloads:
+ * "A problem repeatedly occurred on this webpage".
+ */
+function applyLivePositionsToNodes(
+  positions: Array<{ id: string; x: number; y: number }>,
+  options?: { clampToWall?: boolean },
+): void {
+  const store = useWallSceneStore.getState();
+  const wall = store.document.meta.wallBounds;
+  const clamp = options?.clampToWall === true;
+
+  const patches = positions.map((pos) => {
+    let x = pos.x;
+    let y = pos.y;
+    if (clamp) {
+      const object = store.document.objects.find((item) => item.id === pos.id);
+      if (object) {
+        const clamped = hardClampObjectPositionToWall(
+          { ...object, x, y } as typeof object,
+          wall,
+        );
+        if (clamped) {
+          x = clamped.x;
+          y = clamped.y;
+        }
+      }
+    }
+    return { id: pos.id, patch: { x, y } };
+  });
+
+  applyRemotePatchesToNodes(patches);
 }
 
 export function useWallRealtime({
@@ -61,13 +114,20 @@ export function useWallRealtime({
   displayName,
   enabled = true,
   onRemoteSaved,
+  onRemoteSceneApplied,
+  getThemeId,
+  onRemoteTheme,
 }: UseWallRealtimeOptions) {
   const onRemoteSavedRef = useRef(onRemoteSaved);
   onRemoteSavedRef.current = onRemoteSaved;
-  const [peers, setPeers] = useState<WallPresenceState[]>([]);
+  const onRemoteSceneAppliedRef = useRef(onRemoteSceneApplied);
+  onRemoteSceneAppliedRef.current = onRemoteSceneApplied;
+  const getThemeIdRef = useRef(getThemeId);
+  getThemeIdRef.current = getThemeId;
+  const onRemoteThemeRef = useRef(onRemoteTheme);
+  onRemoteThemeRef.current = onRemoteTheme;
   const [isConnected, setIsConnected] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [remoteSyncCount, setRemoteSyncCount] = useState(0);
   const sessionRef = useRef<WallRealtimeSession | null>(null);
   const sessionIdRef = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
@@ -77,6 +137,8 @@ export function useWallRealtime({
   const skipLocalSync = useRef(false);
   const displayNameRef = useRef(displayName);
   displayNameRef.current = displayName;
+  const presencePeersRaf = useRef<WallPresenceState[]>([]);
+  const presenceFlushTimer = useRef<number | null>(null);
 
   const presenceRef = useRef({
     cursorX: 0,
@@ -84,29 +146,6 @@ export function useWallRealtime({
     selectedObjectIds: undefined as string[] | undefined,
     isManipulating: false,
   });
-
-  /** Live remote drag used to patch the store every frame and re-render the whole stage (Safari crash). */
-  const pendingRemotePatchesRef = useRef(new Map<string, WallObjectPatch>());
-  const flushRemoteStorePatchesRef = useRef(
-    throttle(() => {
-      const pending = pendingRemotePatchesRef.current;
-      if (pending.size === 0) return;
-
-      const entries = [...pending.entries()];
-      pending.clear();
-
-      runWithoutWallPersist(() => {
-        skipLocalSync.current = true;
-        const store = useWallSceneStore.getState();
-        for (const [id, patch] of entries) {
-          store.patchObject(id, patch);
-        }
-        queueMicrotask(() => {
-          skipLocalSync.current = false;
-        });
-      });
-    }, 120),
-  );
 
   const flushPresenceRef = useRef(
     throttle(() => {
@@ -133,7 +172,7 @@ export function useWallRealtime({
         // Continue; channel may still connect or fall back to httpSend.
       }
 
-      const color = presenceColorForUser(userId);
+      const color = presenceColorForUser(userId, sessionIdRef.current);
 
       session = new WallRealtimeSession({
         wallId,
@@ -143,31 +182,21 @@ export function useWallRealtime({
         color,
         supabase,
         getLocalObjects: () => useWallSceneStore.getState().document.objects,
-        getLocalMeta: readLocalMeta,
-        onSyncEvent: () => {
-          if (!cancelled) setRemoteSyncCount((count) => count + 1);
-        },
+        getLocalMeta: () => readLocalMeta(getThemeIdRef.current?.()),
+        // Do NOT setState on every sync event — that re-renders max-size Konva and crashes Safari.
         onRemoteFull: (objects, meta) => {
           const localObjects = useWallSceneStore.getState().document.objects;
           if (objects.length === 0 && localObjects.length > 0) return;
           if (isAnyWallNodeDragging()) return;
 
+          clearRemoteWallLivePreview();
           runWithoutWallPersist(() => {
             skipLocalSync.current = true;
             const store = useWallSceneStore.getState();
-            const prevMeta = {
-              wallBounds: store.document.meta.wallBounds,
-              wallpaperOffset: store.document.meta.wallpaperOffset,
-            };
-            const prevScale = store.viewportScale;
 
-            // Apply wall meta before objects so peers share the same coordinate frame.
             if (meta?.wallBounds) {
               store.syncRemoteWallMeta(meta);
-              const delta = panDeltaForWallLayoutChange(prevMeta, meta, prevScale);
-              if (delta.dx !== 0 || delta.dy !== 0) {
-                useWallSceneStore.getState().addPan(delta.dx, delta.dy);
-              }
+              // World-locked camera: do not addPan when remote wall AABB changes.
             }
             useWallSceneStore.getState().syncRemoteObjects(objects);
             applyRemoteObjectsToNodes(objects);
@@ -175,10 +204,13 @@ export function useWallRealtime({
               skipLocalSync.current = false;
             });
           });
+          refreshWallLayoutFromStore();
+          onRemoteSceneAppliedRef.current?.();
         },
         onRemoteClear: () => {
           if (isAnyWallNodeDragging()) return;
 
+          clearRemoteWallLivePreview();
           runWithoutWallPersist(() => {
             skipLocalSync.current = true;
             useWallSceneStore.getState().syncRemoteObjects([]);
@@ -187,83 +219,76 @@ export function useWallRealtime({
               skipLocalSync.current = false;
             });
           });
+          refreshWallLayoutFromStore();
+          onRemoteSceneAppliedRef.current?.();
         },
-        onRemotePatch: (id, patch) => {
-          applyRemotePatchToNode(id, patch);
-
-          const pending = pendingRemotePatchesRef.current;
-          pending.set(id, { ...(pending.get(id) ?? {}), ...patch });
-          flushRemoteStorePatchesRef.current();
-        },
-        onRemoteWallLive: (live: WallLiveSync) => {
-          if (isAnyWallNodeDragging()) return;
+        onRemoteRemove: (ids) => {
+          // Removals always apply — full sync can be skipped while dragging or
+          // dropped when the scene payload is large. Skip ids the local user is dragging.
+          const removable = ids.filter((id) => !isWallNodeDragging(id));
+          if (removable.length === 0) return;
 
           runWithoutWallPersist(() => {
             skipLocalSync.current = true;
             const store = useWallSceneStore.getState();
-            const prevMeta = {
-              wallBounds: store.document.meta.wallBounds,
-              wallpaperOffset: store.document.meta.wallpaperOffset,
-            };
-            const prevScale = store.viewportScale;
-            const locked =
-              isWallSizeLocked() ||
-              live.wallSizeLocked === true ||
-              store.document.meta.wallSizeLocked === true;
-
-            const nextBounds = locked ? prevMeta.wallBounds : live.wallBounds;
-
-            store.syncRemoteWallMeta({
-              wallBounds: nextBounds,
-              wallpaperOffset: locked ? prevMeta.wallpaperOffset : live.wallpaperOffset,
-              wallSizeLocked: live.wallSizeLocked,
-            });
-
-            if (!locked) {
-              const delta = panDeltaForWallLayoutChange(
-                prevMeta,
-                {
-                  wallBounds: nextBounds,
-                  wallpaperOffset: live.wallpaperOffset,
-                },
-                prevScale,
-              );
-              if (delta.dx !== 0 || delta.dy !== 0) {
-                useWallSceneStore.getState().addPan(delta.dx, delta.dy);
-              }
+            const remove = new Set(removable);
+            const next = store.document.objects.filter((object) => !remove.has(object.id));
+            if (next.length !== store.document.objects.length) {
+              store.syncRemoteObjects(next);
             }
-
-            if (live.positions?.length) {
-              const nextStore = useWallSceneStore.getState();
-              const wall = nextStore.document.meta.wallBounds;
-              for (const pos of live.positions) {
-                const object = nextStore.document.objects.find((item) => item.id === pos.id);
-                let x = pos.x;
-                let y = pos.y;
-                if (locked && object) {
-                  const clamped = hardClampObjectPositionToWall(
-                    { ...object, x, y } as typeof object,
-                    wall,
-                  );
-                  if (clamped) {
-                    x = clamped.x;
-                    y = clamped.y;
-                  }
-                }
-                nextStore.patchObject(pos.id, { x, y });
-                applyRemotePatchToNode(pos.id, { x, y });
-              }
+            removeRemoteWallNodes(removable);
+            const selected = store.selectedIds.filter((id) => !remove.has(id));
+            if (selected.length !== store.selectedIds.length) {
+              store.setSelectedIds(selected);
             }
-
             queueMicrotask(() => {
               skipLocalSync.current = false;
             });
           });
+          onRemoteSceneAppliedRef.current?.();
+        },
+        onRemotePatch: (id, patch) => {
+          // Nodes only while live — store catches up on full/saved.
+          applyRemotePatchToNode(id, patch);
+        },
+        onRemoteWallLive: (live: WallLiveSync) => {
+          if (isAnyWallNodeDragging()) return;
+          // Imperative wall size (no Zustand) so peers see expand without Safari crash.
+          if (live.wallBounds) {
+            applyRemoteWallLivePreview(live);
+          }
+          if (!live.positions?.length) return;
+          const locked =
+            isWallSizeLocked() ||
+            live.wallSizeLocked === true ||
+            useWallSceneStore.getState().document.meta.wallSizeLocked === true;
+          applyLivePositionsToNodes(live.positions, { clampToWall: locked });
         },
         onRemoteSaved: (revision) => {
+          clearRemoteWallLivePreview();
+          refreshWallLayoutFromStore();
           onRemoteSavedRef.current?.(revision);
+          onRemoteSceneAppliedRef.current?.();
         },
-        onPresenceChange: setPeers,
+        onRemoteTheme: (themeId) => {
+          onRemoteThemeRef.current?.(themeId);
+        },
+        onPresenceChange: (nextPeers) => {
+          // Publish to presence store (cursors / avatars). Selection-only
+          // subscribers on the Konva Stage ignore cursor-only churn.
+          if (cancelled) return;
+          presencePeersRaf.current = nextPeers;
+          if (presenceFlushTimer.current != null) return;
+          presenceFlushTimer.current = window.setTimeout(() => {
+            presenceFlushTimer.current = null;
+            if (cancelled) return;
+            const snapshot = presencePeersRaf.current;
+            setWallPresencePeersWithColors(snapshot, {
+              userId,
+              sessionId: sessionIdRef.current,
+            });
+          }, 150);
+        },
       });
 
       try {
@@ -296,6 +321,7 @@ export function useWallRealtime({
             wallBounds: state.document.meta.wallBounds,
             wallpaperOffset: state.document.meta.wallpaperOffset,
             wallSizeLocked: state.document.meta.wallSizeLocked,
+            themeId: getThemeIdRef.current?.(),
           });
         },
       );
@@ -303,17 +329,18 @@ export function useWallRealtime({
 
     return () => {
       cancelled = true;
+      if (presenceFlushTimer.current != null) {
+        window.clearTimeout(presenceFlushTimer.current);
+        presenceFlushTimer.current = null;
+      }
       unsubStore?.();
-      flushRemoteStorePatchesRef.current.flush();
-      pendingRemotePatchesRef.current.clear();
       setActiveWallRealtimeSession(null);
       const active = sessionRef.current;
       sessionRef.current = null;
       void active?.dispose();
       setIsConnected(false);
       setConnectError(null);
-      setRemoteSyncCount(0);
-      setPeers([]);
+      clearWallPresencePeers();
     };
   }, [wallId, userId, enabled]);
 
@@ -363,19 +390,27 @@ export function useWallRealtime({
     sessionRef.current?.broadcastClear();
   }, []);
 
+  const broadcastRemove = useCallback((ids: string[]) => {
+    sessionRef.current?.broadcastRemove(ids);
+  }, []);
+
+  const broadcastTheme = useCallback((themeId: string) => {
+    sessionRef.current?.broadcastTheme(themeId);
+  }, []);
+
   const broadcastSaved = useCallback((revision: number) => {
     sessionRef.current?.broadcastSaved(revision);
   }, []);
 
   return {
-    peers,
     isConnected,
     connectError,
-    remoteSyncCount,
     sessionId: sessionIdRef.current,
     updatePresence,
     broadcastObjectPatch,
     broadcastClear,
+    broadcastRemove,
+    broadcastTheme,
     broadcastSaved,
   };
 }

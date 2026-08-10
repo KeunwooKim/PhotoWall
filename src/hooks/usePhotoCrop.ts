@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
+  clampCropToSource,
   displayCropToSource,
   displaySizeAfterSourceCrop,
   hasPhotoCrop,
@@ -95,10 +96,36 @@ export function usePhotoCrop(sceneObjects: WallSceneObject[]) {
   }, [cropPhoto]);
 
   const handleCropReset = useCallback(() => {
-    if (!cropPhoto) return;
+    if (!cropPhoto || !cropPhoto.crop) return;
+    const natural = cropNaturalSizeRef.current;
     useWallSceneStore.getState().recordHistory();
+
     const next: WallScenePhoto = { ...cropPhoto };
     delete next.crop;
+
+    // Expand the frame back to the full source at the same px/source density,
+    // so clearing crop does not stretch the whole image into the cropped box.
+    if (natural) {
+      const visible = clampCropToSource(
+        cropPhoto.crop,
+        natural.width,
+        natural.height,
+      );
+      const scaleX = cropPhoto.width / visible.width;
+      const scaleY = cropPhoto.height / visible.height;
+      const offsetX = -visible.x * scaleX;
+      const offsetY = -visible.y * scaleY;
+      next.width = Math.max(24, natural.width * scaleX);
+      next.height = Math.max(24, natural.height * scaleY);
+      const pos = photoPositionAfterDisplayCrop(
+        cropPhoto,
+        { x: offsetX, y: offsetY },
+        { x: 0, y: 0 },
+      );
+      next.x = pos.x;
+      next.y = pos.y;
+    }
+
     useWallSceneStore.getState().upsertObject(next);
     useWallSceneStore.getState().bumpRevision();
     setCropPhotoId(null);

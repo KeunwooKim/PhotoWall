@@ -9,15 +9,20 @@ import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
 import CorkWallPreview from "@/components/home/CorkWallPreview";
 import HomeDesktop from "@/components/home/HomeDesktop";
+import HomeBoardSheet from "@/components/home/HomeBoardSheet";
 import HomeNotifications, { type HomeNotice } from "@/components/home/HomeNotifications";
+import StickerStorePendingToast from "@/components/stickers/StickerStorePendingToast";
+import { useStickerStoreGate } from "@/hooks/useStickerStoreGate";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
-import { extractRecentWallPhotoPaths } from "@/lib/home/recent-wall-photos";
+import { countUnseenBoardItems } from "@/lib/board-seen";
+import type { BoardItem } from "@/types/board";
 import type { Friend, Profile } from "@/types/profile";
 import type { SharedWall, WallMemberInvite } from "@/types/shared-wall";
 import type { PublicAnnouncement } from "@/types/announcement";
 import type { PublishedWall } from "@/types/wall";
 import type { WallActivityNotice } from "@/types/wall-activity-notice";
+import type { InboxNotice } from "@/lib/supabase/user-inbox";
 
 const displayFont = Jua({
   subsets: ["latin"],
@@ -29,16 +34,20 @@ const TAPE_COLORS = ["#F5C5C5", "#B5C9B1", "#D4BDE0", "#FAE4B0"];
 export default function HomePage() {
   const { user, isLoading: authLoading } = useAuth();
   const [authError, setAuthError] = useState<string | null>(null);
-  const [wallPreviewUrl, setWallPreviewUrl] = useState<string | null>(null);
   const [wallId, setWallId] = useState<string | null>(null);
+  const [wallThemeId, setWallThemeId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [sharedWalls, setSharedWalls] = useState<SharedWall[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [recentPhotos, setRecentPhotos] = useState<string[]>([]);
   const [invites, setInvites] = useState<WallMemberInvite[]>([]);
   const [announcements, setAnnouncements] = useState<PublicAnnouncement[]>([]);
+  const [boardItems, setBoardItems] = useState<BoardItem[]>([]);
+  const [boardUnseen, setBoardUnseen] = useState(0);
   const [wallActivities, setWallActivities] = useState<WallActivityNotice[]>([]);
+  const [inboxNotices, setInboxNotices] = useState<InboxNotice[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -49,101 +58,51 @@ export default function HomePage() {
 
   const loadHomeData = useCallback(async () => {
     if (!user) {
-      setWallPreviewUrl(null);
       setWallId(null);
+      setWallThemeId(null);
       setProfile(null);
       setSharedWalls([]);
       setFriends([]);
       setRecentPhotos([]);
       setInvites([]);
       setWallActivities([]);
+      setInboxNotices([]);
       return;
     }
 
     try {
-      const [mineRes, sharedRes, friendsRes, invitesRes, profileRes, activityRes] =
-        await Promise.all([
-          authFetch("/api/walls/mine"),
-          authFetch("/api/shared-walls"),
-          authFetch("/api/friends"),
-          authFetch("/api/shared-walls/invitations"),
-          authFetch("/api/profile"),
-          authFetch("/api/notifications/wall-activity"),
-        ]);
+      const res = await authFetch("/api/home");
+      if (!res.ok) return;
 
-      if (profileRes.ok) {
-        const p = (await profileRes.json()) as Profile;
-        setProfile(p);
-      }
+      const data = (await res.json()) as {
+        profile?: Profile | null;
+        mine?: PublishedWall | null;
+        sharedWalls?: SharedWall[];
+        friends?: Friend[];
+        invites?: WallMemberInvite[];
+        wallActivities?: WallActivityNotice[];
+        inboxNotices?: InboxNotice[];
+        recentPhotoUrls?: string[];
+      };
 
-      if (sharedRes.ok) {
-        const walls = (await sharedRes.json()) as SharedWall[];
-        setSharedWalls(Array.isArray(walls) ? walls : []);
-      } else {
-        setSharedWalls([]);
-      }
+      if (data.profile) setProfile(data.profile);
+      setSharedWalls(Array.isArray(data.sharedWalls) ? data.sharedWalls : []);
+      setFriends(Array.isArray(data.friends) ? data.friends : []);
+      setInvites(Array.isArray(data.invites) ? data.invites : []);
+      setWallActivities(Array.isArray(data.wallActivities) ? data.wallActivities : []);
+      setInboxNotices(Array.isArray(data.inboxNotices) ? data.inboxNotices : []);
 
-      if (friendsRes.ok) {
-        const list = (await friendsRes.json()) as Friend[];
-        setFriends(Array.isArray(list) ? list : []);
-      }
-
-      if (invitesRes.ok) {
-        const list = (await invitesRes.json()) as WallMemberInvite[];
-        setInvites(Array.isArray(list) ? list : []);
-      }
-
-      if (activityRes.ok) {
-        const list = (await activityRes.json()) as WallActivityNotice[];
-        setWallActivities(Array.isArray(list) ? list : []);
-      } else {
-        setWallActivities([]);
-      }
-
-      if (!mineRes.ok) return;
-      const mine = (await mineRes.json()) as PublishedWall | null;
+      const mine = data.mine ?? null;
       if (!mine?.id) {
         setWallId(null);
-        setWallPreviewUrl(null);
+        setWallThemeId(null);
         setRecentPhotos([]);
         return;
       }
 
       setWallId(mine.id);
-
-      const allPaths = extractRecentWallPhotoPaths(mine.canvasJson, 64);
-      const paths = allPaths.slice(0, 6);
-      if (paths.length > 0) {
-        const signedRes = await authFetch(`/api/walls/${mine.id}/signed-photos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paths }),
-        });
-        if (signedRes.ok) {
-          const data = (await signedRes.json()) as { signedUrls?: Record<string, string> };
-          const urls = paths.map((p) => data.signedUrls?.[p]).filter(Boolean) as string[];
-          setRecentPhotos(urls);
-        }
-      } else {
-        setRecentPhotos([]);
-      }
-
-      const detailRes = await authFetch(`/api/walls/${mine.id}`);
-      if (detailRes.ok) {
-        const detail = (await detailRes.json()) as PublishedWall;
-        if (detail.previewPath) {
-          const previewSign = await authFetch(`/api/walls/${mine.id}/signed-photos`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ paths: [detail.previewPath] }),
-          });
-          if (previewSign.ok) {
-            const data = (await previewSign.json()) as { signedUrls?: Record<string, string> };
-            const url = data.signedUrls?.[detail.previewPath];
-            if (url) setWallPreviewUrl(url);
-          }
-        }
-      }
+      setWallThemeId(mine.themeId ?? null);
+      setRecentPhotos(Array.isArray(data.recentPhotoUrls) ? data.recentPhotoUrls : []);
     } catch {
       // Keep decorative fallbacks
     }
@@ -160,6 +119,20 @@ export default function HomePage() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch("/api/board")
+      .then((res) => (res.ok ? res.json() : { items: [] }))
+      .then((data: { items?: BoardItem[] }) => {
+        const next = Array.isArray(data.items) ? data.items : [];
+        setBoardItems(next);
+        setBoardUnseen(countUnseenBoardItems(next));
+      })
+      .catch(() => {
+        setBoardItems([]);
+        setBoardUnseen(0);
+      });
+  }, []);
+
   const notices: HomeNotice[] = useMemo(() => {
     const inviteNotices: HomeNotice[] = invites.map((invite) => ({
       kind: "invite",
@@ -169,15 +142,23 @@ export default function HomePage() {
       kind: "wall_activity",
       activity,
     }));
+    const inbox: HomeNotice[] = inboxNotices.map((notice) => ({
+      kind: "inbox",
+      notice,
+    }));
     const annNotices: HomeNotice[] = announcements.map((item) => ({
       kind: "announcement",
       item,
     }));
-    return [...inviteNotices, ...activityNotices, ...annNotices];
-  }, [invites, wallActivities, announcements]);
+    return [...inbox, ...inviteNotices, ...activityNotices, ...annNotices];
+  }, [invites, wallActivities, announcements, inboxNotices]);
 
   const dismissActivityLocal = useCallback((id: string) => {
     setWallActivities((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const dismissInboxLocal = useCallback((id: string) => {
+    setInboxNotices((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
   const visitableFriends = friends.filter((f) => f.wallVisitable && f.wallId);
@@ -223,7 +204,13 @@ export default function HomePage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/stickers/basic/sparkle.svg" alt="" className="h-4 w-4" />
             </div>
-            <NotifButton hasUnread={hasUnread} onClick={() => setNotifOpen(true)} />
+            <div className="flex items-center gap-1.5">
+              <BoardButton
+                hasUnseen={boardUnseen > 0}
+                onClick={() => setBoardOpen(true)}
+              />
+              <NotifButton hasUnread={hasUnread} onClick={() => setNotifOpen(true)} />
+            </div>
           </header>
 
           <div className="space-y-7 px-[18px] pb-28 pt-1">
@@ -237,22 +224,16 @@ export default function HomePage() {
             <section className="home-hero-enter">
               <SectionHeader title="나만의 벽" href="/wall/edit" action="편집하기" />
               <Link href="/wall/edit" className="block active:scale-[0.99]">
-                <CorkWallPreview previewUrl={wallPreviewUrl} size="mobile" />
+                <CorkWallPreview photos={recentPhotos} themeId={wallThemeId} size="mobile" />
               </Link>
             </section>
 
             <section className="home-hero-enter home-hero-enter-delay">{sharedSection}</section>
+            <section className="home-hero-enter home-hero-enter-delay-2">
+              <StickerStoreTeaser />
+            </section>
             <section className="home-hero-enter home-hero-enter-delay-2">{friendsSection}</section>
             {recentSection && <section>{recentSection}</section>}
-
-            {!user && !authLoading && (
-              <section className="space-y-3 pb-2 text-center">
-                <p className="text-sm text-muted">로그인 없이 먼저 꾸며볼 수도 있어요</p>
-                <div className="flex justify-center">
-                  <AuthButton />
-                </div>
-              </section>
-            )}
           </div>
 
           <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-40 flex justify-center">
@@ -275,15 +256,18 @@ export default function HomePage() {
             user={!!user}
             authLoading={authLoading}
             plan={profile?.plan === "premium" ? "premium" : user ? "free" : null}
-            wallPreviewUrl={wallPreviewUrl}
             recentPhotos={recentPhotos}
+            wallThemeId={wallThemeId}
             wallId={wallId}
             sharedWalls={sharedWalls}
             friends={friends}
             notices={notices}
             hasUnread={hasUnread}
+            boardUnseen={boardUnseen > 0}
             onOpenNotif={() => setNotifOpen(true)}
+            onOpenBoard={() => setBoardOpen(true)}
             onDismissActivity={dismissActivityLocal}
+            onDismissInbox={dismissInboxLocal}
           />
         </div>
 
@@ -292,7 +276,17 @@ export default function HomePage() {
           onClose={() => setNotifOpen(false)}
           notices={notices}
           onDismissActivity={dismissActivityLocal}
+          onDismissInbox={dismissInboxLocal}
         />
+        <HomeBoardSheet
+          open={boardOpen}
+          onClose={() => {
+            setBoardOpen(false);
+            setBoardUnseen(0);
+          }}
+          items={boardItems}
+        />
+        <StickerStorePendingToast />
       </div>
     </AppShell>
   );
@@ -314,6 +308,40 @@ function SectionHeader({
         {action}
       </Link>
     </div>
+  );
+}
+
+function StickerStoreTeaser() {
+  const { handleStoreClick, Toast } = useStickerStoreGate();
+
+  return (
+    <>
+      {Toast}
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className={`${displayFont.className} text-lg text-foreground`}>스티커 스토어</h2>
+        <Link
+          href="/stickers"
+          onClick={handleStoreClick}
+          className="text-[13px] font-semibold text-foreground"
+        >
+          둘러보기
+        </Link>
+      </div>
+      <Link
+        href="/stickers"
+        onClick={handleStoreClick}
+        className="flex items-center justify-between gap-3 rounded-[18px] border border-foreground/10 bg-surface px-4 py-3.5 active:scale-[0.99]"
+      >
+        <div className="min-w-0">
+          <p className="text-[13.5px] font-semibold text-foreground">무료 스티커 팩</p>
+          <p className="mt-0.5 text-[11.5px] leading-snug text-muted">
+            공식·커뮤니티 팩을 설치해 벽에 붙여 보세요
+          </p>
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/stickers/basic/sparkle.svg" alt="" className="h-7 w-7 shrink-0 opacity-80" />
+      </Link>
+    </>
   );
 }
 
@@ -516,6 +544,22 @@ function FriendWallCard({
   );
 }
 
+function BoardButton({ hasUnseen, onClick }: { hasUnseen: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex h-10 w-10 items-center justify-center rounded-full bg-foreground/[0.06]"
+      aria-label="공지·이벤트"
+    >
+      <MegaphoneIcon />
+      {hasUnseen && (
+        <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-[1.5px] border-background bg-foreground" />
+      )}
+    </button>
+  );
+}
+
 function NotifButton({ hasUnread, onClick }: { hasUnread: boolean; onClick: () => void }) {
   return (
     <button
@@ -559,6 +603,25 @@ function BellIcon() {
         strokeLinejoin="round"
       />
       <path d="M10 19a2 2 0 004 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MegaphoneIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 11v2a1 1 0 001 1h2l6 4V6L6 10H4a1 1 0 00-1 1z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15.5 8.5a4.5 4.5 0 010 7M18 6.5a8 8 0 010 11"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

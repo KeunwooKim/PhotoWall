@@ -5,6 +5,7 @@ import { resolveWallPhotoSrc } from "@/lib/storage/resolve-wall-photos";
 import { isGuestPhotoRef } from "@/lib/storage/guest-photo-refs";
 import { isWallPhotoRef } from "@/lib/storage/wall-photos";
 import { randomHomePlacementPosition } from "@/lib/wall-scene/wall-home-placement";
+import { photoPlacementSize } from "@/lib/wall-scene/photo-placement";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
 import type { UserPlan } from "@/lib/wall-quotas";
@@ -38,10 +39,7 @@ export async function addPhotoToWallScene(
       : ref;
 
   const { width: naturalW, height: naturalH } = await loadImageSize(displaySrc);
-  const maxWidth = Math.min(220, options.wallWidth * 0.35);
-  const scale = Math.min(1, maxWidth / naturalW);
-  const width = naturalW * scale;
-  const height = naturalH * scale;
+  const { width, height } = photoPlacementSize(naturalW, naturalH, options.wallWidth);
 
   const fallback = randomHomePlacementPosition(options.wallWidth, options.wallHeight);
   const x = options.position?.x ?? fallback.x;

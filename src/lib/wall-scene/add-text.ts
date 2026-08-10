@@ -1,8 +1,14 @@
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneText } from "@/types/wall-scene-v2";
 import { TEXT_FONT_FAMILIES } from "@/lib/fonts/wall-text-fonts";
+import { clampWallTextContent } from "@/lib/wall-scene/text-content";
 
 export { TEXT_FONT_FAMILIES };
+export {
+  TEXT_MAX_LENGTH,
+  clampWallTextContent,
+  estimateTextBlockHeight,
+} from "@/lib/wall-scene/text-content";
 
 export const TEXT_COLORS = [
   "#171717",
@@ -48,7 +54,7 @@ export function addTextToWallScene(options: {
     scaleX: 1,
     scaleY: 1,
     zIndex: maxZ + 1,
-    text: options.text ?? "텍스트",
+    text: clampWallTextContent(options.text ?? "텍스트"),
     fontSize,
     fontFamily: options.fontFamily ?? DEFAULT_TEXT_FONT_FAMILY,
     fill: options.fill ?? DEFAULT_TEXT_FILL,
@@ -74,7 +80,10 @@ export function updateTextObject(
   const current = useWallSceneStore.getState().document.objects.find((o) => o.id === id);
   if (!current || current.type !== "text") return;
 
+  const nextPatch =
+    patch.text != null ? { ...patch, text: clampWallTextContent(patch.text) } : patch;
+
   useWallSceneStore.getState().recordHistory();
-  useWallSceneStore.getState().upsertObject({ ...current, ...patch });
+  useWallSceneStore.getState().upsertObject({ ...current, ...nextPatch });
   useWallSceneStore.getState().bumpRevision();
 }

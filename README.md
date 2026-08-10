@@ -47,6 +47,29 @@ pm2 restart photowall
 
 프로덕션: `https://photowall.kr`
 
+### 운영 체크리스트 (배포 전)
+
+| 항목 | env / 확인 |
+|---|---|
+| Supabase | `NEXT_PUBLIC_SUPABASE_*`, `SUPABASE_SERVICE_ROLE_KEY` |
+| Admin | `ADMIN_USER_IDS` (+ `app_admins` SQL) |
+| Rate limit | **필수** `UPSTASH_REDIS_REST_URL` / `TOKEN` (`/api/health` → `rateLimit`) |
+| Discord | `DISCORD_WEBHOOK_URL` |
+| Sentry | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` |
+| Cron | `CRON_SECRET` + 주간 Storage sweeper |
+| SQL | `supabase/ops-hardening-migration.sql` 포함 순서 실행 |
+| Health | `GET https://photowall.kr/api/health` |
+
+PM2 주간 고아 파일 정리 예:
+
+```bash
+# crontab
+0 4 * * 1 curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://photowall.kr/api/cron/storage-orphans
+0 * * * * curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://photowall.kr/api/cron/storage-pending-delete
+```
+
+벽에서 사진을 지우고 저장하면 24시간 유예 큐(`storage_pending_delete`)에 들어가며, 위 시간별 cron(또는 `/admin/operations`)이 실제 Storage 삭제를 처리합니다.
+
 ## 문서
 
 - `PROJECT.md` — 기획·로드맵·ERD·QA 체크리스트

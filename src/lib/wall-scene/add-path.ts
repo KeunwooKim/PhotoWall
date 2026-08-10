@@ -5,6 +5,12 @@ import {
   endpointsToPoints,
 } from "@/lib/wall-scene/highlighter";
 import { getPenStyle, type PenStyleId } from "@/lib/wall-scene/pen";
+import {
+  DEFAULT_TAPE_END_STYLE,
+  DEFAULT_TAPE_PATTERN,
+  type TapeEndStyle,
+  type TapePatternId,
+} from "@/lib/wall-scene/tape-style";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePath } from "@/types/wall-scene-v2";
 
@@ -15,6 +21,9 @@ export function commitTapeStroke(
   options?: {
     strokeWidth?: number;
     opacity?: number;
+    tapeEndStyle?: TapeEndStyle;
+    tapePattern?: TapePatternId;
+    tapePatternAccent?: string;
   },
 ): WallScenePath | null {
   const points = endpointsToPoints(endpoints);
@@ -22,6 +31,8 @@ export function commitTapeStroke(
 
   const objects = useWallSceneStore.getState().document.objects;
   const maxZ = objects.reduce((max, object) => Math.max(max, object.zIndex), 0);
+  const tapePattern = options?.tapePattern ?? DEFAULT_TAPE_PATTERN;
+  const tapeEndStyle = options?.tapeEndStyle ?? DEFAULT_TAPE_END_STYLE;
 
   const path: WallScenePath = {
     id: crypto.randomUUID(),
@@ -37,6 +48,11 @@ export function commitTapeStroke(
     stroke,
     strokeWidth: options?.strokeWidth ?? HIGHLIGHTER_STROKE_WIDTH,
     tool: "tape",
+    tapeEndStyle,
+    tapePattern,
+    ...(options?.tapePatternAccent
+      ? { tapePatternAccent: options.tapePatternAccent }
+      : {}),
   };
 
   useWallSceneStore.getState().recordHistory();

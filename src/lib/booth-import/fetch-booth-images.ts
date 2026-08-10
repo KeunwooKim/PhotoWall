@@ -1,4 +1,4 @@
-import { isAllowedBoothUrl, normalizeBoothUrl } from "./allowed-domains";
+import { isAllowedBoothUrl, isPrivateOrLocalHost, normalizeBoothUrl } from "./allowed-domains";
 import { extractPhotoUrlsFromHtml, htmlLooksExpired } from "./parse-download-page";
 import type { BoothImportResponse } from "./types";
 
@@ -6,30 +6,99 @@ const FETCH_TIMEOUT_MS = 12_000;
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGES = 4;
+const MAX_REDIRECTS = 5;
+
+/** Extra HTTPS hosts used by booth download pages for photo assets (not page roots). */
+const ALLOWED_IMAGE_CDN_ROOTS = [
+  "imweb.me", // photoism / imweb storefront assets
+];
 
 const USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
-async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+function hostMatchesRoot(hostname: string, root: string): boolean {
+  const h = hostname.toLowerCase();
+  const r = root.toLowerCase();
+  return h === r || h.endsWith(`.${r}`);
+}
+
+/** Page + image fetches: allowlisted booth domains, known CDNs, or same host as page. */
+export function isAllowedBoothFetchUrl(
+  urlString: string,
+  pageUrl?: string | null,
+): boolean {
+  if (isAllowedBoothUrl(urlString)) return true;
 
   try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: init?.headers && "Accept" in (init.headers as Record<string, string>)
-          ? (init.headers as Record<string, string>).Accept
-          : "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        ...(init?.headers as Record<string, string> | undefined),
-      },
-    });
-  } finally {
-    clearTimeout(timer);
+    const url = new URL(urlString);
+    if (url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    if (isPrivateOrLocalHost(host)) return false;
+
+    if (ALLOWED_IMAGE_CDN_ROOTS.some((root) => hostMatchesRoot(host, root))) {
+      return true;
+    }
+
+    if (pageUrl) {
+      const page = new URL(pageUrl);
+      const ph = page.hostname.toLowerCase();
+      if (host === ph || host.endsWith(`.${ph}`)) return true;
+    }
+
+    return false;
+  } catch {
+    return false;
   }
+}
+
+/**
+ * Fetch with manual redirects so each hop is re-validated (SSRF).
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit | undefined,
+  pageUrlForAllow: string | null,
+): Promise<Response> {
+  let current = url;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (!isAllowedBoothFetchUrl(current, pageUrlForAllow ?? current)) {
+      throw new Error("blocked_redirect");
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(current, {
+        ...init,
+        signal: controller.signal,
+        redirect: "manual",
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept:
+            init?.headers && "Accept" in (init.headers as Record<string, string>)
+              ? (init.headers as Record<string, string>).Accept
+              : "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          ...(init?.headers as Record<string, string> | undefined),
+        },
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) throw new Error("redirect_without_location");
+      current = new URL(location, current).toString();
+      continue;
+    }
+
+    return response;
+  }
+
+  throw new Error("too_many_redirects");
 }
 
 async function readLimitedText(response: Response, maxBytes: number): Promise<string> {
@@ -37,11 +106,18 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
   return buffer.subarray(0, maxBytes).toString("utf-8");
 }
 
-async function imageUrlToDataUrl(imageUrl: string): Promise<string | null> {
+async function imageUrlToDataUrl(
+  imageUrl: string,
+  pageUrl: string,
+): Promise<string | null> {
+  if (!isAllowedBoothFetchUrl(imageUrl, pageUrl)) return null;
+
   try {
-    const response = await fetchWithTimeout(imageUrl, {
-      headers: { Accept: "image/*" },
-    });
+    const response = await fetchWithTimeout(
+      imageUrl,
+      { headers: { Accept: "image/*" } },
+      pageUrl,
+    );
 
     if (!response.ok) return null;
 
@@ -80,7 +156,7 @@ export async function importPhotosFromBoothUrl(rawUrl: string): Promise<BoothImp
   }
 
   if (isDirectImageUrl(normalized)) {
-    const dataUrl = await imageUrlToDataUrl(normalized);
+    const dataUrl = await imageUrlToDataUrl(normalized, normalized);
     if (!dataUrl) {
       return {
         ok: false,
@@ -93,7 +169,7 @@ export async function importPhotosFromBoothUrl(rawUrl: string): Promise<BoothImp
 
   let pageResponse: Response;
   try {
-    pageResponse = await fetchWithTimeout(normalized);
+    pageResponse = await fetchWithTimeout(normalized, undefined, normalized);
   } catch {
     return {
       ok: false,
@@ -139,7 +215,7 @@ export async function importPhotosFromBoothUrl(rawUrl: string): Promise<BoothImp
 
   const dataUrls: string[] = [];
   for (const photoUrl of photoUrls.slice(0, MAX_IMAGES * 2)) {
-    const dataUrl = await imageUrlToDataUrl(photoUrl);
+    const dataUrl = await imageUrlToDataUrl(photoUrl, normalized);
     if (dataUrl) dataUrls.push(dataUrl);
     if (dataUrls.length >= MAX_IMAGES) break;
   }

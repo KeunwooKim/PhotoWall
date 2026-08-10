@@ -1,17 +1,29 @@
 import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 
+type Point = { x: number; y: number };
+
 /**
- * Top-left of the stable default-size home frame in wall coordinates.
- * New objects and “home” layout use this — not raw (0,0) after west/north shifts.
+ * Live viewport → wall-world center. Stages register this so new assets land
+ * where the user is looking (screen center), not a fixed home corner.
+ */
+let viewportWorldCenterGetter: (() => Point | null) | null = null;
+
+export function setViewportWorldCenterGetter(getter: (() => Point | null) | null): void {
+  viewportWorldCenterGetter = getter;
+}
+
+/**
+ * Top-left of the stable default-size home frame in world coordinates.
+ * Fixed at DEFAULT_WALL_BOUNDS origin under center-origin model.
  */
 export function getWallHomeOrigin(): { x: number; y: number } {
-  return useWallSceneStore.getState().document.meta.homeOrigin ?? { x: 0, y: 0 };
+  return { x: DEFAULT_WALL_BOUNDS.x, y: DEFAULT_WALL_BOUNDS.y };
 }
 
 /**
  * Placement area for new objects: the original default wall rectangle
- * anchored at homeOrigin (stable across expands).
+ * centered on world origin.
  */
 export function getWallHomePlacementBounds(wallWidth: number, wallHeight: number): {
   x: number;
@@ -19,23 +31,47 @@ export function getWallHomePlacementBounds(wallWidth: number, wallHeight: number
   width: number;
   height: number;
 } {
-  const origin = getWallHomeOrigin();
+  void wallWidth;
+  void wallHeight;
   return {
-    x: origin.x,
-    y: origin.y,
-    width: Math.min(Math.max(1, wallWidth - origin.x), DEFAULT_WALL_BOUNDS.width),
-    height: Math.min(Math.max(1, wallHeight - origin.y), DEFAULT_WALL_BOUNDS.height),
+    x: DEFAULT_WALL_BOUNDS.x,
+    y: DEFAULT_WALL_BOUNDS.y,
+    width: DEFAULT_WALL_BOUNDS.width,
+    height: DEFAULT_WALL_BOUNDS.height,
   };
 }
 
-/** Random point inside the home region (upper-left cluster used by add-* helpers). */
+function clampToWall(point: Point, wallWidth: number, wallHeight: number): Point {
+  const wall = useWallSceneStore.getState().document.meta.wallBounds;
+  const left = wall.x;
+  const top = wall.y;
+  const right = wall.x + Math.max(wall.width, wallWidth);
+  const bottom = wall.y + Math.max(wall.height, wallHeight);
+  return {
+    x: Math.min(right - 8, Math.max(left + 8, point.x)),
+    y: Math.min(bottom - 8, Math.max(top + 8, point.y)),
+  };
+}
+
+function withJitter(point: Point, amount = 40): Point {
+  return {
+    x: point.x + (Math.random() - 0.5) * amount,
+    y: point.y + (Math.random() - 0.5) * amount,
+  };
+}
+
+/**
+ * Default spawn for stickers/photos: current viewport (screen) center in wall
+ * coords, with light jitter. Falls back to home-region center (world 0,0).
+ */
 export function randomHomePlacementPosition(
   wallWidth: number,
   wallHeight: number,
-): { x: number; y: number } {
-  const home = getWallHomePlacementBounds(wallWidth, wallHeight);
-  return {
-    x: home.x + home.width * 0.2 + Math.random() * (home.width * 0.25),
-    y: home.y + home.height * 0.15 + Math.random() * (home.height * 0.25),
-  };
+): Point {
+  const view = viewportWorldCenterGetter?.() ?? null;
+  if (view && Number.isFinite(view.x) && Number.isFinite(view.y)) {
+    return withJitter(clampToWall(view, wallWidth, wallHeight));
+  }
+
+  return withJitter(clampToWall({ x: 0, y: 0 }, wallWidth, wallHeight));
 }

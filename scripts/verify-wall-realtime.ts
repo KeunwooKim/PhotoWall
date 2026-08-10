@@ -152,7 +152,7 @@ async function liveTwoSession(): Promise<void> {
     },
     onSyncEvent: () => undefined,
     getLocalObjects: () => [sticker],
-    getLocalMeta: () => ({ wallBounds: { width: 780, height: 1200 } }),
+    getLocalMeta: () => ({ wallBounds: { x: -390, y: -600, width: 780, height: 1200 } }),
   });
 
   const sessionB = new WallRealtimeSession({
@@ -175,7 +175,7 @@ async function liveTwoSession(): Promise<void> {
       if (peers.some((p) => p.sessionId === "qa-session-a")) bSawPeer = true;
     },
     getLocalObjects: () => [],
-    getLocalMeta: () => ({ wallBounds: { width: 780, height: 1200 } }),
+    getLocalMeta: () => ({ wallBounds: { x: -390, y: -600, width: 780, height: 1200 } }),
   });
 
   try {

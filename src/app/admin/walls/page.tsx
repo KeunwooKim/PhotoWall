@@ -18,8 +18,7 @@ interface AdminWall {
 }
 
 interface WallDetail {
-  previewPath: string | null;
-  previewUrl: string | null;
+  photoUrls: string[];
   objectCount: number;
 }
 
@@ -38,6 +37,15 @@ export default function AdminWallsPage() {
   const [guestbook, setGuestbook] = useState<WallGuestbook[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    if (q) setQuery(q);
+    const f = params.get("filter") ?? (params.get("hidden") === "1" ? "hidden" : null);
+    if (f) setFilter(f);
+  }, []);
 
   const loadWalls = useCallback(async () => {
     setLoading(true);
@@ -68,8 +76,7 @@ export default function AdminWallsPage() {
       const data = await res.json();
       setGuestbook(data.guestbook ?? []);
       setDetail({
-        previewPath: data.wall?.previewPath ?? null,
-        previewUrl: data.wall?.previewUrl ?? null,
+        photoUrls: Array.isArray(data.wall?.photoUrls) ? data.wall.photoUrls : [],
         objectCount: data.wall?.objectCount ?? 0,
       });
     } catch {
@@ -118,10 +125,38 @@ export default function AdminWallsPage() {
   };
 
   const deleteGuestbook = async (id: string) => {
-    const res = await authFetch(`/api/admin/guestbook/${id}`, { method: "DELETE" });
+    const scrub = confirm("캔버스의 방명록 사진도 함께 지울까요?");
+    const qs = scrub ? "?scrubCanvas=1&includeDataUrls=1" : "";
+    const res = await authFetch(`/api/admin/guestbook/${id}${qs}`, { method: "DELETE" });
     if (res.ok) {
       setGuestbook((prev) => prev.filter((g) => g.id !== id));
+      if (scrub && selectedId) void loadDetail(selectedId);
     }
+  };
+
+  const scrubAllGuestbook = async () => {
+    if (!selectedId) return;
+    if (!confirm("이 벽의 방명록 행과 방명록/data URL 사진을 모두 제거할까요?")) return;
+    const res = await authFetch(`/api/admin/walls/${selectedId}/scrub-guestbook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ includeUnmarkedDataUrls: true }),
+    });
+    const data = (await res.json().catch(() => null)) as {
+      error?: string;
+      removedObjects?: number;
+      deletedRows?: number;
+    } | null;
+    if (!res.ok) {
+      setMessage(data?.error ?? "스크럽 실패");
+      return;
+    }
+    setGuestbook([]);
+    setMessage(
+      `방명록 ${data?.deletedRows ?? 0}건 · 사진 ${data?.removedObjects ?? 0}개 제거`,
+    );
+    setTimeout(() => setMessage(null), 2500);
+    void loadDetail(selectedId);
   };
 
   return (
@@ -234,17 +269,22 @@ export default function AdminWallsPage() {
           ) : (
             <div className="space-y-4">
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold">미리보기</h3>
-                {detail?.previewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={detail.previewUrl}
-                    alt="벽 미리보기"
-                    className="max-h-48 w-full rounded-xl object-contain bg-background"
-                  />
+                <h3 className="text-sm font-semibold">사진</h3>
+                {detail?.photoUrls && detail.photoUrls.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {detail.photoUrls.map((src, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={`${src}-${i}`}
+                        src={src}
+                        alt=""
+                        className="aspect-square w-full rounded-lg object-cover bg-background"
+                      />
+                    ))}
+                  </div>
                 ) : (
                   <div className="rounded-xl bg-background p-3 text-xs text-muted">
-                    <p>미리보기 없음</p>
+                    <p>벽에 올린 사진 없음</p>
                     <Link
                       href={`/wall/${selectedId}`}
                       target="_blank"
@@ -259,7 +299,18 @@ export default function AdminWallsPage() {
                 )}
               </div>
 
-              <h3 className="text-sm font-semibold">방명록</h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">방명록</h3>
+                {guestbook.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => void scrubAllGuestbook()}
+                    className="text-xs text-red-600 underline"
+                  >
+                    전체 스크럽
+                  </button>
+                ) : null}
+              </div>
               {guestbook.length === 0 ? (
                 <p className="text-xs text-muted">방명록 없음</p>
               ) : (

@@ -7,6 +7,7 @@ import {
   allPathsOwnedByUser,
   collectWallPhotoPathsFromCanvas,
   isOwnWallPhotoPath,
+  isSafeWallPhotoStoragePath,
 } from "@/lib/storage/wall-photos";
 import { fetchWallFromDb } from "@/lib/supabase/walls";
 import { canEditWall, listWallCollaboratorUserIds } from "@/lib/supabase/wall-role";
@@ -55,7 +56,12 @@ export async function POST(
   let toSign = paths;
 
   if (access.allowed) {
-    const wall = await fetchWallFromDb(wallId, supabase);
+    // Prefer service-role read so canvas path allowlist is complete even if
+    // the caller's JWT select is flaky; access was already authorized above.
+    const admin = createAdminClient();
+    const wall =
+      (admin ? await fetchWallFromDb(wallId, admin) : null) ??
+      (await fetchWallFromDb(wallId, supabase));
     if (!wall) {
       return applyCookies(NextResponse.json({ error: "Wall not found" }, { status: 404 }));
     }
@@ -66,19 +72,28 @@ export async function POST(
     const maySignLiveUploads =
       !!user && (await canEditWall(supabase, wallId, user.id));
 
-    // Editors receive photos over realtime before autosave writes them into
-    // canvas_json. Allow signing collaborator-owned paths so peers can render.
     const collaboratorIds = maySignLiveUploads
-      ? await listWallCollaboratorUserIds(supabase, wallId)
+      ? await listWallCollaboratorUserIds(admin ?? supabase, wallId)
       : null;
 
     toSign = paths.filter((path) => {
+      // Saved scene / preview — always OK once wall access is confirmed.
       if (onWall.has(path)) return true;
+
+      // Live peer uploads before autosave: only known storage layout + wall collaborators.
+      if (!isSafeWallPhotoStoragePath(path)) return false;
       if (maySignLiveUploads && user && isOwnWallPhotoPath(path, user.id)) return true;
       const ownerId = path.split("/")[0];
       if (collaboratorIds?.has(ownerId)) return true;
       return false;
     });
+  } else if (user && ownPathsOnly) {
+    toSign = paths.filter(
+      (path) =>
+        (isSafeWallPhotoStoragePath(path) || path.includes("/previews/")) &&
+        isOwnWallPhotoPath(path, user.id) &&
+        !path.includes(".."),
+    );
   }
 
   if (toSign.length === 0) {

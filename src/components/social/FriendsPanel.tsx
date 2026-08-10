@@ -38,14 +38,14 @@ export default function FriendsPanel({ isOpen, onClose }: FriendsPanelProps) {
         role="dialog"
         aria-modal="true"
         aria-label="친구"
-        className={`fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col rounded-t-3xl bg-surface text-foreground shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
+        className={`fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col overflow-hidden rounded-t-3xl bg-surface text-foreground shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
           isOpen ? "translate-y-0" : "translate-y-full"
         }`}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-foreground/20" />
 
-        <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
+        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-3 pt-4">
           <div>
             <h2 className="text-lg font-bold tracking-tight">친구</h2>
             <p className="mt-0.5 text-xs text-muted">코드로 연결하고 벽을 방문해요</p>

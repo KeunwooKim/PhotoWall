@@ -6,6 +6,7 @@ import CorkWallPreview from "@/components/home/CorkWallPreview";
 import AuthButton from "@/components/auth/AuthButton";
 import AppDesktopSidebar from "@/components/layout/AppDesktopSidebar";
 import HouseAdBanner from "@/components/HouseAdBanner";
+import { useStickerStoreGate } from "@/hooks/useStickerStoreGate";
 import type { HomeNotice } from "@/components/home/HomeNotifications";
 import type { Friend } from "@/types/profile";
 import type { SharedWall } from "@/types/shared-wall";
@@ -26,15 +27,18 @@ export interface HomeDesktopProps {
   user: boolean;
   authLoading: boolean;
   plan?: UserPlan | null;
-  wallPreviewUrl: string | null;
   recentPhotos: string[];
+  wallThemeId?: string | null;
   wallId: string | null;
   sharedWalls: SharedWall[];
   friends: Friend[];
   notices: HomeNotice[];
   hasUnread: boolean;
+  boardUnseen: boolean;
   onOpenNotif: () => void;
+  onOpenBoard: () => void;
   onDismissActivity?: (id: string) => void;
+  onDismissInbox?: (id: string) => void;
 }
 
 /** Desktop home — 3-column layout matching Mobile Home Screen Design mock. */
@@ -45,17 +49,21 @@ export default function HomeDesktop({
   user,
   authLoading,
   plan = null,
-  wallPreviewUrl,
   recentPhotos,
+  wallThemeId = null,
   wallId,
   sharedWalls,
   friends,
   notices,
   hasUnread,
+  boardUnseen,
   onOpenNotif,
+  onOpenBoard,
   onDismissActivity,
+  onDismissInbox,
 }: HomeDesktopProps) {
   const visitableFriends = friends.filter((f) => f.wallVisitable && f.wallId);
+  const { handleStoreClick, Toast } = useStickerStoreGate();
 
   return (
     <div className="grid h-[100dvh] grid-cols-[240px_1fr_300px] overflow-hidden bg-background text-foreground">
@@ -71,6 +79,17 @@ export default function HomeDesktop({
             <p className="mt-1 text-[13px] text-muted">오늘도 좋은 추억을 기록해봐요</p>
           </div>
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onOpenBoard}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-foreground/[0.06]"
+              aria-label="공지·이벤트"
+            >
+              <MegaphoneIcon />
+              {boardUnseen && (
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-[1.5px] border-background bg-foreground" />
+              )}
+            </button>
             <button
               type="button"
               onClick={onOpenNotif}
@@ -119,7 +138,7 @@ export default function HomeDesktop({
             </Link>
           </div>
           <Link href="/wall/edit" className="block overflow-hidden rounded-3xl">
-            <CorkWallPreview previewUrl={wallPreviewUrl} size="desktop" />
+            <CorkWallPreview photos={recentPhotos} themeId={wallThemeId} size="desktop" />
           </Link>
         </section>
 
@@ -156,6 +175,34 @@ export default function HomeDesktop({
             )}
           </section>
         )}
+
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className={`${displayFont.className} text-xl`}>스티커 스토어</h2>
+            <Link
+              href="/stickers"
+              onClick={handleStoreClick}
+              className="text-[13px] font-semibold text-foreground"
+            >
+              전체보기 →
+            </Link>
+          </div>
+          <Link
+            href="/stickers"
+            onClick={handleStoreClick}
+            className="flex items-center justify-between gap-4 rounded-[18px] border border-foreground/10 bg-surface px-5 py-4 transition hover:-translate-y-0.5"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">무료 스티커 팩</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-muted">
+                공식·커뮤니티 팩을 설치하고, 내 팩도 올려 볼 수 있어요
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-foreground px-4 py-2 text-[12px] font-semibold text-background">
+              둘러보기
+            </span>
+          </Link>
+        </section>
 
         <section>
           <div className="mb-4 flex items-center justify-between">
@@ -271,6 +318,30 @@ export default function HomeDesktop({
                     </Link>
                   );
                 }
+                if (notice.kind === "inbox") {
+                  const item = notice.notice;
+                  return (
+                    <button
+                      key={`inbox-${item.id}`}
+                      type="button"
+                      onClick={() => {
+                        onDismissInbox?.(item.id);
+                        void authFetch("/api/notifications/inbox", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ ids: [item.id] }),
+                        }).catch(() => {});
+                      }}
+                      className="rounded-[14px] border border-rose-200/50 bg-rose-50/40 px-3 py-3 text-left dark:border-rose-900/40 dark:bg-rose-950/20"
+                    >
+                      <p className="text-[11.5px] font-semibold">{item.title}</p>
+                      <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-foreground/90">
+                        {item.body}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-muted">운영팀 답변</p>
+                    </button>
+                  );
+                }
                 const item = notice.item;
                 return (
                   <div
@@ -350,6 +421,7 @@ export default function HomeDesktop({
           )}
         </div>
       </aside>
+      {Toast}
     </div>
   );
 }
@@ -413,6 +485,25 @@ function BellIcon() {
         strokeLinejoin="round"
       />
       <path d="M10 19a2 2 0 004 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MegaphoneIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 11v2a1 1 0 001 1h2l6 4V6L6 10H4a1 1 0 00-1 1z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15.5 8.5a4.5 4.5 0 010 7M18 6.5a8 8 0 010 11"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

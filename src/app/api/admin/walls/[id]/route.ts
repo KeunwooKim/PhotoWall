@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute, adminDbErrorResponse } from "@/lib/admin/require-admin-route";
 import { countWallSceneObjects } from "@/lib/admin/wall-canvas-inspect";
+import { extractRecentWallPhotoPaths } from "@/lib/home/recent-wall-photos";
 import { createWallPhotoSignedUrls } from "@/lib/storage/signed-urls-server";
 
 export async function GET(
@@ -63,12 +64,9 @@ export async function GET(
     preview_path?: string | null;
   };
 
-  const previewPath = row.preview_path ?? null;
-  let previewUrl: string | null = null;
-  if (previewPath) {
-    const signed = await createWallPhotoSignedUrls([previewPath]);
-    previewUrl = signed[previewPath] ?? null;
-  }
+  const photoPaths = extractRecentWallPhotoPaths(row.canvas_json, 6);
+  const signed = photoPaths.length > 0 ? await createWallPhotoSignedUrls(photoPaths) : {};
+  const photoUrls = photoPaths.map((p) => signed[p]).filter(Boolean) as string[];
 
   return applyCookies(
     NextResponse.json({
@@ -81,8 +79,7 @@ export async function GET(
         isHidden: row.is_hidden ?? false,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        previewPath,
-        previewUrl,
+        photoUrls,
         objectCount: countWallSceneObjects(row.canvas_json),
       },
       guestbook: guestbookRes.data ?? [],

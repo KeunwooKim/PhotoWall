@@ -1,21 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Html5Qrcode } from "html5-qrcode";
 import { savePendingImports } from "@/lib/booth-import/import-session";
 import type { BoothImportFailure, BoothImportResult } from "@/lib/booth-import/types";
 import { authFetch } from "@/lib/auth/api-fetch";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import { sanitizeWallReturnPath } from "@/lib/wall-return-path";
 
 type ImportState = "idle" | "scanning" | "loading" | "error";
+
+type QrScanner = {
+  isScanning: boolean;
+  start: (
+    cameraIdOrConfig: { facingMode: string },
+    configuration: { fps: number; qrbox: { width: number; height: number } },
+    qrCodeSuccessCallback: (decodedText: string) => void,
+    qrCodeErrorCallback: (errorMessage: string) => void,
+  ) => Promise<void>;
+  stop: () => Promise<void>;
+  clear: () => void;
+};
 
 export default function QrImportPage() {
   const router = useRouter();
   const { flags, loading: flagsLoading } = useFeatureFlags();
   const searchParams = useSearchParams();
-  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const wallReturnPath = useMemo(
+    () => sanitizeWallReturnPath(searchParams.get("returnTo")),
+    [searchParams],
+  );
+  const scannerRef = useRef<QrScanner | null>(null);
   const handledUrlRef = useRef<string | null>(null);
   const processingRef = useRef(false);
   const lastScanRef = useRef<string | null>(null);
@@ -60,7 +76,7 @@ export default function QrImportPage() {
         }
 
         savePendingImports(data.images);
-        router.replace("/wall/edit");
+        router.replace(wallReturnPath);
       } catch {
         setState("error");
         setErrorMessage("사진을 불러오지 못했어요. 잠시 후 다시 시도해 주세요");
@@ -68,7 +84,7 @@ export default function QrImportPage() {
         lastScanRef.current = null;
       }
     },
-    [router],
+    [router, wallReturnPath],
   );
 
   const stopScanner = useCallback(async () => {
@@ -93,7 +109,8 @@ export default function QrImportPage() {
     setState("scanning");
     setErrorMessage(null);
 
-    const scanner = new Html5Qrcode("qr-reader");
+    const { Html5Qrcode } = await import("html5-qrcode");
+    const scanner = new Html5Qrcode("qr-reader") as unknown as QrScanner;
     scannerRef.current = scanner;
 
     try {
@@ -150,7 +167,7 @@ export default function QrImportPage() {
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
         <Link
-          href="/wall/edit"
+          href={wallReturnPath}
           className="rounded-full bg-surface px-3 py-2 text-xs font-medium ring-1 ring-foreground/10"
         >
           ← 벽으로
@@ -165,7 +182,7 @@ export default function QrImportPage() {
             <p className="text-sm font-medium">QR 가져오기가 일시 중단되었어요</p>
             <p className="text-xs text-muted">점검 중이에요. 잠시 후 다시 시도해 주세요.</p>
             <Link
-              href="/wall/edit"
+              href={wallReturnPath}
               className="mt-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-background"
             >
               벽 꾸미기로 돌아가기

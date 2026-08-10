@@ -7,6 +7,7 @@ import { getStickerById } from "@/lib/stickers";
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
+import { wrapKonvaNode } from "@/lib/wall-scene/realtime/wrap-konva-node";
 import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
 import {
   applyGroupDrag,
@@ -54,7 +55,7 @@ export default function WallStickerNode({
     (node: Konva.Group | null) => {
       groupRef.current = node;
       registerNode(objectId, node);
-      registerWallNode(objectId, node);
+      registerWallNode(objectId, node ? wrapKonvaNode(node) : null);
     },
     [objectId, registerNode],
   );
@@ -91,8 +92,8 @@ export default function WallStickerNode({
   const handleDragMove = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
       const node = e.target;
-      applyDragSnapToNode(node, objectId);
-      applyGroupDrag(node, e.evt);
+      applyDragSnapToNode(wrapKonvaNode(node), objectId);
+      applyGroupDrag(wrapKonvaNode(node), e.evt);
       broadcastLivePosition(objectId, { x: node.x(), y: node.y() });
     },
     [broadcastLivePosition, objectId],
@@ -102,7 +103,7 @@ export default function WallStickerNode({
     (e: Konva.KonvaEventObject<DragEvent>) => {
       clearDragSnapGuides();
       broadcastLivePosition.flush();
-      commitGroupDrag(e.target);
+      commitGroupDrag(wrapKonvaNode(e.target));
       isDraggingRef.current = false;
       setWallNodeDragging(objectId, false);
       onManipulationChange?.(false, objectId);

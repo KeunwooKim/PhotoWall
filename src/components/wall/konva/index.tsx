@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * @deprecated Prefer `@/components/wall/WallStageClient`.
+ * Kept for NEXT_PUBLIC_WALL_RENDERER=konva rollback.
+ */
 import dynamic from "next/dynamic";
 import type { KonvaWallStageProps } from "./KonvaWallStage";
 

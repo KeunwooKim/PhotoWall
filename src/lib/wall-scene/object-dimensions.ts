@@ -1,5 +1,6 @@
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 import { getSceneObjectExtents } from "@/lib/wall-bounds";
+import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
 
 export function getObjectDisplayDimensions(
   object: WallSceneObject,
@@ -22,7 +23,7 @@ export function getObjectDisplayDimensions(
   if (object.type === "text") {
     return {
       width: Math.round(object.width * scaleX),
-      height: Math.round(object.fontSize * 1.4 * scaleY),
+      height: Math.round(estimateTextBlockHeight(object) * scaleY),
     };
   }
 

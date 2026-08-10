@@ -1,8 +1,11 @@
 "use client";
 
 import { dedupePresencePeers, presencePeerKey } from "@/lib/wall-scene/presence-utils";
-import { presenceColorForUser } from "@/lib/wall-scene/presence-colors";
-import type { WallPresenceState } from "@/types/wall-scene-v2";
+import {
+  assignPresenceColors,
+  presenceColorForUser,
+} from "@/lib/wall-scene/presence-colors";
+import { useWallPresencePeers } from "@/lib/wall-scene/realtime/wall-presence-store";
 
 const MAX_VISIBLE = 4;
 
@@ -13,7 +16,6 @@ export interface PeerAvatarSelf {
 }
 
 interface PeerAvatarStackProps {
-  peers: WallPresenceState[];
   /** Always show the current session first when provided. */
   self?: PeerAvatarSelf | null;
   maxVisible?: number;
@@ -44,7 +46,7 @@ function AvatarCircle({
   return (
     <span
       title={title}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-background text-[9px] font-semibold text-background shadow-sm"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-background text-[9px] font-semibold text-foreground/80 shadow-sm"
       style={{ backgroundColor: color, zIndex, marginLeft: zIndex === 0 ? 0 : -8 }}
     >
       {initials(name)}
@@ -54,22 +56,33 @@ function AvatarCircle({
 
 /** Overlapping circular presence avatars — one circle per session (same user on two devices = two). */
 export default function PeerAvatarStack({
-  peers,
   self,
   maxVisible = MAX_VISIBLE,
   className = "",
 }: PeerAvatarStackProps) {
+  const peers = useWallPresencePeers();
   const others = dedupePresencePeers(peers).filter((p) => {
     if (!self?.sessionId) return true;
     return p.sessionId !== self.sessionId;
   });
 
+  const roster = [
+    ...(self?.userId
+      ? [{ userId: self.userId, sessionId: self.sessionId }]
+      : []),
+    ...others,
+  ];
+  const colors = assignPresenceColors(roster);
+
   const entries: { key: string; displayName: string; color: string }[] = [];
   if (self?.userId) {
+    const key = self.sessionId || `self:${self.userId}`;
     entries.push({
-      key: self.sessionId || `self:${self.userId}`,
+      key,
       displayName: self.displayName || "나",
-      color: presenceColorForUser(self.userId),
+      color:
+        colors.get(presencePeerKey(self)) ??
+        presenceColorForUser(self.userId, self.sessionId),
     });
   }
   for (const peer of others) {
@@ -79,7 +92,10 @@ export default function PeerAvatarStack({
       displayName: sameUser
         ? `${peer.displayName || "나"}(다른 기기)`
         : peer.displayName || "친구",
-      color: peer.color || presenceColorForUser(peer.userId),
+      color:
+        peer.color ||
+        colors.get(presencePeerKey(peer)) ||
+        presenceColorForUser(peer.userId, peer.sessionId),
     });
   }
 

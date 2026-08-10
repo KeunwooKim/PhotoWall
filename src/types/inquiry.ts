@@ -2,6 +2,8 @@ export type InquiryCategory = "general" | "bug" | "feature" | "abuse" | "busines
 
 export type InquiryStatus = "open" | "in_progress" | "resolved";
 
+export type BusinessStage = "lead" | "meeting" | "contract" | "closed";
+
 export interface Inquiry {
   id: string;
   userId: string | null;
@@ -12,6 +14,9 @@ export interface Inquiry {
   relatedWallId: string | null;
   status: InquiryStatus;
   adminNote: string | null;
+  adminReply: string | null;
+  adminRepliedAt: string | null;
+  businessStage: BusinessStage | null;
   createdAt: string;
   resolvedAt: string | null;
 }
@@ -28,4 +33,11 @@ export const INQUIRY_STATUS_LABELS: Record<InquiryStatus, string> = {
   open: "미처리",
   in_progress: "처리중",
   resolved: "완료",
+};
+
+export const BUSINESS_STAGE_LABELS: Record<BusinessStage, string> = {
+  lead: "리드",
+  meeting: "미팅",
+  contract: "계약",
+  closed: "종료",
 };

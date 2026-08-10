@@ -1,16 +1,17 @@
 import {
   DEFAULT_WALL_BOUNDS,
-  clampWallBounds,
+  asWallBounds,
+  clampWallBoundsAnchored,
   getSceneObjectsBounds,
+  migrateLegacyWallToCenterOrigin,
+  needsLegacyWallMigration,
   reconcileWallBounds,
   type WallBounds,
 } from "@/lib/wall-bounds";
 import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-wall";
-import {
-  computeOmniWallGrowFromContent,
-  shiftSceneObjects,
-} from "@/lib/wall-scene/wall-omni-expand";
-import { memorySafeWallMax } from "@/lib/konva-device";
+import { computeOmniWallGrowFromContent } from "@/lib/wall-scene/wall-omni-expand";
+import { memorySafeWallMax } from "@/lib/wall-device";
+import { clampWallTextContent } from "@/lib/wall-scene/text-content";
 import type { WallSceneDocument, WallSceneObject } from "@/types/wall-scene-v2";
 
 function finiteOr(value: number, fallback: number): number {
@@ -39,6 +40,9 @@ function sanitizeObjectNumbers(object: WallSceneObject): WallSceneObject {
   }
   if ("fontSize" in next && typeof next.fontSize === "number") {
     next.fontSize = Math.max(1, finiteOr(next.fontSize, 24));
+  }
+  if (next.type === "text" && typeof next.text === "string") {
+    next.text = clampWallTextContent(next.text);
   }
 
   return next;
@@ -98,92 +102,86 @@ function sameTransform(a: WallSceneObject, b: WallSceneObject): boolean {
  */
 export function sanitizeWallScene(document: WallSceneDocument): WallSceneDocument {
   const safeMax = memorySafeWallMax();
-  const sourceWall = document.meta.wallBounds ?? DEFAULT_WALL_BOUNDS;
-  let objects = document.objects.map((object) => sanitizeObjectNumbers(object));
-  let wall = clampWallBounds(sourceWall, safeMax);
+
+  // One-shot migrate: legacy top-left (0,0) → center-origin world.
+  const rawBounds = document.meta.wallBounds ?? DEFAULT_WALL_BOUNDS;
+  const migrated = needsLegacyWallMigration(rawBounds)
+    ? migrateLegacyWallToCenterOrigin({
+        wallBounds: rawBounds,
+        homeOrigin: document.meta.homeOrigin,
+        objects: document.objects,
+      })
+    : {
+        wallBounds: asWallBounds(rawBounds),
+        objects: document.objects,
+        translated: false,
+      };
+
+  let objects = migrated.objects.map((object) => sanitizeObjectNumbers(object));
+  const sourceWall = asWallBounds(migrated.wallBounds);
+  let wall = clampWallBoundsAnchored(sourceWall, safeMax);
   const sizeLocked = !!document.meta.wallSizeLocked;
 
-  // If we had to shrink a previously oversized wall, scale content proportionally
-  // so collages don't all pile into a corner.
   if (sourceWall.width > wall.width || sourceWall.height > wall.height) {
     const scaleX = wall.width / Math.max(1, sourceWall.width);
     const scaleY = wall.height / Math.max(1, sourceWall.height);
     objects = objects.map((object) => scaleObjectToWall(object, scaleX, scaleY));
   }
 
-  let wallpaperOffset = document.meta.wallpaperOffset;
-  let homeOrigin = document.meta.homeOrigin;
+  const wallpaperOffset = document.meta.wallpaperOffset;
 
   if (sizeLocked) {
-    // Lock: never change wall size — clamp content into the current wall.
     objects = objects.map((object) => clampObjectIntoWall(object, wall));
   } else {
-    // Prefer growing west/north (shift + enlarge) over clamping content inward.
     const omni = computeOmniWallGrowFromContent(
       getSceneObjectsBounds(objects),
       wall,
       safeMax,
     );
     if (omni) {
-      objects = shiftSceneObjects(objects, omni.shiftX, omni.shiftY);
       wall = omni.bounds;
-      if (omni.shiftX !== 0 || omni.shiftY !== 0) {
-        const prevWp = wallpaperOffset ?? { x: 0, y: 0 };
-        const prevHome = homeOrigin ?? { x: 0, y: 0 };
-        wallpaperOffset = { x: prevWp.x + omni.shiftX, y: prevWp.y + omni.shiftY };
-        homeOrigin = { x: prevHome.x + omni.shiftX, y: prevHome.y + omni.shiftY };
-      }
     }
 
     objects = objects.map((object) => clampObjectIntoWall(object, wall));
 
     const reconciled =
       reconcileWallBounds(wall, getSceneObjectsBounds(objects), safeMax) ?? wall;
-    wall = clampWallBounds(reconciled, safeMax);
+    wall = clampWallBoundsAnchored(reconciled, safeMax);
   }
 
-  const nextWall = wall;
-
-  // Bake home back to (0,0) once the wall is default-sized again.
+  // Snap to exact default home when fully reclaimed.
   if (
     !sizeLocked &&
-    nextWall.width <= DEFAULT_WALL_BOUNDS.width &&
-    nextWall.height <= DEFAULT_WALL_BOUNDS.height &&
-    ((homeOrigin?.x ?? 0) !== 0 || (homeOrigin?.y ?? 0) !== 0)
+    wall.width <= DEFAULT_WALL_BOUNDS.width &&
+    wall.height <= DEFAULT_WALL_BOUNDS.height
   ) {
-    const dx = -(homeOrigin?.x ?? 0);
-    const dy = -(homeOrigin?.y ?? 0);
-    objects = shiftSceneObjects(objects, dx, dy);
-    const prevWp = wallpaperOffset ?? { x: 0, y: 0 };
-    wallpaperOffset = { x: prevWp.x + dx, y: prevWp.y + dy };
-    homeOrigin = { x: 0, y: 0 };
+    wall = { ...DEFAULT_WALL_BOUNDS };
   }
 
   const objectsChanged =
+    migrated.translated ||
     objects.length !== document.objects.length ||
     objects.some((object, index) => {
       const prev = document.objects[index];
       return prev !== object && (prev.id !== object.id || !sameTransform(prev, object));
     });
+  const prevWall = asWallBounds(document.meta.wallBounds ?? DEFAULT_WALL_BOUNDS);
   const wallChanged =
-    nextWall.width !== document.meta.wallBounds.width ||
-    nextWall.height !== document.meta.wallBounds.height;
-  const offsetChanged =
-    (wallpaperOffset?.x ?? 0) !== (document.meta.wallpaperOffset?.x ?? 0) ||
-    (wallpaperOffset?.y ?? 0) !== (document.meta.wallpaperOffset?.y ?? 0);
-  const homeChanged =
-    (homeOrigin?.x ?? 0) !== (document.meta.homeOrigin?.x ?? 0) ||
-    (homeOrigin?.y ?? 0) !== (document.meta.homeOrigin?.y ?? 0);
+    wall.x !== prevWall.x ||
+    wall.y !== prevWall.y ||
+    wall.width !== prevWall.width ||
+    wall.height !== prevWall.height;
 
-  if (!objectsChanged && !wallChanged && !offsetChanged && !homeChanged) return document;
+  if (!objectsChanged && !wallChanged) return document;
 
   return {
     ...document,
     meta: {
       ...document.meta,
-      wallBounds: nextWall,
+      wallBounds: wall,
       wallpaperOffset,
-      homeOrigin,
+      // Drop legacy homeOrigin after center-origin migration.
+      homeOrigin: undefined,
     },
     objects,
   };

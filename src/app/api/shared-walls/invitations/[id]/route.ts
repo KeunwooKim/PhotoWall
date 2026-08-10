@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
+import { restrictedResponse } from "@/lib/auth/account-restrict";
 import { acceptWallInvite, declineWallInvite } from "@/lib/supabase/shared-walls";
 
 export async function POST(
@@ -18,6 +19,9 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await restrictedResponse(supabase, user.id);
+  if (blocked) return applyCookies(blocked);
 
   const body = (await request.json()) as { action?: "accept" | "decline" };
   if (body.action !== "accept" && body.action !== "decline") {

@@ -134,6 +134,18 @@ async function main() {
         ? fail("profiles.plan 컬럼", `${planErr.message} — profiles-plan-migration.sql 실행 필요`)
         : ok("profiles.plan 컬럼", "profiles-plan-migration.sql 적용됨"),
     );
+    const { error: planExpErr } = await admin
+      .from("profiles")
+      .select("plan_expires_at")
+      .limit(1);
+    results.push(
+      planExpErr
+        ? fail(
+            "profiles.plan_expires_at 컬럼",
+            `${planExpErr.message} — profiles-plan-migration.sql 재실행 필요`,
+          )
+        : ok("profiles.plan_expires_at 컬럼", "기간제 플러스 부여 가능"),
+    );
   }
 
   // ── walls-select-rls-migration.sql (behavioral) ──
@@ -237,9 +249,14 @@ async function main() {
           },
         );
         results.push(
-          prodRes.ok
-            ? ok("프로덕션 signed-photos API", `HTTP ${prodRes.status} — SUPABASE_SERVICE_ROLE_KEY 동작`)
-            : fail("프로덕션 signed-photos API", `HTTP ${prodRes.status}`),
+          prodRes.status === 401 || prodRes.status === 403
+            ? ok(
+                "프로덕션 signed-photos API",
+                `HTTP ${prodRes.status} — 무인증 거부 (정상). 인증·서비스롤은 앱에서 사용`,
+              )
+            : prodRes.ok
+              ? ok("프로덕션 signed-photos API", `HTTP ${prodRes.status}`)
+              : fail("프로덕션 signed-photos API", `HTTP ${prodRes.status}`),
         );
       } catch (error) {
         results.push(warn("프로덕션 signed-photos API", String(error)));
@@ -267,6 +284,31 @@ async function main() {
           : fail("feature_flags 시드", `${count}개 — 5개 기대, admin-operations-migration.sql 실행 필요`),
       );
     }
+  }
+
+  // ── ops-hardening-migration.sql ──
+  if (admin) {
+    const { error: inboxErr } = await admin.from("user_inbox_notices").select("id").limit(1);
+    results.push(
+      inboxErr
+        ? fail("user_inbox_notices", `${inboxErr.message} — ops-hardening-migration.sql 실행`)
+        : ok("user_inbox_notices", "ops-hardening-migration.sql 적용됨"),
+    );
+    const { error: importErr } = await admin.from("import_events").select("id").limit(1);
+    results.push(
+      importErr
+        ? fail("import_events", `${importErr.message} — ops-hardening-migration.sql 실행`)
+        : ok("import_events", "ops-hardening-migration.sql 적용됨"),
+    );
+    const { error: pendingErr } = await admin.from("storage_pending_delete").select("path").limit(1);
+    results.push(
+      pendingErr
+        ? fail(
+            "storage_pending_delete",
+            `${pendingErr.message} — storage-pending-delete-migration.sql 실행`,
+          )
+        : ok("storage_pending_delete", "storage-pending-delete-migration.sql 적용됨"),
+    );
   }
 
   // Policy names — run supabase/verify-migrations.sql in Dashboard for full list

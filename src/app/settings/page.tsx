@@ -350,6 +350,22 @@ export default function SettingsPage() {
         </div>
 
         <section className="space-y-3">
+          <h2 className="text-xs font-medium tracking-wide text-muted">소개</h2>
+          <div className="overflow-hidden rounded-2xl bg-foreground/[0.03]">
+            <Link
+              href="/about"
+              className="flex items-center justify-between px-4 py-4 transition active:bg-foreground/[0.04]"
+            >
+              <div>
+                <p className="text-sm font-semibold">PhotoWall 소개</p>
+                <p className="mt-0.5 text-xs text-muted">기능과 사용 방법을 알아보세요</p>
+              </div>
+              <Chevron />
+            </Link>
+          </div>
+        </section>
+
+        <section className="space-y-3">
           <h2 className="text-xs font-medium tracking-wide text-muted">약관</h2>
           <div className="overflow-hidden rounded-2xl bg-foreground/[0.03]">
             <Link

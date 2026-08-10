@@ -89,6 +89,17 @@ export function notifyAbuseReport(input: {
   void postDiscordMessage(`🚨 신고 · **${subject}**${wall} (by \`${who}…\`)`);
 }
 
+export function notifyBusinessInquiry(input: {
+  subject: string;
+  userId: string;
+  email?: string | null;
+}): void {
+  const subject = escapeMd(input.subject);
+  const who = input.userId.slice(0, 8);
+  const email = input.email ? ` · ${escapeMd(input.email)}` : "";
+  void postDiscordMessage(`💼 Plus·제휴 문의 · **${subject}** (by \`${who}…\`${email})`);
+}
+
 export function notifyAccountRestricted(input: {
   userId: string;
   restricted: boolean;

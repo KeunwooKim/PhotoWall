@@ -73,6 +73,7 @@ export async function POST(
     .upload(path, file, {
       contentType: "image/jpeg",
       upsert: true,
+      cacheControl: "60",
     });
 
   if (uploadError) {

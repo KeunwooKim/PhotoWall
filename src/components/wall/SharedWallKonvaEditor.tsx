@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import KonvaWallStageClient from "@/components/wall/konva";
+import WallStageClient from "@/components/wall/WallStageClient";
 import EditorAssetsPanel from "@/components/wall/EditorAssetsPanel";
 import EditorToolDock, { MenuIcon } from "@/components/wall/EditorToolDock";
 import EditorToolRail from "@/components/wall/EditorToolRail";
@@ -25,8 +25,11 @@ import {
   resolveWallPhotoSrc,
 } from "@/lib/storage/resolve-wall-photos";
 import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
+import { addPhotoDataUrlToWallScene } from "@/lib/wall-scene/add-photo-data-url";
 import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
+import { consumePendingImports } from "@/lib/booth-import/import-session";
+import { consumePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import {
   countSelectedQuotaObjects,
   getClipboardQuotaObjectCount,
@@ -35,17 +38,18 @@ import {
   applyBringOntoWall,
   countOutsideObjectsOnWall,
 } from "@/lib/wall-scene/bring-objects-onto-wall";
-import { serializeWallScene } from "@/lib/wall-scene/fabric-import";
+import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
-import { panDeltaForWallLayoutChange } from "@/lib/wall-scene/viewport-stabilize";
+import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
 import { registerWallSizeLockBlockedHandler } from "@/lib/wall-scene/wall-size-lock";
 import { debounce } from "@/lib/debounce";
 import { useWallPreviewFlush } from "@/hooks/useWallPreviewFlush";
+import { usePersistWallViewport } from "@/hooks/usePersistWallViewport";
 import { createWallInvite } from "@/lib/wall-invite";
 import { shareWallImage } from "@/lib/wall-export";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { EditorMode } from "@/components/wall/editor-types";
-import type Konva from "konva";
+import type { WallStageExportHandle } from "@/components/wall/pixi/PixiWallStage";
 import {
   bringObjectForward,
   bringObjectsToFront,
@@ -68,7 +72,7 @@ import { usePhotoColorEdit } from "@/hooks/usePhotoColorEdit";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
-import { HIGHLIGHTER_LENGTH_PRESETS } from "@/lib/wall-scene/highlighter";
+import { TAPE_OPACITY_DEFAULT, TAPE_STROKE_WIDTH_DEFAULT } from "@/lib/wall-scene/highlighter";
 import {
   DEFAULT_PEN_STYLE_ID,
   PEN_COLORS,
@@ -77,11 +81,15 @@ import {
   type PenStyleId,
   type PenWidthByStyle,
 } from "@/lib/wall-scene/pen";
-import { TAPE_COLORS } from "@/lib/wall-scene/tape-colors";
+import {
+  DEFAULT_TAPE_END_STYLE,
+  getTapePreset,
+  type TapeEndStyle,
+  type TapePreset,
+} from "@/lib/wall-scene/tape-style";
 import { wallTextFontVariables } from "@/lib/fonts/wall-text-fonts";
 
 const PEN_DRAW_COLORS = [...PEN_COLORS];
-const TAPE_DRAW_COLORS = TAPE_COLORS.map((t) => t.color);
 
 interface SharedWallKonvaEditorProps {
   sharedId: string;
@@ -106,12 +114,17 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const [mode, setMode] = useState<EditorMode>("select");
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [penColor, setPenColor] = useState<string>(PEN_DRAW_COLORS[0]);
-  const [tapeColor, setTapeColor] = useState<string>(TAPE_DRAW_COLORS[0]);
+  const [tapePreset, setTapePreset] = useState<TapePreset>(() => getTapePreset(undefined));
+  const [tapeEndStyle, setTapeEndStyle] = useState<TapeEndStyle>(DEFAULT_TAPE_END_STYLE);
   const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE_ID);
   const [penWidthByStyle, setPenWidthByStyle] = useState<PenWidthByStyle>(createDefaultPenWidthByStyle);
-  const [highlighterMaxLength, setHighlighterMaxLength] = useState<number>(
-    HIGHLIGHTER_LENGTH_PRESETS[1],
-  );
+  const [tapeStrokeWidth, setTapeStrokeWidth] = useState(TAPE_STROKE_WIDTH_DEFAULT);
+  const [tapeOpacity, setTapeOpacity] = useState(TAPE_OPACITY_DEFAULT);
+
+  const handleTapePresetChange = (preset: TapePreset) => {
+    setTapePreset(preset);
+    if (preset.opacity != null) setTapeOpacity(preset.opacity);
+  };
   const penStrokeWidth = penWidthByStyle[penStyleId];
   const setPenStrokeWidth = (width: number) => {
     setPenWidthByStyle((prev) => ({
@@ -121,7 +134,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   };
 
   const wallStageRef = useRef<HTMLDivElement>(null);
-  const konvaStageRef = useRef<Konva.Stage | null>(null);
+  const konvaStageRef = useRef<WallStageExportHandle | null>(null);
 
   const themeIdRef = useRef(themeId);
   themeIdRef.current = themeId;
@@ -130,6 +143,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const serverRevisionRef = useRef<number | undefined>(undefined);
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const isManipulatingRef = useRef(false);
+  const cloudSaveInFlightRef = useRef(false);
+  const pendingCloudSaveRef = useRef(false);
+  const autoSaveCancelRef = useRef<() => void>(() => {});
+  const queueDirtyAutosaveRef = useRef<() => void>(() => {});
 
   const selectedIds = useWallSceneStore((s) => s.selectedIds);
   const sceneObjects = useWallSceneStore((s) => s.document.objects);
@@ -217,19 +234,39 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     user?.email?.split("@")[0] ??
     "친구";
 
-  const handleRemoteSaved = useCallback((revision: number) => {
-    const known = serverRevisionRef.current;
-    if (typeof known === "number" && revision <= known) return;
-    serverRevisionRef.current = revision;
+  const markRemoteSceneSaved = useCallback(() => {
+    autoSaveCancelRef.current();
+    lastSavedFingerprintRef.current = fingerprintPersistableScene(
+      useWallSceneStore.getState().document,
+    );
   }, []);
 
-  const { peers, isConnected, connectError, sessionId, updatePresence, broadcastObjectPatch, broadcastClear, broadcastSaved } =
+  const handleRemoteSaved = useCallback((revision: number) => {
+    const known = serverRevisionRef.current;
+    if (typeof known === "number" && revision <= known) {
+      markRemoteSceneSaved();
+      return;
+    }
+    serverRevisionRef.current = revision;
+    markRemoteSceneSaved();
+  }, [markRemoteSceneSaved]);
+
+  const handleRemoteTheme = useCallback((nextThemeId: string) => {
+    const resolved = resolveWallThemeId(nextThemeId);
+    themeIdRef.current = resolved;
+    setThemeId(resolved);
+  }, []);
+
+  const { isConnected, connectError, sessionId, updatePresence, broadcastObjectPatch, broadcastClear, broadcastRemove, broadcastTheme, broadcastSaved } =
     useWallRealtime({
     wallId: sharedId,
     userId: user?.id ?? "",
     displayName,
     enabled: !!user && isReady && loadedCanvasJson !== null,
     onRemoteSaved: handleRemoteSaved,
+    onRemoteSceneApplied: markRemoteSceneSaved,
+    getThemeId: () => themeIdRef.current,
+    onRemoteTheme: handleRemoteTheme,
   });
 
   const showToast = useCallback((message: string) => {
@@ -265,42 +302,37 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         return;
       }
       if (result.conflictWall) {
-        void import("@/lib/wall-scene/fabric-import").then(({ parseWallScene }) => {
-          const serverRev =
-            sceneRevisionFromJson(result.conflictWall!.canvasJson);
-          // Keep OCC base fresh — stale base after a peer save is the usual cause.
-          serverRevisionRef.current = serverRev;
+        autoSaveCancelRef.current();
 
-          // Avoid re-sanitizing: it can shift homeOrigin/wallpaper and shove the wall off-screen.
-          const doc = parseWallScene(result.conflictWall!.canvasJson, {
-            sanitize: false,
-          });
-          const local = useWallSceneStore.getState().document;
-          const conflictFp = fingerprintPersistableScene(doc);
-          const localFp = fingerprintPersistableScene(local);
+        const serverRev = sceneRevisionFromJson(result.conflictWall.canvasJson);
+        // Keep OCC base fresh — stale base after a peer save is the usual cause.
+        serverRevisionRef.current = serverRev;
 
-          // Content already matches (realtime applied peer state) — no hard reload.
-          if (conflictFp === localFp) {
-            lastSavedFingerprintRef.current = localFp;
-            return;
-          }
-
-          // Real conflict: adopt server snapshot without coordinate re-bake.
-          const prev = useWallSceneStore.getState();
-          const prevMeta = {
-            wallBounds: prev.document.meta.wallBounds,
-            wallpaperOffset: prev.document.meta.wallpaperOffset,
-          };
-          const prevScale = prev.viewportScale;
-          useWallSceneStore.getState().loadDocument(doc);
-          const delta = panDeltaForWallLayoutChange(prevMeta, doc.meta, prevScale);
-          if (delta.dx !== 0 || delta.dy !== 0) {
-            useWallSceneStore.getState().addPan(delta.dx, delta.dy);
-          }
-          lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
-          setThemeId(resolveWallThemeId(result.conflictWall!.themeId));
-          showToast(result.message || "다른 사람 저장본으로 맞췄어요");
+        // Avoid re-sanitizing: it can shift homeOrigin/wallpaper and shove the wall off-screen.
+        const doc = parseWallScene(result.conflictWall.canvasJson, {
+          sanitize: false,
         });
+        const local = useWallSceneStore.getState().document;
+        const conflictFp = fingerprintPersistableScene(doc);
+        const localFp = fingerprintPersistableScene(local);
+
+        // Content already matches (realtime applied peer state) — no hard reload.
+        if (conflictFp === localFp) {
+          lastSavedFingerprintRef.current = localFp;
+          return;
+        }
+
+        // Real conflict: adopt server snapshot without coordinate re-bake.
+        runWithoutWallPersist(() => {
+          useWallSceneStore.getState().loadDocument(doc);
+          // World-locked camera: keep the current view when adopting a remote wall size.
+        }, 500);
+        // After loadDocument sanitize — pre-load fp can leave the store dirty.
+        lastSavedFingerprintRef.current = fingerprintPersistableScene(
+          useWallSceneStore.getState().document,
+        );
+        setThemeId(resolveWallThemeId(result.conflictWall.themeId));
+        showToast(result.message || "다른 사람 저장본으로 맞췄어요");
         return;
       }
       if (result.wall) {
@@ -312,10 +344,22 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     [showToast, broadcastSaved],
   );
 
+  const finishCloudSaveFlight = useCallback(() => {
+    cloudSaveInFlightRef.current = false;
+    if (!pendingCloudSaveRef.current) return;
+    pendingCloudSaveRef.current = false;
+    queueDirtyAutosaveRef.current();
+  }, []);
+
   const autoSave = useMemo(
     () =>
       debounce((json: object, fingerprint: string) => {
         if (!user || !persistEnabledRef.current) return;
+        if (cloudSaveInFlightRef.current) {
+          pendingCloudSaveRef.current = true;
+          return;
+        }
+        cloudSaveInFlightRef.current = true;
         void saveSharedWallToCloud(
           sharedId,
           themeIdRef.current,
@@ -325,10 +369,13 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           .then((result) => {
             applySharedSaveResult(result);
             if (result.wall) {
-              lastSavedFingerprintRef.current = fingerprint;
+              lastSavedFingerprintRef.current = fingerprintPersistableScene(
+                useWallSceneStore.getState().document,
+              );
               setAutoSaved(true);
               setTimeout(() => setAutoSaved(false), 1500);
               markPreviewDirty();
+              void flushPreview({ force: true, wallId: sharedId });
               return;
             }
             if (result.conflictWall) return;
@@ -336,10 +383,22 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           })
           .catch(() => {
             showToast("공동 벽 저장에 실패했어요. 잠시 후 다시 저장해 주세요");
+          })
+          .finally(() => {
+            finishCloudSaveFlight();
           });
       }, 800),
-    [sharedId, user, markPreviewDirty, applySharedSaveResult, showToast],
+    [sharedId, user, markPreviewDirty, flushPreview, applySharedSaveResult, showToast, finishCloudSaveFlight],
   );
+
+  autoSaveCancelRef.current = () => autoSave.cancel();
+  queueDirtyAutosaveRef.current = () => {
+    if (!persistEnabledRef.current || !user) return;
+    const doc = useWallSceneStore.getState().document;
+    const fp = fingerprintPersistableScene(doc);
+    if (fp === lastSavedFingerprintRef.current) return;
+    autoSave(serializeWallScene(doc), fp);
+  };
 
   const broadcastPresence = useCallback(
     (objectIds?: string[] | null, immediate = true) => {
@@ -440,6 +499,9 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     };
   }, [autoSave]);
 
+  // After reset-on-unmount so this cleanup saves camera before store.reset().
+  usePersistWallViewport(sharedId, isReady);
+
   useEffect(() => {
     if (isAuthLoading) return;
     if (!user) return;
@@ -537,11 +599,79 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     [user, sharedId, wallBounds.width, wallBounds.height, showToast, guardAdd, limitMessage, wallPlan],
   );
 
+  useEffect(() => {
+    if (!isReady || !user) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+
+      const pendingImports = consumePendingImports();
+      const pendingScanFiles = consumePendingScanFiles();
+      if (pendingImports.length === 0 && pendingScanFiles.length === 0) return;
+
+      void (async () => {
+        try {
+          const bounds = useWallSceneStore.getState().document.meta.wallBounds;
+
+          for (const dataUrl of pendingImports) {
+            if (cancelled) return;
+            if (!guardAdd(1)) {
+              showToast(limitMessage);
+              break;
+            }
+            await addPhotoDataUrlToWallScene(dataUrl, {
+              wallWidth: bounds.width,
+              wallHeight: bounds.height,
+            });
+          }
+
+          for (const file of pendingScanFiles) {
+            if (cancelled) return;
+            if (!guardAdd(1)) {
+              showToast(limitMessage);
+              break;
+            }
+            await addPhotoToWallScene(file, {
+              userId: user.id,
+              wallId: sharedId,
+              wallWidth: bounds.width,
+              wallHeight: bounds.height,
+              plan: wallPlan,
+            });
+          }
+
+          if (cancelled) return;
+
+          if (pendingScanFiles.length > 0 && pendingImports.length === 0) {
+            showToast("스캔한 사진을 붙였어요");
+          } else if (pendingImports.length > 0 && pendingScanFiles.length === 0) {
+            showToast("QR 네컷 사진을 붙였어요");
+          } else {
+            showToast("사진을 붙였어요");
+          }
+        } catch (err) {
+          if (!cancelled) {
+            showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
+          }
+        }
+      })();
+    }, 80);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isReady, user, sharedId, showToast, guardAdd, limitMessage, wallPlan]);
+
   const handleDelete = useCallback(() => {
-    if (selectedIds.length === 0) return;
+    const ids = useWallSceneStore.getState().selectedIds;
+    if (ids.length === 0) return;
     useWallSceneStore.getState().removeSelectedObjects();
-    useWallSceneStore.getState().bumpRevision();
-  }, [selectedIds.length]);
+    // Explicit remove — full scene sync is large and may not reach peers.
+    broadcastRemove(ids);
+    broadcastPresence(null);
+  }, [broadcastRemove, broadcastPresence]);
 
   const handleModeChange = useCallback((next: EditorMode) => {
     setMode(next);
@@ -673,10 +803,14 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   }, [copySelection, showToast]);
 
   const handleCut = useCallback(() => {
+    const ids = useWallSceneStore.getState().selectedIds;
     if (!cutSelection()) {
       showToast("잘라낼 항목이 없어요");
+      return;
     }
-  }, [cutSelection, showToast]);
+    if (ids.length > 0) broadcastRemove(ids);
+    broadcastPresence(null);
+  }, [cutSelection, showToast, broadcastRemove, broadcastPresence]);
 
   const handlePaste = useCallback(() => {
     const n = getClipboardQuotaObjectCount();
@@ -786,6 +920,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     (next: WallThemeId) => {
       setThemeId(next);
       themeIdRef.current = next;
+      broadcastTheme(next);
       const doc = useWallSceneStore.getState().document;
       markPreviewDirty();
       void saveSharedWallToCloud(
@@ -795,7 +930,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         serverRevisionRef.current,
       ).then(applySharedSaveResult);
     },
-    [sharedId, markPreviewDirty, applySharedSaveResult],
+    [sharedId, markPreviewDirty, applySharedSaveResult, broadcastTheme],
   );
 
   const handleShare = useCallback(async () => {
@@ -1104,7 +1239,6 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {user && (
             <PeerAvatarStack
-              peers={peers}
               self={{ userId: user.id, displayName, sessionId }}
             />
           )}
@@ -1169,16 +1303,16 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onThemeChange={handleThemeChange}
             onPhotoUpload={handlePhotoUpload}
             onAddSticker={handleAddSticker}
+            returnTo={`/shared/${sharedId}`}
           />
         </div>
 
         <div className="relative min-h-0 min-w-0 flex-1 bg-surface">
-          <KonvaWallStageClient
+          <WallStageClient
             themeId={themeId}
             initialJson={loadedCanvasJson}
             wallId={sharedId}
             resolvePhotoSrc={resolvePhotoSrc}
-            peers={peers}
             currentSessionId={sessionId}
             onDocumentChange={handleDocumentChange}
             onPointerMove={handlePointerMove}
@@ -1189,8 +1323,12 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             wallStageRef={wallStageRef}
             konvaStageRef={konvaStageRef}
             editorMode={mode}
-            drawColor={mode === "pen" ? penColor : tapeColor}
-            highlighterMaxLength={highlighterMaxLength}
+            drawColor={mode === "pen" ? penColor : tapePreset.color}
+            tapeStrokeWidth={tapeStrokeWidth}
+            tapeEndStyle={tapeEndStyle}
+            tapePattern={tapePreset.pattern}
+            tapePatternAccent={tapePreset.accent ?? "#ffffff"}
+            tapeOpacity={tapeOpacity}
             penStyleId={penStyleId}
             penStrokeWidth={penStrokeWidth}
             onGuardQuotaAdd={guardAdd}
@@ -1299,13 +1437,17 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
               penColor={penColor}
               penStyleId={penStyleId}
               penStrokeWidth={penStrokeWidth}
-              tapeColor={tapeColor}
-              tapeMaxLength={highlighterMaxLength}
+              tapePresetId={tapePreset.id}
+              tapeEndStyle={tapeEndStyle}
+              tapeStrokeWidth={tapeStrokeWidth}
+              tapeOpacity={tapeOpacity}
               onPenColorChange={setPenColor}
               onPenStyleIdChange={setPenStyleId}
               onPenStrokeWidthChange={setPenStrokeWidth}
-              onTapeColorChange={setTapeColor}
-              onTapeMaxLengthChange={setHighlighterMaxLength}
+              onTapePresetChange={handleTapePresetChange}
+              onTapeEndStyleChange={setTapeEndStyle}
+              onTapeStrokeWidthChange={setTapeStrokeWidth}
+              onTapeOpacityChange={setTapeOpacity}
             />
           </div>
 
@@ -1339,13 +1481,17 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             penColor={penColor}
             penStyleId={penStyleId}
             penStrokeWidth={penStrokeWidth}
-            tapeColor={tapeColor}
-            tapeMaxLength={highlighterMaxLength}
+            tapePresetId={tapePreset.id}
+            tapeEndStyle={tapeEndStyle}
+            tapeStrokeWidth={tapeStrokeWidth}
+            tapeOpacity={tapeOpacity}
             onPenColorChange={setPenColor}
             onPenStyleIdChange={setPenStyleId}
             onPenStrokeWidthChange={setPenStrokeWidth}
-            onTapeColorChange={setTapeColor}
-            onTapeMaxLengthChange={setHighlighterMaxLength}
+            onTapePresetChange={handleTapePresetChange}
+            onTapeEndStyleChange={setTapeEndStyle}
+            onTapeStrokeWidthChange={setTapeStrokeWidth}
+            onTapeOpacityChange={setTapeOpacity}
             selectionCount={selectedIds.length}
             showGrid={showGrid}
             snapToGrid={snapToGrid}
@@ -1395,6 +1541,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onThemeChange={handleThemeChange}
         onPhotoUpload={handlePhotoUpload}
         onAddSticker={handleAddSticker}
+        returnTo={`/shared/${sharedId}`}
       />
     </div>
   );

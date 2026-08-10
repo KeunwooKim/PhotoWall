@@ -1,21 +1,28 @@
 import type { WallTheme, WallThemeId } from "@/types/wall";
 import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
 
-export const DEFAULT_WALL_THEME_ID: WallThemeId = "linen-cream";
+export const DEFAULT_WALL_THEME_ID: WallThemeId = "magic-partition";
 
 /** One wallpaper tile = default wall size — expanding reveals more tiles. */
 export const WALL_TILE_SIZE = `${DEFAULT_WALL_BOUNDS.width}px ${DEFAULT_WALL_BOUNDS.height}px`;
 
-/** DB·localStorage에 남아 있는 구 CSS 벽지 ID → 이미지 벽지 */
+/** DB·localStorage에 남아 있는 구 벽지 ID → 현재 벽지 */
 const LEGACY_THEME_IDS: Record<string, WallThemeId> = {
   white: "linen-cream",
-  "brick-red": "cafe-brick",
-  corkboard: "cafe-cork",
   "wood-panel": "linen-cream",
   "plaster-worn": "linen-cream",
-  "booth-curtain": "studio-pink",
-  pastel: "studio-pink",
-  concrete: "sage-room",
+  "booth-curtain": "linen-cream",
+  pastel: "linen-cream",
+  concrete: "linen-cream",
+  "studio-pink": "linen-cream",
+  "sage-room": "linen-cream",
+  "starry-dream": "linen-cream",
+  "cafe-chalkboard": "linen-cream",
+  "brick-red": "red-brick",
+  "cafe-brick": "red-brick",
+  corkboard: "cork-board",
+  "cafe-cork": "cork-board",
+  "magic-partition-hole": "magic-partition",
 };
 
 function imageWallTheme(
@@ -38,13 +45,11 @@ function imageWallTheme(
 }
 
 export const WALL_THEMES: WallTheme[] = [
-  imageWallTheme("linen-cream", "린넨 크림", "부드러운 린넨 질감 — 사진이 잘 돋보여요", "linen-cream.png"),
-  imageWallTheme("studio-pink", "스튜디오 핑크", "인생네컷 부스 커튼 감성", "studio-pink.png"),
-  imageWallTheme("sage-room", "세이지 룸", "요즘 감성 세이지 그린 벽", "sage-room.png"),
-  imageWallTheme("starry-dream", "별밤 드림", "은은한 별이 반짝이는 밤하늘", "starry-dream.png"),
-  imageWallTheme("cafe-chalkboard", "카페 칠판", "골목 카페 메뉴판 느낌 칠판", "cafe-chalkboard.png"),
-  imageWallTheme("cafe-cork", "카페 코르크", "핀보드 감성 코르크 벽", "cafe-cork.png"),
-  imageWallTheme("cafe-brick", "카페 벽돌", "빈티지 적벽돌 카페 인테리어", "cafe-brick.png"),
+  imageWallTheme("magic-partition", "매직파티션", "매직파티션 보드 벽", "magic-partition.webp"),
+  imageWallTheme("linen-cream", "린넨 크림", "부드러운 린넨 질감 — 사진이 잘 돋보여요", "linen-cream.webp"),
+  imageWallTheme("white-brick", "하얀 벽돌", "깔끔한 화이트 벽돌 벽", "white-brick.webp"),
+  imageWallTheme("red-brick", "적 벽돌", "빈티지 적벽돌 인테리어", "red-brick.webp"),
+  imageWallTheme("cork-board", "코르크보드", "핀보드 감성 코르크 벽", "cork-board.webp"),
 ];
 
 export function isWallThemeId(id: string): id is WallThemeId {
