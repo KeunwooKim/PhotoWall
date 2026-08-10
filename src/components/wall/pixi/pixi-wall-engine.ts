@@ -25,6 +25,7 @@ import {
 import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
+import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
 import {
   registerPixiDragOffsetSync,
   registerLiveWallBoundsApplier,
@@ -62,6 +63,11 @@ import {
 import { clampUserZoom } from "@/lib/wall-scene/viewport-zoom";
 import type { WallViewportSnapshot } from "@/lib/wall-scene/wall-viewport-storage";
 import { clampUniformScaleFactor, clampObjectScalePair } from "@/lib/wall-scene/object-scale";
+import {
+  bakeTextTransformScale,
+  TEXT_BOX_MIN_FONT_SIZE,
+  TEXT_BOX_MIN_WIDTH,
+} from "@/lib/wall-scene/bake-text-transform";
 import { debounce } from "@/lib/debounce";
 import { cullObjectsForViewport } from "@/lib/wall-scene/viewport-culling";
 import { isAnyWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
@@ -85,6 +91,9 @@ const HANDLE_HIT_SCREEN_PX = 28;
 /** Rotate knob radius in screen pixels. */
 const ROTATE_KNOB_SCREEN_PX = 6;
 const ROTATE_OFFSET_SCREEN_PX = 22;
+
+type TransformMode = "scale" | "rotate" | "text-width" | "text-height";
+type TransformEdge = "e" | "w" | "n" | "s";
 
 /** Pixi extract may return OffscreenCanvas (no toDataURL) — normalize to a data URL. */
 function canvasLikeToDataUrl(
@@ -162,7 +171,8 @@ export class PixiWallEngine {
   } | null = null;
   private transformState: {
     id: string;
-    mode: "scale" | "rotate";
+    mode: TransformMode;
+    edge: TransformEdge | null;
     peers: Array<{
       id: string;
       startX: number;
@@ -1155,7 +1165,11 @@ export class PixiWallEngine {
       };
     };
 
-    const beginTransform = (mode: "scale" | "rotate", world: { x: number; y: number }) => {
+    const beginTransform = (
+      mode: TransformMode,
+      world: { x: number; y: number },
+      edge: TransformEdge | null = null,
+    ) => {
       const peers: NonNullable<typeof this.transformState>["peers"] = [];
       const storeObjects = useWallSceneStore.getState().document.objects;
       let minX = Infinity;
@@ -1204,6 +1218,7 @@ export class PixiWallEngine {
       this.transformState = {
         id: this.selectedId!,
         mode,
+        edge,
         peers,
         centerX: center.x,
         centerY: center.y,
@@ -1215,22 +1230,47 @@ export class PixiWallEngine {
       this.options.onManipulationChange?.(true);
     };
 
-    for (const c of corners) {
+    const addHandle = (
+      x: number,
+      y: number,
+      cursor: string,
+      onDown: (world: { x: number; y: number }) => void,
+    ) => {
       const handle = new Graphics();
       handle.rect(-hit / 2, -hit / 2, hit, hit).fill({ color: 0xffffff, alpha: 0.001 });
       handle
         .rect(-hs / 2, -hs / 2, hs, hs)
         .fill({ color: 0xffffff })
         .stroke({ width: strokeW, color: 0x3b82f6 });
-      handle.x = c.x;
-      handle.y = c.y;
+      handle.x = x;
+      handle.y = y;
       handle.eventMode = "static";
-      handle.cursor = "nwse-resize";
+      handle.cursor = cursor;
       handle.on("pointerdown", (e: FederatedPointerEvent) => {
         e.stopPropagation();
-        beginTransform("scale", this.viewport.toWorld(e.global));
+        onDown(this.viewport.toWorld(e.global));
       });
       group.addChild(handle);
+    };
+
+    for (const c of corners) {
+      addHandle(c.x, c.y, "nwse-resize", (world) => beginTransform("scale", world));
+    }
+
+    // Text: side handles — horizontal changes wrap width, vertical changes font size.
+    if (object.type === "text" && this.selectedIds.length === 1) {
+      addHandle(ox + boxW / 2, oy, "ns-resize", (world) =>
+        beginTransform("text-height", world, "n"),
+      );
+      addHandle(ox + boxW / 2, oy + boxH, "ns-resize", (world) =>
+        beginTransform("text-height", world, "s"),
+      );
+      addHandle(ox, oy + boxH / 2, "ew-resize", (world) =>
+        beginTransform("text-width", world, "w"),
+      );
+      addHandle(ox + boxW, oy + boxH / 2, "ew-resize", (world) =>
+        beginTransform("text-width", world, "e"),
+      );
     }
 
     const rot = new Graphics();
@@ -1254,12 +1294,110 @@ export class PixiWallEngine {
     this.transformer.addChild(group);
   }
 
+  private applyTextEdgeTransform(
+    state: NonNullable<PixiWallEngine["transformState"]>,
+    world: { x: number; y: number },
+  ): void {
+    const peer = state.peers[0];
+    if (!peer || !state.edge) return;
+    const entry = this.entries.get(peer.id);
+    if (!entry) return;
+
+    const rad = peer.startRotation * DEG;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    // Local axes in world space (matches Pixi rotation matrix used elsewhere).
+    const xAxis = { x: cos, y: sin };
+    const yAxis = { x: -sin, y: cos };
+    const startVW = Math.max(1, peer.baseWidth * Math.abs(peer.startScaleX));
+    const startVH = Math.max(1, peer.baseHeight * Math.abs(peer.startScaleY));
+    const project = (
+      from: { x: number; y: number },
+      axis: { x: number; y: number },
+    ) => (world.x - from.x) * axis.x + (world.y - from.y) * axis.y;
+
+    if (state.mode === "text-width") {
+      const absStart = Math.abs(peer.startScaleX) || 1;
+      let nextVW: number;
+      let nextX = peer.startX;
+      let nextY = peer.startY;
+      if (state.edge === "e") {
+        nextVW = Math.max(TEXT_BOX_MIN_WIDTH, project({ x: peer.startX, y: peer.startY }, xAxis));
+      } else {
+        const right = {
+          x: peer.startX + startVW * xAxis.x,
+          y: peer.startY + startVW * xAxis.y,
+        };
+        nextVW = Math.max(TEXT_BOX_MIN_WIDTH, -project(right, xAxis));
+        nextX = right.x - nextVW * xAxis.x;
+        nextY = right.y - nextVW * xAxis.y;
+      }
+      const nextAbs = absStart * (nextVW / startVW);
+      const maxAbs = Math.min(4, 3200 / Math.max(1, peer.baseWidth));
+      const minAbs = TEXT_BOX_MIN_WIDTH / Math.max(1, peer.baseWidth);
+      const clampedAbs = Math.max(minAbs, Math.min(maxAbs, nextAbs));
+      const appliedVW = startVW * (clampedAbs / absStart);
+      if (state.edge === "w") {
+        const right = {
+          x: peer.startX + startVW * xAxis.x,
+          y: peer.startY + startVW * xAxis.y,
+        };
+        nextX = right.x - appliedVW * xAxis.x;
+        nextY = right.y - appliedVW * xAxis.y;
+      }
+      entry.root.scale.set((Math.sign(peer.startScaleX) || 1) * clampedAbs, peer.startScaleY);
+      entry.root.x = nextX;
+      entry.root.y = nextY;
+    } else {
+      const absStart = Math.abs(peer.startScaleY) || 1;
+      let nextVH: number;
+      let nextX = peer.startX;
+      let nextY = peer.startY;
+      const minVH = TEXT_BOX_MIN_FONT_SIZE * 1.35;
+      if (state.edge === "s") {
+        nextVH = Math.max(minVH, project({ x: peer.startX, y: peer.startY }, yAxis));
+      } else {
+        const bottom = {
+          x: peer.startX + startVH * yAxis.x,
+          y: peer.startY + startVH * yAxis.y,
+        };
+        nextVH = Math.max(minVH, -project(bottom, yAxis));
+        nextX = bottom.x - nextVH * yAxis.x;
+        nextY = bottom.y - nextVH * yAxis.y;
+      }
+      const nextAbs = absStart * (nextVH / startVH);
+      const clampedAbs = Math.max(0.2, Math.min(4, nextAbs));
+      const appliedVH = startVH * (clampedAbs / absStart);
+      if (state.edge === "n") {
+        const bottom = {
+          x: peer.startX + startVH * yAxis.x,
+          y: peer.startY + startVH * yAxis.y,
+        };
+        nextX = bottom.x - appliedVH * yAxis.x;
+        nextY = bottom.y - appliedVH * yAxis.y;
+      }
+      entry.root.scale.set(peer.startScaleX, (Math.sign(peer.startScaleY) || 1) * clampedAbs);
+      entry.root.x = nextX;
+      entry.root.y = nextY;
+    }
+
+    this.liveBroadcast(peer.id, {
+      x: entry.root.x,
+      y: entry.root.y,
+      rotation: entry.root.rotation / DEG,
+      scaleX: entry.root.scale.x,
+      scaleY: entry.root.scale.y,
+    });
+  }
+
   private applyTransformMove(e: FederatedPointerEvent): void {
     const state = this.transformState;
     if (!state) return;
     const world = this.viewport.toWorld(e.global);
 
-    if (state.mode === "scale") {
+    if (state.mode === "text-width" || state.mode === "text-height") {
+      this.applyTextEdgeTransform(state, world);
+    } else if (state.mode === "scale") {
       const dist = Math.hypot(world.x - state.centerX, world.y - state.centerY) || 1;
       const factor = clampUniformScaleFactor(state.peers, dist / state.startDist);
       for (const peer of state.peers) {
@@ -1320,23 +1458,52 @@ export class PixiWallEngine {
       const entry = this.entries.get(peer.id);
       if (!entry) continue;
       const object = store.document.objects.find((o) => o.id === peer.id);
-      let patch = {
+      let patch: WallObjectPatch = {
         x: entry.root.x,
         y: entry.root.y,
         rotation: entry.root.rotation / DEG,
         scaleX: entry.root.scale.x,
         scaleY: entry.root.scale.y,
       };
-      if (object) {
+      if (object?.type === "text") {
+        const bakeMode =
+          state.mode === "text-width"
+            ? "width"
+            : state.mode === "text-height"
+              ? "height"
+              : state.mode === "scale"
+                ? "uniform"
+                : null;
+        if (bakeMode) {
+          const baked = bakeTextTransformScale(
+            object,
+            entry.root.scale.x,
+            entry.root.scale.y,
+            bakeMode,
+          );
+          patch = { ...patch, ...baked };
+          entry.root.scale.set(baked.scaleX, baked.scaleY);
+        }
+      } else if (object) {
         const size = this.objectSize(object);
-        const scales = clampObjectScalePair(patch.scaleX, patch.scaleY, size.width, size.height);
+        const scales = clampObjectScalePair(
+          entry.root.scale.x,
+          entry.root.scale.y,
+          size.width,
+          size.height,
+        );
         patch = { ...patch, ...scales };
         entry.root.scale.set(scales.scaleX, scales.scaleY);
-        const clamped = hardClampObjectPositionToWall({ ...object, ...patch } as WallSceneObject, wall);
+      }
+      if (object) {
+        const clamped = hardClampObjectPositionToWall(
+          { ...object, ...patch } as WallSceneObject,
+          wall,
+        );
         if (clamped) {
           patch = { ...patch, ...clamped };
-          entry.root.x = patch.x;
-          entry.root.y = patch.y;
+          entry.root.x = patch.x!;
+          entry.root.y = patch.y!;
         }
       }
       store.patchObject(peer.id, patch);
