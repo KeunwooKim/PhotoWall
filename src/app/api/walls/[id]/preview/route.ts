@@ -67,7 +67,18 @@ export async function POST(
     );
   }
 
-  const path = wallPreviewStoragePath(user.id, wallId);
+  // Versioned path so CDNs / browsers cannot keep serving a previous JPEG
+  // after upsert to the same object key.
+  const path = wallPreviewStoragePath(user.id, wallId, Date.now());
+
+  const { data: existing } = await supabase
+    .from("walls")
+    .select("preview_path")
+    .eq("id", wallId)
+    .maybeSingle();
+  const previousPath =
+    typeof existing?.preview_path === "string" ? existing.preview_path : null;
+
   const { error: uploadError } = await supabase.storage
     .from(WALL_PHOTOS_BUCKET)
     .upload(path, file, {
@@ -91,6 +102,10 @@ export async function POST(
     return applyCookies(
       NextResponse.json({ error: updateError.message || "Failed to save path" }, { status: 500 }),
     );
+  }
+
+  if (previousPath && previousPath !== path) {
+    void supabase.storage.from(WALL_PHOTOS_BUCKET).remove([previousPath]);
   }
 
   return applyCookies(NextResponse.json({ previewPath: path }));

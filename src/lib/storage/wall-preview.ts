@@ -303,6 +303,11 @@ export async function captureWallElementPreview(
   }
 }
 
-export function wallPreviewStoragePath(userId: string, wallId: string): string {
-  return `${userId}/previews/${wallId}.jpg`;
+/** Preview object path. Pass `rev` to bust CDN/browser caches after upsert. */
+export function wallPreviewStoragePath(
+  userId: string,
+  wallId: string,
+  rev: number | string = Date.now(),
+): string {
+  return `${userId}/previews/${wallId}-${rev}.jpg`;
 }
