@@ -116,6 +116,8 @@ export type PixiStageExport = {
   width: () => number;
   height: () => number;
   toDataURL: (config?: { pixelRatio?: number; mimeType?: string }) => string;
+  /** Ensure every scene object is built and visible before preview capture. */
+  prepareFullExport?: () => Promise<void>;
 };
 
 type EngineOptions = {
@@ -401,12 +403,31 @@ export class PixiWallEngine {
     return {
       width: () => this.wallWidth,
       height: () => this.wallHeight,
+      prepareFullExport: async () => {
+        if (this.destroyed) return;
+        const objects = useWallSceneStore.getState().document.objects;
+        const sorted = [...objects].sort((a, b) => a.zIndex - b.zIndex);
+        for (const object of sorted) {
+          if (this.destroyed) return;
+          await this.upsertObject(object);
+          const entry = this.entries.get(object.id);
+          if (entry) entry.root.visible = true;
+        }
+        // Force a render so extract sees updated textures.
+        this.app.renderer.render(this.app.stage);
+      },
       toDataURL: (config) => {
+        if (this.destroyed) return "data:,";
         const pixelRatio = Math.min(
           2,
           Math.max(0.25, config?.pixelRatio ?? 1),
         );
         const prevTransformer = this.transformer.visible;
+        const prevVisible = new Map<string, boolean>();
+        for (const [id, entry] of this.entries) {
+          prevVisible.set(id, entry.root.visible);
+          entry.root.visible = true;
+        }
         this.transformer.visible = false;
         try {
           const extracted = this.app.renderer.extract.canvas({
@@ -421,6 +442,10 @@ export class PixiWallEngine {
           );
         } finally {
           this.transformer.visible = prevTransformer;
+          for (const [id, wasVisible] of prevVisible) {
+            const entry = this.entries.get(id);
+            if (entry) entry.root.visible = wasVisible;
+          }
         }
       },
     };
@@ -587,14 +612,11 @@ export class PixiWallEngine {
     const visible = this.visibleObjectIds(objects);
     const sorted = [...objects].sort((a, b) => a.zIndex - b.zIndex);
     for (const object of sorted) {
-      if (!visible.has(object.id)) {
-        const hidden = this.entries.get(object.id);
-        if (hidden) hidden.root.visible = false;
-        continue;
-      }
+      // Always build/update entries so leave/share preview export includes
+      // off-screen objects; only toggle visibility for viewport culling.
       await this.upsertObject(object);
       const entry = this.entries.get(object.id);
-      if (entry) entry.root.visible = true;
+      if (entry) entry.root.visible = visible.has(object.id);
     }
     this.rebuildTransformer();
   }

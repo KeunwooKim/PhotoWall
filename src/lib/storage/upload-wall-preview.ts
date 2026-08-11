@@ -10,6 +10,7 @@ type StageExportLike = {
     mimeType?: string;
     quality?: number;
   }) => string;
+  prepareFullExport?: () => Promise<void>;
 };
 
 /** Upload a wall preview JPEG; returns storage path on success. */

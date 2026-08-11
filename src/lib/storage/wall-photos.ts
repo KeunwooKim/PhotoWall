@@ -211,7 +211,9 @@ const PHOTO_FILE_LIKE =
 
 /**
  * Storage layout from upload-photo: `{userId}/{uuid}.{ext}`
- * Also allows preview paths: `{userId}/previews/{wallId}.jpg`
+ * Also allows preview paths:
+ * - `{userId}/previews/{wallId}.jpg` (legacy)
+ * - `{userId}/previews/{wallId}-{timestamp}.jpg` (cache-busting revisions)
  * Rejects traversal / odd shapes used for IDOR probes.
  */
 export function isSafeWallPhotoStoragePath(path: string): boolean {
@@ -223,11 +225,14 @@ export function isSafeWallPhotoStoragePath(path: string): boolean {
     return UUID_LIKE.test(parts[0]) && PHOTO_FILE_LIKE.test(parts[1]);
   }
   if (parts.length === 3 && parts[1] === "previews") {
-    return (
-      UUID_LIKE.test(parts[0]) &&
-      UUID_LIKE.test(parts[2].replace(/\.jpe?g$/i, "")) &&
-      /\.jpe?g$/i.test(parts[2])
+    const file = parts[2];
+    if (!/\.jpe?g$/i.test(file)) return false;
+    const stem = file.replace(/\.jpe?g$/i, "");
+    // legacy: wallId.jpg  |  revision: wallId-1712345678901.jpg
+    const m = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-\d+)?$/i.exec(
+      stem,
     );
+    return !!m && UUID_LIKE.test(parts[0]);
   }
   return false;
 }

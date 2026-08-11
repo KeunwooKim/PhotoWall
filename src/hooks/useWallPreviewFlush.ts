@@ -24,9 +24,9 @@ const LEAVE_FLUSH_COOLDOWN_MS = 4000;
  * Upload wall preview only on leave / explicit share·invite — not on every autosave.
  *
  * SPA leave destroys the stage before this hook's cleanup. The stage stashes a sync
- * scene snapshot first. Flush must prefer that snapshot over a live DOM element whose
- * WebGL canvas is already cleared (that path used to upload a blank preview and discard
- * the good stash).
+ * scene snapshot first. Flush must prefer that snapshot over a live stage handle that
+ * may already be cleared mid-await (that path used to upload a blank/stale preview and
+ * discard the good stash).
  */
 export function useWallPreviewFlush(args: {
   getWallId: () => string | null | undefined;
@@ -84,36 +84,70 @@ export function useWallPreviewFlush(args: {
     inflightRef.current = true;
     try {
       const themeId = getThemeId();
-      const element = wallStageRef.current;
-      const stage = konvaStageRef.current;
 
-      // 1) Live stage + host still mounted
-      if (element && stage) {
-        const path = await uploadWallPreviewFromElement(wallId, element, {
-          themeId,
-          stage,
-        });
-        if (path) {
-          dirtyRef.current = false;
-          clearPendingWallPreviewDirty();
-          takePendingWallPreviewCapture(wallId);
-          lastFlushAtRef.current = Date.now();
-          return;
-        }
-      }
-
-      // 2) SPA-leave snapshot (stage already destroyed; host may still exist)
-      const pending = takePendingWallPreviewCapture(wallId);
-      if (pending) {
-        const uploaded = await uploadPendingCapture(wallId, pending);
+      // 1) Prefer SPA-leave snapshot whenever present. A concurrent live capture
+      // from pagehide can race with destroy and upload a cleared WebGL frame.
+      const pendingFirst = takePendingWallPreviewCapture(wallId);
+      if (pendingFirst) {
+        const uploaded = await uploadPendingCapture(wallId, pendingFirst);
         if (uploaded) {
           dirtyRef.current = false;
           clearPendingWallPreviewDirty();
           lastFlushAtRef.current = Date.now();
           return;
         }
-        // Keep snapshot for a later retry (e.g. next visibility flush)
-        stashPendingWallPreviewCapture(pending);
+        stashPendingWallPreviewCapture(pendingFirst);
+      }
+
+      // 2) Live stage still mounted
+      const element = wallStageRef.current;
+      const stage = konvaStageRef.current;
+      if (element && stage) {
+        try {
+          await stage.prepareFullExport?.();
+        } catch {
+          // continue with whatever is currently drawn
+        }
+
+        // Destroy may have stashed a better snapshot while we prepared.
+        const raced = takePendingWallPreviewCapture(wallId);
+        if (raced) {
+          const uploaded = await uploadPendingCapture(wallId, raced);
+          if (uploaded) {
+            dirtyRef.current = false;
+            clearPendingWallPreviewDirty();
+            lastFlushAtRef.current = Date.now();
+            return;
+          }
+          stashPendingWallPreviewCapture(raced);
+        }
+
+        // Stage ref cleared during await — do not capture a dead handle.
+        if (konvaStageRef.current !== stage) {
+          return;
+        }
+
+        const path = await uploadWallPreviewFromElement(wallId, element, {
+          themeId,
+          stage,
+        });
+        // If destroy stashed during upload, prefer that over a possibly blank live result.
+        const racedAfter = takePendingWallPreviewCapture(wallId);
+        if (racedAfter) {
+          const uploaded = await uploadPendingCapture(wallId, racedAfter);
+          if (uploaded) {
+            dirtyRef.current = false;
+            clearPendingWallPreviewDirty();
+            lastFlushAtRef.current = Date.now();
+            return;
+          }
+          stashPendingWallPreviewCapture(racedAfter);
+        }
+        if (path) {
+          dirtyRef.current = false;
+          clearPendingWallPreviewDirty();
+          lastFlushAtRef.current = Date.now();
+        }
         return;
       }
 
