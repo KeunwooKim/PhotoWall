@@ -69,6 +69,10 @@ import PhotoCropToolbar from "@/components/wall/PhotoCropToolbar";
 import PhotoColorToolbar from "@/components/wall/PhotoColorToolbar";
 import { usePhotoCrop } from "@/hooks/usePhotoCrop";
 import { usePhotoColorEdit } from "@/hooks/usePhotoColorEdit";
+import { useInstagramExport } from "@/hooks/useInstagramExport";
+import { useWallViewportAdapter } from "@/hooks/useWallViewportAdapter";
+import type { PixiWallEngine } from "@/components/wall/pixi/pixi-wall-engine";
+import WallInstagramExportChrome from "@/components/wall/WallInstagramExportChrome";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import GuestSaveBanner from "@/components/wall/GuestSaveBanner";
@@ -105,6 +109,7 @@ export default function PersonalWallKonvaEditor() {
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   const [isAssetsOpen, setIsAssetsOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuInitialPanel, setMenuInitialPanel] = useState<"menu" | "settings" | "share">("menu");
   const [autoSaved, setAutoSaved] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
@@ -256,6 +261,30 @@ export default function PersonalWallKonvaEditor() {
 
   const wallPlan = useClientWallPlan();
   const { usage: sceneUsage, guardAdd, limitMessage } = useGuardWallObjectAdd(wallPlan);
+
+  const [pixiEngine, setPixiEngine] = useState<PixiWallEngine | null>(null);
+  const instagramExport = useInstagramExport(wallBounds);
+  const instagramViewport = useWallViewportAdapter({
+    pixiEngine,
+    wallStageRef,
+    wallBounds,
+    stageReady: isReady,
+  });
+
+  const handleStartInstagramExport = useCallback(() => {
+    if (cropPhotoId) handleCropCancel();
+    if (colorEditPhotoId) handleColorCancel();
+    useWallSceneStore.getState().clearSelection();
+    setEditingTextId(null);
+    setMode("select");
+    instagramExport.start();
+  }, [
+    colorEditPhotoId,
+    cropPhotoId,
+    handleColorCancel,
+    handleCropCancel,
+    instagramExport,
+  ]);
 
   const persistLocal = useCallback((json: object) => {
     saveWall(themeIdRef.current, json);
@@ -1303,7 +1332,7 @@ export default function PersonalWallKonvaEditor() {
   }, [showToast, persistLocal, adoptWallId, markPreviewDirty]);
 
   const handleShare = useCallback(async () => {
-    if (!user) {
+    if (!userRef.current) {
       showToast("로그인하면 벽을 공유할 수 있어요");
       return;
     }
@@ -1340,7 +1369,7 @@ export default function PersonalWallKonvaEditor() {
   }, [isExporting, showToast]);
 
   const handleInvite = useCallback(async () => {
-    if (!user) {
+    if (!userRef.current) {
       showToast("로그인하면 친구를 초대할 수 있어요");
       return;
     }
@@ -1500,7 +1529,10 @@ export default function PersonalWallKonvaEditor() {
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setIsMenuOpen(true)}
+            onClick={() => {
+              setMenuInitialPanel("menu");
+              setIsMenuOpen(true);
+            }}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-foreground transition hover:bg-foreground/5"
             aria-label="메뉴 열기"
           >
@@ -1518,19 +1550,13 @@ export default function PersonalWallKonvaEditor() {
           )}
           <button
             type="button"
-            onClick={() => void handleShare()}
-            disabled={isSharing}
-            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 disabled:opacity-40 sm:inline"
+            onClick={() => {
+              setMenuInitialPanel("share");
+              setIsMenuOpen(true);
+            }}
+            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 sm:inline"
           >
-            {isSharing ? "공유 중…" : "공유"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleExport()}
-            disabled={isExporting}
-            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 disabled:opacity-40 sm:inline"
-          >
-            {isExporting ? "저장 중…" : "이미지"}
+            공유
           </button>
           <button
             type="button"
@@ -1546,6 +1572,7 @@ export default function PersonalWallKonvaEditor() {
       <EditorMenuDrawer
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
+        initialPanel={menuInitialPanel}
         wallTitle="내 벽"
         onInvite={() => void handleInvite()}
         isInviting={isInviting}
@@ -1554,6 +1581,7 @@ export default function PersonalWallKonvaEditor() {
         isSharing={isSharing}
         onExport={() => void handleExport()}
         isExporting={isExporting}
+        onInstagramExport={handleStartInstagramExport}
         onSave={() => void handleSave()}
       />
 
@@ -1607,9 +1635,40 @@ export default function PersonalWallKonvaEditor() {
             onStartPhotoCrop={handleStartCrop}
             onContextMenuRequest={handleContextMenuRequest}
             interactionLockId={colorEditPhotoId}
+            instagramExportActive={instagramExport.active}
+            onEngineReady={setPixiEngine}
+            stageOverlay={
+              instagramExport.active ? (
+                <WallInstagramExportChrome
+                  session={instagramExport}
+                  viewport={instagramViewport}
+                  wallBounds={wallBounds}
+                  themeId={themeId}
+                  objects={sceneObjects}
+                  wallStageRef={wallStageRef}
+                  konvaStageRef={konvaStageRef}
+                  onToast={showToast}
+                  placement="stage"
+                />
+              ) : null
+            }
             readOnly={!isEditor}
             {...konvaCropProps}
           />
+
+          {instagramExport.active && (
+            <WallInstagramExportChrome
+              session={instagramExport}
+              viewport={instagramViewport}
+              wallBounds={wallBounds}
+              themeId={themeId}
+              objects={sceneObjects}
+              wallStageRef={wallStageRef}
+              konvaStageRef={konvaStageRef}
+              onToast={showToast}
+              placement="toolbar"
+            />
+          )}
 
           {!isEditor && (
             <div className="absolute left-1/2 top-3 z-40 flex max-w-[min(92vw,420px)] -translate-x-1/2 items-center gap-2 rounded-full bg-foreground px-3 py-2 text-xs text-background shadow-lg sm:text-sm">
@@ -1634,7 +1693,8 @@ export default function PersonalWallKonvaEditor() {
             (mode === "select" || mode === "hand") &&
             !editingTextObject &&
             !cropPhotoId &&
-            !colorEditPhotoId && (
+            !colorEditPhotoId &&
+            !instagramExport.active && (
               <EditorSelectionSheet
                 object={inspectorObject}
                 selectionCount={selectedIds.length}

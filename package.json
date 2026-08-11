@@ -27,6 +27,7 @@
     "stickers:process-love": "node scripts/process-photowall-stickers.mjs love",
     "stickers:process-travel": "node scripts/process-photowall-stickers.mjs travel",
     "assets:webp": "node scripts/convert-static-images-to-webp.mjs",
+    "figma-ui": "node scripts/generate-figma-ui-html.mjs",
     "stickers:process-night": "node scripts/process-photowall-stickers.mjs night",
     "audit:gate": "npm run build && npm run verify && node scripts/verify-supabase-migrations.mjs"
   },

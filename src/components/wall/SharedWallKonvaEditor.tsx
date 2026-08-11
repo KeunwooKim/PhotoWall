@@ -69,6 +69,10 @@ import PhotoCropToolbar from "@/components/wall/PhotoCropToolbar";
 import PhotoColorToolbar from "@/components/wall/PhotoColorToolbar";
 import { usePhotoCrop } from "@/hooks/usePhotoCrop";
 import { usePhotoColorEdit } from "@/hooks/usePhotoColorEdit";
+import { useInstagramExport } from "@/hooks/useInstagramExport";
+import { useWallViewportAdapter } from "@/hooks/useWallViewportAdapter";
+import type { PixiWallEngine } from "@/components/wall/pixi/pixi-wall-engine";
+import WallInstagramExportChrome from "@/components/wall/WallInstagramExportChrome";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import WallLoadingOverlay from "@/components/wall/WallLoadingOverlay";
 import { useClientWallPlan, useGuardWallObjectAdd } from "@/hooks/useWallSceneUsage";
@@ -106,6 +110,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
   const [isReady, setIsReady] = useState(false);
   const [isAssetsOpen, setIsAssetsOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuInitialPanel, setMenuInitialPanel] = useState<"menu" | "settings" | "share">("menu");
   const [autoSaved, setAutoSaved] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isInviting, setIsInviting] = useState(false);
@@ -283,6 +288,30 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
 
   const wallPlan = useClientWallPlan();
   const { usage: sceneUsage, guardAdd, limitMessage } = useGuardWallObjectAdd(wallPlan);
+
+  const [pixiEngine, setPixiEngine] = useState<PixiWallEngine | null>(null);
+  const instagramExport = useInstagramExport(wallBounds);
+  const instagramViewport = useWallViewportAdapter({
+    pixiEngine,
+    wallStageRef,
+    wallBounds,
+    stageReady: isReady,
+  });
+
+  const handleStartInstagramExport = useCallback(() => {
+    if (cropPhotoId) handleCropCancel();
+    if (colorEditPhotoId) handleColorCancel();
+    useWallSceneStore.getState().clearSelection();
+    setEditingTextId(null);
+    setMode("select");
+    instagramExport.start();
+  }, [
+    colorEditPhotoId,
+    cropPhotoId,
+    handleColorCancel,
+    handleCropCancel,
+    instagramExport,
+  ]);
 
   const userRef = useRef(user);
   userRef.current = user;
@@ -1217,7 +1246,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         <div className="flex min-w-0 items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setIsMenuOpen(true)}
+            onClick={() => {
+              setMenuInitialPanel("menu");
+              setIsMenuOpen(true);
+            }}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-foreground transition hover:bg-foreground/5"
             aria-label="메뉴 열기"
           >
@@ -1251,19 +1283,13 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
           )}
           <button
             type="button"
-            onClick={() => void handleShare()}
-            disabled={isSharing}
-            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 disabled:opacity-40 sm:inline"
+            onClick={() => {
+              setMenuInitialPanel("share");
+              setIsMenuOpen(true);
+            }}
+            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 sm:inline"
           >
-            {isSharing ? "공유 중…" : "공유"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleExport()}
-            disabled={isExporting}
-            className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/90 transition hover:bg-foreground/5 disabled:opacity-40 sm:inline"
-          >
-            {isExporting ? "저장 중…" : "이미지"}
+            공유
           </button>
           <AuthButton compact />
         </div>
@@ -1272,6 +1298,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       <EditorMenuDrawer
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
+        initialPanel={menuInitialPanel}
         wallTitle={sharedWallTitle}
         onRenameTitle={handleRenameTitle}
         onInvite={() => void handleInvite()}
@@ -1281,6 +1308,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         isSharing={isSharing}
         onExport={() => void handleExport()}
         isExporting={isExporting}
+        onInstagramExport={handleStartInstagramExport}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -1338,8 +1366,39 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onStartPhotoCrop={handleStartCrop}
             onContextMenuRequest={handleContextMenuRequest}
             interactionLockId={colorEditPhotoId}
+            instagramExportActive={instagramExport.active}
+            onEngineReady={setPixiEngine}
+            stageOverlay={
+              instagramExport.active ? (
+                <WallInstagramExportChrome
+                  session={instagramExport}
+                  viewport={instagramViewport}
+                  wallBounds={wallBounds}
+                  themeId={themeId}
+                  objects={sceneObjects}
+                  wallStageRef={wallStageRef}
+                  konvaStageRef={konvaStageRef}
+                  onToast={showToast}
+                  placement="stage"
+                />
+              ) : null
+            }
             {...konvaCropProps}
           />
+
+          {instagramExport.active && (
+            <WallInstagramExportChrome
+              session={instagramExport}
+              viewport={instagramViewport}
+              wallBounds={wallBounds}
+              themeId={themeId}
+              objects={sceneObjects}
+              wallStageRef={wallStageRef}
+              konvaStageRef={konvaStageRef}
+              onToast={showToast}
+              placement="toolbar"
+            />
+          )}
 
           {editingTextObject && mode === "select" && (
             <div className="md:hidden">
@@ -1351,7 +1410,8 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             (mode === "select" || mode === "hand") &&
             !editingTextObject &&
             !cropPhotoId &&
-            !colorEditPhotoId && (
+            !colorEditPhotoId &&
+            !instagramExport.active && (
               <EditorSelectionSheet
                 object={inspectorObject}
                 selectionCount={selectedIds.length}

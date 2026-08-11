@@ -1,7 +1,9 @@
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
 import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
+import type { WallExportRect } from "@/lib/wall-scene/instagram-export";
 
 const PREVIEW_MAX_EDGE = 1600;
+const INSTAGRAM_JPEG_QUALITY = 0.88;
 const PREVIEW_MIME = "image/jpeg";
 const PREVIEW_QUALITY = 0.82;
 
@@ -54,7 +56,7 @@ function drawImageTiled(
   }
 }
 
-function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
+function canvasToJpeg(canvas: HTMLCanvasElement, quality = PREVIEW_QUALITY): Promise<Blob> {
   return new Promise((resolve, reject) => {
     try {
       canvas.toBlob(
@@ -63,7 +65,7 @@ function canvasToJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
             ? resolve(blob)
             : reject(new Error("Empty preview blob")),
         PREVIEW_MIME,
-        PREVIEW_QUALITY,
+        quality,
       );
     } catch (err) {
       reject(err instanceof Error ? err : new Error("Preview encode failed"));
@@ -77,7 +79,7 @@ function parseCssPxOffset(value: string | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function wallpaperOffsetFromElement(element: HTMLElement): { x: number; y: number } {
+export function wallpaperOffsetFromElement(element: HTMLElement): { x: number; y: number } {
   const pos = getComputedStyle(element).backgroundPosition || "0px 0px";
   const [xRaw, yRaw] = pos.trim().split(/\s+/);
   return {
@@ -116,7 +118,13 @@ type StageLike = {
     pixelRatio?: number;
     mimeType?: string;
     quality?: number;
+    frame?: WallExportRect;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
   }) => string;
+  prepareFullExport?: () => Promise<void>;
 };
 
 /**
@@ -159,13 +167,86 @@ export async function composeWallPreviewJpeg(options: {
   return canvasToJpeg(out);
 }
 
-/** Sync stage → PNG data URL suitable for pending leave capture. */
-export function exportStageSceneDataUrl(stage: StageLike): string {
+/** Sync stage → PNG data URL suitable for pending leave capture or region export. */
+export function exportStageSceneDataUrl(
+  stage: StageLike,
+  region?: WallExportRect,
+): string {
+  const frameW = region?.width ?? stage.width();
+  const frameH = region?.height ?? stage.height();
   const pixelRatio = Math.min(
     2,
-    PREVIEW_MAX_EDGE / Math.max(stage.width(), stage.height(), 1),
+    PREVIEW_MAX_EDGE / Math.max(frameW, frameH, 1),
   );
+  if (region) {
+    return stage.toDataURL({ pixelRatio, mimeType: "image/png", frame: region });
+  }
   return stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+}
+
+/**
+ * Compose wallpaper + scene for a wall sub-region at target Instagram dimensions.
+ */
+export async function composeWallRegionJpeg(options: {
+  wallpaperSrc?: string | null;
+  sceneDataUrl: string;
+  region: WallExportRect;
+  outW: number;
+  outH: number;
+  wallX?: number;
+  wallY?: number;
+  wallpaperOffsetX?: number;
+  wallpaperOffsetY?: number;
+}): Promise<Blob> {
+  const { region, outW, outH } = options;
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, outW);
+  out.height = Math.max(1, outH);
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+
+  const wallX = options.wallX ?? 0;
+  const wallY = options.wallY ?? 0;
+  await paintWallpaper(
+    ctx,
+    resolveWallpaperSrc(options.wallpaperSrc ?? ""),
+    outW,
+    outH,
+    region.width,
+    region.height,
+    (options.wallpaperOffsetX ?? 0) + (region.x - wallX),
+    (options.wallpaperOffsetY ?? 0) + (region.y - wallY),
+  );
+
+  const sceneImg = await loadHtmlImage(options.sceneDataUrl);
+  ctx.drawImage(sceneImg, 0, 0, outW, outH);
+  return canvasToJpeg(out, INSTAGRAM_JPEG_QUALITY);
+}
+
+export async function captureWallRegionPreview(options: {
+  region: WallExportRect;
+  outW: number;
+  outH: number;
+  wallpaperSrc?: string | null;
+  stage: StageLike;
+  wallX?: number;
+  wallY?: number;
+  wallpaperOffsetX?: number;
+  wallpaperOffsetY?: number;
+}): Promise<Blob> {
+  await options.stage.prepareFullExport?.();
+  const sceneDataUrl = exportStageSceneDataUrl(options.stage, options.region);
+  return composeWallRegionJpeg({
+    wallpaperSrc: options.wallpaperSrc,
+    sceneDataUrl,
+    region: options.region,
+    outW: options.outW,
+    outH: options.outH,
+    wallX: options.wallX,
+    wallY: options.wallY,
+    wallpaperOffsetX: options.wallpaperOffsetX,
+    wallpaperOffsetY: options.wallpaperOffsetY,
+  });
 }
 
 /**

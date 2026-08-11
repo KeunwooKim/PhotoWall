@@ -103,6 +103,10 @@ export interface PixiWallStageProps {
     display: { x: number; y: number; width: number; height: number },
   ) => void;
   onCropNaturalSize?: (width: number, height: number) => void;
+  onEngineReady?: (engine: PixiWallEngine | null) => void;
+  instagramExportActive?: boolean;
+  /** Rendered inside the stage host (viewport-aligned overlays). */
+  stageOverlay?: React.ReactNode;
 }
 
 function PixiWallStage({
@@ -138,6 +142,9 @@ function PixiWallStage({
   cropAspectPreset = "free",
   onCropDraftChange,
   onCropNaturalSize,
+  onEngineReady,
+  instagramExportActive = false,
+  stageOverlay,
 }: PixiWallStageProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PixiWallEngine | null>(null);
@@ -158,6 +165,7 @@ function PixiWallStage({
   const penStyleIdRef = useRef(penStyleId);
   const penStrokeWidthRef = useRef(penStrokeWidth);
   const cropPhotoIdRef = useRef(cropPhotoId);
+  const instagramExportActiveRef = useRef(instagramExportActive);
   const selectedIdsRef = useRef(selectedIdsPlaceholder());
   const wallIdRef = useRef(wallId);
   const themeIdRef = useRef(themeId);
@@ -173,6 +181,7 @@ function PixiWallStage({
   penStyleIdRef.current = penStyleId;
   penStrokeWidthRef.current = penStrokeWidth;
   cropPhotoIdRef.current = cropPhotoId;
+  instagramExportActiveRef.current = instagramExportActive;
   wallIdRef.current = wallId;
   themeIdRef.current = themeId;
   readOnlyRef.current = readOnly;
@@ -250,7 +259,7 @@ function PixiWallStage({
           onPresenceSelection?.(null);
         },
         onBackgroundPointerDown: (x, y, shiftKey) => {
-          if (cropPhotoIdRef.current) return;
+          if (cropPhotoIdRef.current || instagramExportActiveRef.current) return;
           if (editorModeRef.current !== "select") {
             clearSelection();
             onPresenceSelection?.(null);
@@ -273,6 +282,7 @@ function PixiWallStage({
       }
       engineRef.current = engine;
       setEngineTick((n) => n + 1);
+      onEngineReady?.(engine);
 
       if (konvaStageRef) {
         (konvaStageRef as MutableRefObject<WallStageExportHandle | null>).current =
@@ -330,6 +340,7 @@ function PixiWallStage({
 
     return () => {
       cancelled = true;
+      onEngineReady?.(null);
       const engine = engineRef.current;
       if (engine && !readOnlyRef.current) {
         const id = wallIdRef.current;
@@ -857,6 +868,17 @@ function PixiWallStage({
     };
   }, [cropPhotoId, editorMode, readOnly, engineTick]);
 
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !instagramExportActive) return;
+    engine.setObjectsInteractive(false);
+    return () => {
+      if (!readOnly && editorMode === "select" && !cropPhotoId) {
+        engine.setObjectsInteractive(true);
+      }
+    };
+  }, [cropPhotoId, editorMode, instagramExportActive, readOnly, engineTick]);
+
   const cropPhoto = useMemo((): WallScenePhoto | null => {
     if (!cropPhotoId) return null;
     const object = document.objects.find((item) => item.id === cropPhotoId);
@@ -881,6 +903,7 @@ function PixiWallStage({
           onNaturalSize={onCropNaturalSize}
         />
       ) : null}
+      {stageOverlay}
       {currentSessionId ? (
         <PixiPresenceOverlay
           currentSessionId={currentSessionId}
