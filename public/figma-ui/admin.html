@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PhotoWall — Dashboard</title>
+  <style>
+/* PhotoWall Figma export — shared styles (mono light) */
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --accent: #0a0a0a;
+  --surface: #f5f5f5;
+  --muted: #737373;
+  --border: rgba(10, 10, 10, 0.1);
+  --wall-bg: #d4d4d4;
+  --promo-pink: #ff5b8d;
+  --promo-mint: #b8e0d2;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: #ebebeb;
+  color: var(--foreground);
+  line-height: 1.45;
+  min-height: 100vh;
+}
+
+.figma-meta {
+  background: var(--foreground);
+  color: var(--background);
+  padding: 10px 16px;
+  font-size: 11px;
+}
+.figma-meta strong { font-weight: 600; }
+.figma-meta span { opacity: 0.7; margin-left: 8px; }
+
+.page-wrap {
+  padding: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.frame-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.device {
+  background: var(--background);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.device-mobile { width: 390px; min-height: 844px; border-radius: 24px; }
+.device-desktop { width: 1280px; min-height: 800px; border-radius: 12px; }
+
+.flex-col { display: flex; flex-direction: column; }
+.flex-1 { flex: 1; }
+.flex-row { display: flex; flex-direction: row; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.p-4 { padding: 16px; }
+.p-3 { padding: 12px; }
+.text-muted { color: var(--muted); }
+.text-xs { font-size: 12px; }
+.text-sm { font-size: 14px; }
+.text-lg { font-size: 18px; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
+}
+
+.app-header-left { display: flex; align-items: center; gap: 8px; }
+
+.bottom-nav {
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 0 20px;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
+}
+.bottom-nav a, .bottom-nav span {
+  font-size: 10px;
+  color: var(--muted);
+  text-decoration: none;
+  text-align: center;
+}
+.bottom-nav .active { color: var(--foreground); font-weight: 600; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  cursor: default;
+}
+.btn-primary { background: var(--foreground); color: var(--background); }
+.btn-ghost { background: transparent; color: var(--foreground); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+.btn-pill {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  font-weight: 500;
+}
+.btn-sm { padding: 6px 10px; font-size: 11px; }
+.btn-block { width: 100%; }
+
+.card {
+  border-radius: 16px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  padding: 16px;
+}
+
+.chip {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.chip-on { background: var(--foreground); color: var(--background); }
+.chip-off { background: rgba(10, 10, 10, 0.08); color: var(--foreground); }
+
+.wall-canvas {
+  background: var(--wall-bg);
+  flex: 1;
+  position: relative;
+  min-height: 400px;
+}
+.wall-photo {
+  position: absolute;
+  background: linear-gradient(135deg, #fca5a5, #fdba74);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.list-item:hover-bg { background: rgba(10, 10, 10, 0.04); }
+
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+.drawer-side {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 300px;
+  background: var(--background);
+  padding: 12px;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+}
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: var(--background);
+}
+
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.avatar-sm { width: 36px; height: 36px; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(10, 10, 10, 0.08);
+}
+
+.toolbar-dock {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border);
+}
+.toolbar-dock span {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 16px;
+}
+.toolbar-dock .on { background: var(--foreground); color: white; }
+
+.float-toolbar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 88px;
+  background: var(--background);
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Promo */
+.promo-hero {
+  padding: 48px 24px 32px;
+  text-align: center;
+  background: linear-gradient(180deg, #fff7f9 0%, var(--background) 100%);
+}
+.promo-title {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+.promo-cta {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 14px 28px;
+  border-radius: 999px;
+  background: var(--promo-pink);
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 16px;
+}
+.feature-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+}
+.feature-card h3 { font-size: 14px; margin-bottom: 4px; }
+.feature-card p { font-size: 12px; color: var(--muted); }
+
+/* Admin */
+.admin-layout { display: flex; flex: 1; min-height: 600px; }
+.admin-nav {
+  width: 200px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px;
+  flex-shrink: 0;
+}
+.admin-nav a, .admin-nav div {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--foreground);
+  margin-bottom: 4px;
+}
+.admin-nav .on { background: white; font-weight: 600; }
+.admin-main { flex: 1; padding: 20px; }
+
+/* Sticker store */
+.sticker-hero {
+  padding: 24px 16px;
+  background: linear-gradient(135deg, #ffe9e4, #fff7f5);
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+.sticker-pack {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: white;
+}
+.sticker-pack-cover { height: 100px; }
+.sticker-pack-body { padding: 12px; font-size: 13px; font-weight: 600; }
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+
+/* Legal */
+.legal-body { padding: 24px 20px 48px; max-width: 100%; }
+.legal-body h1 { font-size: 20px; margin-bottom: 16px; }
+.legal-body h2 { font-size: 15px; margin: 20px 0 8px; }
+.legal-body p, .legal-body li { font-size: 13px; color: #333; margin-bottom: 8px; }
+
+.index-grid {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+.index-grid h1 { font-size: 22px; margin-bottom: 8px; }
+.index-grid p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+.index-grid ul {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.index-grid a {
+  display: block;
+  padding: 12px 14px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+.index-grid a small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+  </style>
+</head>
+<body>
+  <div class="figma-meta"><strong>Dashboard</strong><span>Route: /admin</span></div>
+  <div class="page-wrap"><div><div class="frame-label">Desktop 1280</div><div class="device device-desktop flex-col"><header class="app-header"><div class="app-header-left"><span class="font-semibold">Admin</span></div><div class="gap-2 flex-row"><span class="text-xs text-muted">admin@photowall</span></div></header>
+      <div class="admin-layout">
+        <nav class="admin-nav">
+          <a href="admin.html" class="on">대시보드</a>
+          <a href="admin-walls.html" class="">벽</a>
+          <a href="admin-users.html" class="">사용자</a>
+          <a href="admin-announcements.html" class="">공지</a>
+          <a href="admin-banners.html" class="">배너</a>
+          <a href="admin-events.html" class="">이벤트</a>
+          <a href="admin-inquiries.html" class="">문의</a>
+          <a href="admin-operations.html" class="">운영</a>
+          <a href="admin-plans.html" class="">플랜</a>
+          <a href="admin-sticker-packs.html" class="">스티커 검수</a>
+        </nav>
+        <main class="admin-main"><h2 class="font-semibold" style="margin-bottom:16px">대시보드</h2>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+    <div class="card"><p class="text-xs text-muted">사용자</p><p class="font-bold text-lg">1,240</p></div>
+    <div class="card"><p class="text-xs text-muted">벽</p><p class="font-bold text-lg">3,891</p></div>
+    <div class="card"><p class="text-xs text-muted">오늘 가입</p><p class="font-bold text-lg">18</p></div>
+    <div class="card"><p class="text-xs text-muted">문의</p><p class="font-bold text-lg">3</p></div>
+  </div></main>
+      </div></div></div></div>
+</body>
+</html>

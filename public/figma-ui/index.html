@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PhotoWall UI — All Pages</title>
+  <style>
+/* PhotoWall Figma export — shared styles (mono light) */
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --accent: #0a0a0a;
+  --surface: #f5f5f5;
+  --muted: #737373;
+  --border: rgba(10, 10, 10, 0.1);
+  --wall-bg: #d4d4d4;
+  --promo-pink: #ff5b8d;
+  --promo-mint: #b8e0d2;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: #ebebeb;
+  color: var(--foreground);
+  line-height: 1.45;
+  min-height: 100vh;
+}
+
+.figma-meta {
+  background: var(--foreground);
+  color: var(--background);
+  padding: 10px 16px;
+  font-size: 11px;
+}
+.figma-meta strong { font-weight: 600; }
+.figma-meta span { opacity: 0.7; margin-left: 8px; }
+
+.page-wrap {
+  padding: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.frame-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.device {
+  background: var(--background);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.device-mobile { width: 390px; min-height: 844px; border-radius: 24px; }
+.device-desktop { width: 1280px; min-height: 800px; border-radius: 12px; }
+
+.flex-col { display: flex; flex-direction: column; }
+.flex-1 { flex: 1; }
+.flex-row { display: flex; flex-direction: row; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.p-4 { padding: 16px; }
+.p-3 { padding: 12px; }
+.text-muted { color: var(--muted); }
+.text-xs { font-size: 12px; }
+.text-sm { font-size: 14px; }
+.text-lg { font-size: 18px; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
+}
+
+.app-header-left { display: flex; align-items: center; gap: 8px; }
+
+.bottom-nav {
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 0 20px;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
+}
+.bottom-nav a, .bottom-nav span {
+  font-size: 10px;
+  color: var(--muted);
+  text-decoration: none;
+  text-align: center;
+}
+.bottom-nav .active { color: var(--foreground); font-weight: 600; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  cursor: default;
+}
+.btn-primary { background: var(--foreground); color: var(--background); }
+.btn-ghost { background: transparent; color: var(--foreground); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--foreground); }
+.btn-pill {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  font-weight: 500;
+}
+.btn-sm { padding: 6px 10px; font-size: 11px; }
+.btn-block { width: 100%; }
+
+.card {
+  border-radius: 16px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  padding: 16px;
+}
+
+.chip {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.chip-on { background: var(--foreground); color: var(--background); }
+.chip-off { background: rgba(10, 10, 10, 0.08); color: var(--foreground); }
+
+.wall-canvas {
+  background: var(--wall-bg);
+  flex: 1;
+  position: relative;
+  min-height: 400px;
+}
+.wall-photo {
+  position: absolute;
+  background: linear-gradient(135deg, #fca5a5, #fdba74);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.list-item:hover-bg { background: rgba(10, 10, 10, 0.04); }
+
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+.drawer-side {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 300px;
+  background: var(--background);
+  padding: 12px;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+}
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: var(--background);
+}
+
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.avatar-sm { width: 36px; height: 36px; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(10, 10, 10, 0.08);
+}
+
+.toolbar-dock {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border);
+}
+.toolbar-dock span {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 16px;
+}
+.toolbar-dock .on { background: var(--foreground); color: white; }
+
+.float-toolbar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 88px;
+  background: var(--background);
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Promo */
+.promo-hero {
+  padding: 48px 24px 32px;
+  text-align: center;
+  background: linear-gradient(180deg, #fff7f9 0%, var(--background) 100%);
+}
+.promo-title {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+.promo-cta {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 14px 28px;
+  border-radius: 999px;
+  background: var(--promo-pink);
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 16px;
+}
+.feature-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+}
+.feature-card h3 { font-size: 14px; margin-bottom: 4px; }
+.feature-card p { font-size: 12px; color: var(--muted); }
+
+/* Admin */
+.admin-layout { display: flex; flex: 1; min-height: 600px; }
+.admin-nav {
+  width: 200px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px;
+  flex-shrink: 0;
+}
+.admin-nav a, .admin-nav div {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--foreground);
+  margin-bottom: 4px;
+}
+.admin-nav .on { background: white; font-weight: 600; }
+.admin-main { flex: 1; padding: 20px; }
+
+/* Sticker store */
+.sticker-hero {
+  padding: 24px 16px;
+  background: linear-gradient(135deg, #ffe9e4, #fff7f5);
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+.sticker-pack {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: white;
+}
+.sticker-pack-cover { height: 100px; }
+.sticker-pack-body { padding: 12px; font-size: 13px; font-weight: 600; }
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+
+/* Legal */
+.legal-body { padding: 24px 20px 48px; max-width: 100%; }
+.legal-body h1 { font-size: 20px; margin-bottom: 16px; }
+.legal-body h2 { font-size: 15px; margin: 20px 0 8px; }
+.legal-body p, .legal-body li { font-size: 13px; color: #333; margin-bottom: 8px; }
+
+.index-grid {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+.index-grid h1 { font-size: 22px; margin-bottom: 8px; }
+.index-grid p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+.index-grid ul {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.index-grid a {
+  display: block;
+  padding: 12px 14px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+.index-grid a small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+    .how-to { max-width: 960px; margin: 0 auto 24px; padding: 16px 20px; background: #fff; border-radius: 12px; border: 1px solid var(--border); font-size: 13px; line-height: 1.6; }
+    .how-to h2 { font-size: 15px; margin-bottom: 8px; }
+    .how-to ol { margin-left: 18px; }
+    .how-to li { margin-bottom: 6px; }
+    .how-to code { background: var(--surface); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="index-grid">
+    <h1>PhotoWall — 페이지별 Figma UI</h1>
+    <p>각 HTML 파일은 CSS가 <strong>인라인</strong>되어 있어 Figma 플러그인에 붙여넣기 가능합니다.</p>
+
+    <div class="how-to">
+      <h2>Figma에 붙여넣기 (무료 · Yolbridge 권장)</h2>
+      <ol>
+        <li>Figma Community에서 <strong>Yolbridge — HTML to Figma</strong> 플러그인 설치 (완전 무료)</li>
+        <li>아래 목록에서 페이지 HTML 파일을 에디터로 열기</li>
+        <li><code>Ctrl+A</code> → <code>Ctrl+C</code> 전체 복사</li>
+        <li>Figma에서 Yolbridge 실행 → <strong>Paste HTML</strong> 칸에 붙여넣기 → Import</li>
+      </ol>
+      <p style="margin-top:12px;color:var(--muted)">또는 .html 파일을 Yolbridge 창에 <strong>드래그 앤 드롭</strong>해도 됩니다.<br>
+      대안: <a href="https://coderender.app" target="_blank" rel="noopener">CodeRender</a> (월 10회 무료) — HTML 붙여넣기 → Convert → Figma에 Ctrl+V</p>
+    </div>
+
+    <ul>
+      <li><a href="home-promo.html">Promo Landing<small>/ (비로그인)</small></a></li>
+      <li><a href="home.html">Home<small>/ (로그인)</small></a></li>
+      <li><a href="about.html">About<small>/about</small></a></li>
+      <li><a href="profile.html">Profile<small>/profile</small></a></li>
+      <li><a href="settings.html">Settings<small>/settings</small></a></li>
+      <li><a href="walls.html">Walls Hub<small>/walls</small></a></li>
+      <li><a href="upgrade.html">Upgrade<small>/upgrade</small></a></li>
+      <li><a href="news.html">News<small>/news</small></a></li>
+      <li><a href="capture.html">Capture / Scan<small>/capture</small></a></li>
+      <li><a href="import.html">QR Import<small>/import</small></a></li>
+      <li><a href="wall-edit.html">Wall Editor<small>/wall/edit</small></a></li>
+      <li><a href="wall-edit-share.html">Editor · Share panel<small>/wall/edit</small></a></li>
+      <li><a href="wall-edit-instagram-pick.html">Editor · Instagram pick<small>/wall/edit</small></a></li>
+      <li><a href="wall-edit-instagram-adjust.html">Editor · Instagram adjust<small>/wall/edit</small></a></li>
+      <li><a href="wall-view.html">Wall Viewer<small>/wall/[id]</small></a></li>
+      <li><a href="wall-share.html">Wall Share decode<small>/wall/share</small></a></li>
+      <li><a href="shared-wall.html">Shared Wall Editor<small>/shared/[id]</small></a></li>
+      <li><a href="invite.html">Invite<small>/invite/[code]</small></a></li>
+      <li><a href="stickers.html">Sticker Store<small>/stickers</small></a></li>
+      <li><a href="stickers-mine.html">My Stickers<small>/stickers/mine</small></a></li>
+      <li><a href="stickers-create.html">Create Sticker Pack<small>/stickers/create</small></a></li>
+      <li><a href="sticker-detail.html">Sticker Pack Detail<small>/stickers/[id]</small></a></li>
+      <li><a href="legal-privacy.html">Privacy<small>/legal/privacy</small></a></li>
+      <li><a href="legal-terms.html">Terms<small>/legal/terms</small></a></li>
+      <li><a href="admin.html">Admin Dashboard<small>/admin</small></a></li>
+      <li><a href="admin-walls.html">Admin Walls<small>/admin/walls</small></a></li>
+      <li><a href="admin-users.html">Admin Users<small>/admin/users</small></a></li>
+      <li><a href="admin-user-detail.html">Admin User Detail<small>/admin/users/[id]</small></a></li>
+      <li><a href="admin-announcements.html">Admin Announcements<small>/admin/announcements</small></a></li>
+      <li><a href="admin-banners.html">Admin Banners<small>/admin/banners</small></a></li>
+      <li><a href="admin-events.html">Admin Events<small>/admin/events</small></a></li>
+      <li><a href="admin-inquiries.html">Admin Inquiries<small>/admin/inquiries</small></a></li>
+      <li><a href="admin-operations.html">Admin Operations<small>/admin/operations</small></a></li>
+      <li><a href="admin-plans.html">Admin Plans<small>/admin/plans</small></a></li>
+      <li><a href="admin-sticker-packs.html">Admin Sticker Packs<small>/admin/sticker-packs</small></a></li>
+    </ul>
+  </div>
+</body>
+</html>

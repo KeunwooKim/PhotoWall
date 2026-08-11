@@ -6,11 +6,13 @@ import { HomeIcon, MenuIcon } from "@/components/wall/EditorToolDock";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import { setWallSizeLocked } from "@/lib/wall-scene/wall-size-lock";
 
-type Panel = "menu" | "settings";
+type Panel = "menu" | "settings" | "share";
 
 interface EditorMenuDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Panel to show when the drawer opens (e.g. header 「공유」 → `"share"`). */
+  initialPanel?: Panel;
   wallTitle?: string | null;
   /** When set, wall settings can rename the title. */
   onRenameTitle?: (title: string) => Promise<void> | void;
@@ -21,6 +23,7 @@ interface EditorMenuDrawerProps {
   isSharing?: boolean;
   onExport?: () => void;
   isExporting?: boolean;
+  onInstagramExport?: () => void;
   onSave?: () => void;
   homeHref?: string;
 }
@@ -28,6 +31,7 @@ interface EditorMenuDrawerProps {
 export default function EditorMenuDrawer({
   isOpen,
   onClose,
+  initialPanel = "menu",
   wallTitle,
   onRenameTitle,
   onInvite,
@@ -37,6 +41,7 @@ export default function EditorMenuDrawer({
   isSharing = false,
   onExport,
   isExporting = false,
+  onInstagramExport,
   onSave,
   homeHref = "/",
 }: EditorMenuDrawerProps) {
@@ -48,10 +53,10 @@ export default function EditorMenuDrawer({
 
   useEffect(() => {
     if (!isOpen) return;
-    setPanel("menu");
+    setPanel(initialPanel);
     setDraftTitle(wallTitle ?? "");
     setTitleError(null);
-  }, [isOpen, wallTitle]);
+  }, [isOpen, initialPanel, wallTitle]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -111,7 +116,7 @@ export default function EditorMenuDrawer({
           <div className="flex items-center gap-2 text-foreground">
             <MenuIcon />
             <span className="text-sm font-semibold">
-              {panel === "settings" ? "벽 설정" : "메뉴"}
+              {panel === "settings" ? "벽 설정" : panel === "share" ? "공유" : "메뉴"}
             </span>
           </div>
           <button
@@ -156,7 +161,35 @@ export default function EditorMenuDrawer({
                 벽 설정
               </button>
 
+              {(onShare || onInstagramExport || onExport) && (
+                <button type="button" className={itemClass} onClick={() => setPanel("share")}>
+                  <ShareIcon />
+                  공유
+                </button>
+              )}
+
               <div className="my-2 border-t border-foreground/8" />
+
+              {onSave && (
+                <button
+                  type="button"
+                  className={itemClass}
+                  onClick={() => runAndClose(() => onSave())}
+                >
+                  <SaveIcon />
+                  저장
+                </button>
+              )}
+            </div>
+          ) : panel === "share" ? (
+            <div className="space-y-1">
+              <button
+                type="button"
+                className="text-xs font-medium text-muted transition hover:text-foreground"
+                onClick={() => setPanel("menu")}
+              >
+                ← 메뉴로
+              </button>
 
               {onShare && (
                 <button
@@ -170,6 +203,17 @@ export default function EditorMenuDrawer({
                 </button>
               )}
 
+              {onInstagramExport && (
+                <button
+                  type="button"
+                  className={itemClass}
+                  onClick={() => runAndClose(() => onInstagramExport())}
+                >
+                  <InstagramIcon />
+                  인스타로 저장
+                </button>
+              )}
+
               {onExport && (
                 <button
                   type="button"
@@ -179,17 +223,6 @@ export default function EditorMenuDrawer({
                 >
                   <ExportIcon />
                   {isExporting ? "저장 중…" : "이미지로 저장"}
-                </button>
-              )}
-
-              {onSave && (
-                <button
-                  type="button"
-                  className={itemClass}
-                  onClick={() => runAndClose(() => onSave())}
-                >
-                  <SaveIcon />
-                  저장
                 </button>
               )}
             </div>
@@ -313,6 +346,16 @@ function ExportIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function InstagramIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
     </svg>
   );
 }

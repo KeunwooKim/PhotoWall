@@ -7,6 +7,10 @@ import type { WallStageExportHandle } from "@/components/wall/pixi/PixiWallStage
 import WallSocialPanel from "./WallSocialPanel";
 import type { WallThemeId } from "@/types/wall";
 import { shareWallImage } from "@/lib/wall-export";
+import { useInstagramExport } from "@/hooks/useInstagramExport";
+import { useWallViewportAdapter } from "@/hooks/useWallViewportAdapter";
+import type { PixiWallEngine } from "@/components/wall/pixi/pixi-wall-engine";
+import WallInstagramExportChrome from "@/components/wall/WallInstagramExportChrome";
 import AuthButton from "@/components/auth/AuthButton";
 import ReportWallButton from "@/components/wall/ReportWallButton";
 import { parseWallScene } from "@/lib/wall-scene/fabric-import";
@@ -52,6 +56,24 @@ export default function WallViewer({
   const [viewerKey, setViewerKey] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [activePreviewPath, setActivePreviewPath] = useState(previewPath);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [pixiEngine, setPixiEngine] = useState<PixiWallEngine | null>(null);
+  const [pendingInstagram, setPendingInstagram] = useState(false);
+
+  const wallBounds = useWallSceneStore((s) => s.document.meta.wallBounds);
+  const sceneObjects = useWallSceneStore((s) => s.document.objects);
+  const instagramExport = useInstagramExport(wallBounds);
+  const instagramViewport = useWallViewportAdapter({
+    pixiEngine,
+    wallStageRef,
+    wallBounds,
+    stageReady: isReady,
+  });
+
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(null), 2000);
+  }, []);
 
   const usePreview = !!activePreviewPath && !interactive && !previewFailed;
 
@@ -156,6 +178,23 @@ export default function WallViewer({
     setInteractive(true);
   }, []);
 
+  const handleStartInstagramExport = useCallback(() => {
+    setMoreOpen(false);
+    if (usePreview) {
+      setPendingInstagram(true);
+      setInteractive(true);
+      return;
+    }
+    if (!isReady) return;
+    instagramExport.start();
+  }, [instagramExport, isReady, usePreview]);
+
+  useEffect(() => {
+    if (!pendingInstagram || !interactive || !isReady || !instagramViewport) return;
+    setPendingInstagram(false);
+    instagramExport.start();
+  }, [pendingInstagram, interactive, isReady, instagramViewport, instagramExport]);
+
   const handleGuestbookAdded = useCallback(
     (updatedCanvas: object) => {
       setSceneJson(updatedCanvas);
@@ -223,6 +262,37 @@ export default function WallViewer({
           onReady={handleReady}
           wallStageRef={wallStageRef}
           konvaStageRef={konvaStageRef}
+          instagramExportActive={instagramExport.active}
+          onEngineReady={setPixiEngine}
+          stageOverlay={
+            instagramExport.active ? (
+              <WallInstagramExportChrome
+                session={instagramExport}
+                viewport={instagramViewport}
+                wallBounds={wallBounds}
+                themeId={themeId}
+                objects={sceneObjects}
+                wallStageRef={wallStageRef}
+                konvaStageRef={konvaStageRef}
+                onToast={showToast}
+                placement="stage"
+              />
+            ) : null
+          }
+        />
+      )}
+
+      {instagramExport.active && (
+        <WallInstagramExportChrome
+          session={instagramExport}
+          viewport={instagramViewport}
+          wallBounds={wallBounds}
+          themeId={themeId}
+          objects={sceneObjects}
+          wallStageRef={wallStageRef}
+          konvaStageRef={konvaStageRef}
+          onToast={showToast}
+          placement="toolbar"
         />
       )}
 
@@ -262,6 +332,17 @@ export default function WallViewer({
             </button>
             {moreOpen && (
               <div className="absolute right-0 top-full z-40 mt-2 w-44 overflow-hidden rounded-2xl bg-surface py-1 shadow-lg ring-1 ring-foreground/10">
+                <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  공유
+                </p>
+                <button
+                  type="button"
+                  onClick={handleStartInstagramExport}
+                  disabled={(!usePreview && !isReady) || instagramExport.isExporting}
+                  className="w-full px-3 py-2.5 text-left text-xs font-medium text-foreground transition hover:bg-foreground/5 disabled:opacity-50"
+                >
+                  {instagramExport.isExporting ? "저장 중..." : "인스타로 저장"}
+                </button>
                 <button
                   type="button"
                   onClick={handleExport}
@@ -289,6 +370,14 @@ export default function WallViewer({
       {(showKonvaLoading || showPreviewLoading) && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background text-sm text-muted">
           벽 불러오는 중...
+        </div>
+      )}
+
+      {toastMessage && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-50 flex justify-center px-4">
+          <p className="rounded-full bg-foreground/90 px-4 py-2 text-xs font-medium text-background shadow">
+            {toastMessage}
+          </p>
         </div>
       )}
       </div>

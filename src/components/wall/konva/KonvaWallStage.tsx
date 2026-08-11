@@ -6,7 +6,9 @@ import { Group, Layer, Line, Rect, Stage, Transformer } from "react-konva";
 import type Konva from "konva";
 import { configureKonvaForWallEditor, syncKonvaPixelRatioForWall } from "@/lib/konva-device";
 import { installKonvaDragOffsetSync } from "@/lib/wall-scene/konva-drag-offset-sync";
+import { createKonvaStageExportAdapter } from "@/lib/wall-scene/konva-stage-export";
 import { stashWallPreviewFromStage } from "@/hooks/useWallPreviewFlush";
+import type { WallStageExportHandle } from "@/components/wall/pixi/PixiWallStage";
 import {
   applyOmniWallExpandAfterDrag,
   getEffectivePan,
@@ -107,16 +109,8 @@ export interface KonvaWallStageProps {
   onObjectPatch?: (id: string, patch: WallObjectPatch) => void;
   onReady?: () => void;
   wallStageRef?: RefObject<HTMLDivElement | null>;
-  /** Stage export handle — Konva.Stage implements width/height/toDataURL. */
-  konvaStageRef?: RefObject<{
-    width: () => number;
-    height: () => number;
-    toDataURL: (config?: {
-      pixelRatio?: number;
-      mimeType?: string;
-      quality?: number;
-    }) => string;
-  } | null>;
+  /** Stage export handle — region/full capture adapter. */
+  konvaStageRef?: RefObject<WallStageExportHandle | null>;
   editorMode?: EditorMode;
   drawColor?: string;
   /** Masking-tape stroke width in wall px. */
@@ -145,6 +139,9 @@ export interface KonvaWallStageProps {
     display: { x: number; y: number; width: number; height: number },
   ) => void;
   onCropNaturalSize?: (width: number, height: number) => void;
+  instagramExportActive?: boolean;
+  /** Rendered inside the stage workspace (viewport-aligned overlays). */
+  stageOverlay?: React.ReactNode;
 }
 
 function KonvaWallStage({
@@ -182,9 +179,12 @@ function KonvaWallStage({
   cropAspectPreset = "free",
   onCropDraftChange,
   onCropNaturalSize,
+  instagramExportActive = false,
+  stageOverlay,
 }: KonvaWallStageProps) {
   const theme = getWallTheme(themeId);
   const containerRef = useRef<HTMLDivElement>(null);
+  const rawStageRef = useRef<Konva.Stage | null>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRegistry = useRef(new Map<string, Konva.Group>());
   const locallyDraggingIds = useRef(new Set<string>());
@@ -238,6 +238,8 @@ function KonvaWallStage({
     height: number;
   } | null>(null);
   const marqueeStartRef = useRef<{ x1: number; y1: number; shiftKey: boolean } | null>(null);
+  const instagramExportActiveRef = useRef(instagramExportActive);
+  instagramExportActiveRef.current = instagramExportActive;
   // Live expand updates bounds + pan together. Reading store pan alone with live
   // bounds makes the opposite edge drift on React re-render during west/north grow.
   const wallBounds = getEffectiveWallBounds();
@@ -253,7 +255,7 @@ function KonvaWallStage({
     setLiveContentShiftMode("immediate");
     registerLiveWallBoundsApplier((layout) => {
       const wrapper = wallStageRef?.current;
-      const stage = konvaStageRef?.current as Konva.Stage | null | undefined;
+      const stage = rawStageRef.current;
       if (wrapper) {
         wrapper.style.width = `${layout.bounds.width}px`;
         wrapper.style.height = `${layout.bounds.height}px`;
@@ -297,13 +299,13 @@ function KonvaWallStage({
   useEffect(() => {
     if (isAnyWallNodeDragging()) return;
     const stored = useWallSceneStore.getState().document.meta.wallBounds;
-    const stage = konvaStageRef?.current as Konva.Stage | null | undefined;
+    const stage = rawStageRef.current;
     syncKonvaPixelRatioForWall(stored.width, stored.height, stage ?? null);
-  }, [document.meta.wallBounds.width, document.meta.wallBounds.height, konvaStageRef]);
+  }, [document.meta.wallBounds.width, document.meta.wallBounds.height]);
 
   const attachStageRef = useCallback(
     (node: Konva.Stage | null) => {
-      const prev = konvaStageRef?.current as Konva.Stage | null | undefined;
+      const prev = rawStageRef.current;
       if (!node && prev && !readOnly) {
         stashWallPreviewFromStage({
           wallId,
@@ -311,8 +313,11 @@ function KonvaWallStage({
           stage: prev,
         });
       }
+      rawStageRef.current = node;
       if (konvaStageRef) {
-        (konvaStageRef as MutableRefObject<Konva.Stage | null>).current = node;
+        (konvaStageRef as MutableRefObject<WallStageExportHandle | null>).current = node
+          ? createKonvaStageExportAdapter(node, getEffectiveWallBounds)
+          : null;
       }
       if (node) {
         const stored = useWallSceneStore.getState().document.meta.wallBounds;
@@ -1257,6 +1262,7 @@ function KonvaWallStage({
       reportPointer(stage);
 
       if (readOnly || !isStageTarget || !stage) return;
+      if (instagramExportActiveRef.current) return;
       if (isHandMode(editorModeRef.current)) return;
       if (editorModeRef.current !== "select") return;
 
@@ -1532,6 +1538,8 @@ function KonvaWallStage({
           </Stage>
         </WallContextMenuProvider>
       </div>
+
+      {stageOverlay}
 
       {wallId && currentSessionId && (
         <WallPresenceOverlay

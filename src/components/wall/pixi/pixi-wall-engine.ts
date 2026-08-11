@@ -115,7 +115,11 @@ function canvasLikeToDataUrl(
 export type PixiStageExport = {
   width: () => number;
   height: () => number;
-  toDataURL: (config?: { pixelRatio?: number; mimeType?: string }) => string;
+  toDataURL: (config?: {
+    pixelRatio?: number;
+    mimeType?: string;
+    frame?: { x: number; y: number; width: number; height: number };
+  }) => string;
   /** Ensure every scene object is built and visible before preview capture. */
   prepareFullExport?: () => Promise<void>;
 };
@@ -429,10 +433,18 @@ export class PixiWallEngine {
           entry.root.visible = true;
         }
         this.transformer.visible = false;
+        const frame = config?.frame
+          ? new Rectangle(
+              config.frame.x,
+              config.frame.y,
+              config.frame.width,
+              config.frame.height,
+            )
+          : new Rectangle(this.wallX, this.wallY, this.wallWidth, this.wallHeight);
         try {
           const extracted = this.app.renderer.extract.canvas({
             target: this.world,
-            frame: new Rectangle(this.wallX, this.wallY, this.wallWidth, this.wallHeight),
+            frame,
             resolution: pixelRatio,
             clearColor: [0, 0, 0, 0],
           });
