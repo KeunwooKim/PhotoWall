@@ -15,7 +15,7 @@
 |------|------|------|
 | **P0** | 0 | — |
 | **P1** | 2 → **패치됨** | signed-photos IDOR, guestbook MIME/size |
-| **P2** | 다수 → **대부분 패치** | CSP·magic-byte·DNS rebinding만 후순위 |
+| **P2** | 다수 → **대부분 패치** | `unsafe-inline`만 Next hydration용으로 잔존 |
 | **회귀 OK** | 3 | 이전 AUDIT P1 중 SSRF / origin / likes·guestbook INSERT RLS |
 
 전체 평가: 기본 운영 보안(private storage, RLS, rate limit, cron fail-closed)은 양호.  
@@ -112,19 +112,20 @@ main `WALL_QUOTAS.free`: 200 objects / 500MB / 6MB scene / 12MB photo / shared 1
 
 ---
 
-## 9. P2 백로그 (수정 보류)
+## 9. P2 / residual
 
-1. ~~Cron Bearer `timingSafeEqual`~~ → **패치** (`src/lib/auth/timing-safe.ts`)
-2. ~~Admin API rate limit~~ → **패치** (`requireAdminRoute` 120/min)
-3. CSP nonce / unsafe-* 축소 → **수용** (Next/Sentry)
-4. ~~Health 응답에서 rateLimit 백엔드 이름 축소~~ → **패치** (`ok`/`degraded`)
-5. ~~wall-access fallback `is_hidden` 필터~~ → **패치**
-6. ~~빈 MIME 업로드~~ → **패치** (`checkPhotoUpload` 거부). magic-byte는 후순위
-7. ~~부스 private IP / IPv6 / link-local~~ → **패치**. DNS rebinding은 후순위
-8. ~~verify 스크립트 signed-photos 403 오탐~~ → **이미 OK** (401/403을 정상으로 집계)
-
-### P2 follow-up (2026-08-12 후속)
-위 1–2, 4–7 반영. CSP·magic-byte·DNS rebinding만 남음.
+| 항목 | 상태 |
+|------|------|
+| Cron timingSafeEqual | 패치 |
+| Admin rate limit | 패치 |
+| Health backend 이름 | 패치 |
+| wall-access is_hidden | 패치 |
+| 빈 MIME | 패치 |
+| 부스 private host | 패치 |
+| **magic-byte sniff** | **패치** (`image-magic.ts` → guestbook/admin/wall upload/booth) |
+| **DNS rebinding** | **패치** (`assertPublicHostname` before each booth fetch hop) |
+| **CSP unsafe-eval** | **제거 시도** — `unsafe-inline` + `script-src-attr 'none'` 유지. 배포 후 Sentry/콘솔 확인 |
+| CSP unsafe-inline | **수용** (Next hydration) |
 
 ---
 
