@@ -17,14 +17,18 @@ export interface WallQuota {
   maxStorageBytes: number;
 }
 
-/** Free defaults; `premium` plan is shown in UI as 플러스. */
+/**
+ * Free defaults; `premium` plan is shown in UI as 플러스.
+ * Free caps are intentionally tight so casual walls still work, but heavy use
+ * (many photos / multi shared walls / storage) pushes toward Plus.
+ */
 export const WALL_QUOTAS: Record<UserPlan, WallQuota> = {
   free: {
     maxOwnedSharedWalls: 1,
-    maxSceneBytes: 6 * 1024 * 1024,
-    maxSceneObjects: 200,
-    maxPhotoBytes: 12 * 1024 * 1024,
-    maxStorageBytes: 500 * 1024 * 1024,
+    maxSceneBytes: 2.5 * 1024 * 1024,
+    maxSceneObjects: 80,
+    maxPhotoBytes: 8 * 1024 * 1024,
+    maxStorageBytes: 150 * 1024 * 1024,
   },
   premium: {
     maxOwnedSharedWalls: 5,
@@ -82,6 +86,13 @@ export function countQuotaObjects(
 /** Show usage chrome at or above this ratio of any quota. */
 export const QUOTA_WARN_RATIO = 0.7;
 
+/** Free plan warns earlier so the limit is felt before a hard block. */
+export const FREE_QUOTA_WARN_RATIO = 0.5;
+
+export function getQuotaWarnRatio(plan: UserPlan): number {
+  return plan === "free" ? FREE_QUOTA_WARN_RATIO : QUOTA_WARN_RATIO;
+}
+
 export function getWallQuota(plan: UserPlan): WallQuota {
   return WALL_QUOTAS[plan];
 }
@@ -127,11 +138,15 @@ export function checkSceneQuota(
   return null;
 }
 
-export function sceneQuotaMessage(violation: SceneQuotaViolation): string {
+export function sceneQuotaMessage(
+  violation: SceneQuotaViolation,
+  plan: UserPlan = "free",
+): string {
+  const plusHint = plan === "free" ? " 플러스로 한도를 늘릴 수 있어요." : "";
   if (violation === "too_large") {
-    return "벽 용량 제한을 넘었어요. 사진·스티커를 조금 줄여 주세요";
+    return `벽 용량 제한을 넘었어요. 사진·스티커를 조금 줄여 주세요.${plusHint}`;
   }
-  return "사진·스티커·텍스트 개수 제한을 넘었어요. 일부 항목을 지워 주세요";
+  return `사진·스티커·텍스트 개수 제한을 넘었어요. 일부 항목을 지워 주세요.${plusHint}`;
 }
 
 export function formatBytesShort(bytes: number): string {
@@ -173,10 +188,11 @@ export function getSceneUsage(
   plan: UserPlan,
 ): SceneUsage {
   const quota = getWallQuota(plan);
+  const warnRatio = getQuotaWarnRatio(plan);
   const objectRatio = objectCount / quota.maxSceneObjects;
   const byteRatio = sceneBytes / quota.maxSceneBytes;
-  const nearObjectLimit = objectRatio >= QUOTA_WARN_RATIO;
-  const nearByteLimit = byteRatio >= QUOTA_WARN_RATIO;
+  const nearObjectLimit = objectRatio >= warnRatio;
+  const nearByteLimit = byteRatio >= warnRatio;
   const atObjectLimit = objectCount >= quota.maxSceneObjects;
   const atByteLimit = sceneBytes >= quota.maxSceneBytes;
 
@@ -204,18 +220,24 @@ export function getDocumentSceneUsage(
   return getSceneUsage(countQuotaObjects(document.objects), measureSceneBytes(json), plan);
 }
 
-export function objectLimitReachedMessage(usage: SceneUsage): string {
-  return `사진·스티커·텍스트 개수 제한을 넘었어요 (${usage.objectCount}/${usage.maxObjects}). 일부 항목을 지워 주세요`;
+export function objectLimitReachedMessage(
+  usage: SceneUsage,
+  plan: UserPlan = "free",
+): string {
+  const plusHint = plan === "free" ? " 플러스로 올려 보세요." : "";
+  return `사진·스티커·텍스트 개수 제한을 넘었어요 (${usage.objectCount}/${usage.maxObjects}). 일부 항목을 지워 주세요.${plusHint}`;
 }
 
-export function quotaHintDetail(usage: SceneUsage, _plan: UserPlan): string {
+export function quotaHintDetail(usage: SceneUsage, plan: UserPlan): string {
   if (usage.atObjectLimit) {
-    return "사진·스티커·텍스트 개수 제한을 넘었어요";
+    return plan === "free"
+      ? "개수 한도 · 플러스로 확장"
+      : "사진·스티커·텍스트 개수 제한을 넘었어요";
   }
   if (usage.atByteLimit) {
-    return "벽 용량 제한을 넘었어요";
+    return plan === "free" ? "용량 한도 · 플러스로 확장" : "벽 용량 제한을 넘었어요";
   }
-  return "공간이 거의 찼어요";
+  return plan === "free" ? "기본 한도에 가까워요" : "공간이 거의 찼어요";
 }
 
 export type PhotoUploadViolation = "too_large" | "invalid_type" | "storage_full";
