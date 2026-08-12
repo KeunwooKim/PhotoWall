@@ -23,7 +23,7 @@ export const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagKey, boolean> = {
   likes: true,
   qr_import: true,
   house_banners: true,
-  adsense: false,
+  adsense: true,
 };
 
 export const FEATURE_FLAG_LABELS: Record<FeatureFlagKey, { label: string; description: string }> = {
