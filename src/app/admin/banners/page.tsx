@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authFetch } from "@/lib/auth/api-fetch";
+import type { FeatureFlag } from "@/lib/feature-flags";
 import type {
   HouseBanner,
   HouseBannerAudience,
@@ -56,8 +57,10 @@ function readImageSize(file: File): Promise<{ width: number; height: number }> {
 
 export default function AdminBannersPage() {
   const [banners, setBanners] = useState<HouseBanner[]>([]);
+  const [adFlags, setAdFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingFlagKey, setSavingFlagKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
@@ -74,9 +77,16 @@ export default function AdminBannersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await authFetch("/api/admin/banners");
-      if (!res.ok) throw new Error();
-      setBanners((await res.json()) as HouseBanner[]);
+      const [bannerRes, flagRes] = await Promise.all([
+        authFetch("/api/admin/banners"),
+        authFetch("/api/admin/feature-flags"),
+      ]);
+      if (!bannerRes.ok) throw new Error();
+      setBanners((await bannerRes.json()) as HouseBanner[]);
+      if (flagRes.ok) {
+        const flags = (await flagRes.json()) as FeatureFlag[];
+        setAdFlags(flags.filter((f) => f.key === "house_banners" || f.key === "adsense"));
+      }
     } catch {
       setMessage("목록을 불러오지 못했어요");
     } finally {
@@ -200,13 +210,32 @@ export default function AdminBannersPage() {
     }
   };
 
+  const toggleAdFlag = async (flag: FeatureFlag) => {
+    setSavingFlagKey(flag.key);
+    setMessage(null);
+    try {
+      const res = await authFetch("/api/admin/feature-flags", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: flag.key, enabled: !flag.enabled }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = (await res.json()) as FeatureFlag;
+      setAdFlags((prev) => prev.map((f) => (f.key === updated.key ? updated : f)));
+      setMessage(`${updated.label} ${updated.enabled ? "켰어요" : "껐어요"}`);
+    } catch {
+      setMessage("광고 설정 변경에 실패했어요");
+    } finally {
+      setSavingFlagKey(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-bold">광고 배너</h2>
+        <h2 className="text-lg font-bold">광고</h2>
         <p className="mt-1 text-sm text-muted">
-          {HOUSE_BANNER_WIDTH}×{HOUSE_BANNER_HEIGHT}px 이미지로 등록하세요. 홈·설정·벽 목록에
-          표시됩니다.
+          이미지 배너를 등록하거나 Google AdSense 노출을 켜고 끌 수 있어요.
         </p>
       </div>
 
@@ -216,32 +245,106 @@ export default function AdminBannersPage() {
         </div>
       )}
 
+      <section className="space-y-3 rounded-2xl border border-foreground/10 bg-surface p-4">
+        <h3 className="text-sm font-semibold">노출 설정</h3>
+        {adFlags.length === 0 ? (
+          <p className="text-xs text-muted">
+            플래그가 없으면 Supabase에서{" "}
+            <code className="rounded bg-foreground/5 px-1">ads-feature-flags-migration.sql</code>을
+            실행하세요.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {adFlags.map((flag) => (
+              <li
+                key={flag.key}
+                className="flex items-center justify-between gap-4 rounded-xl bg-foreground/[0.03] px-3 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{flag.label}</p>
+                  <p className="mt-0.5 text-xs text-muted">{flag.description}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingFlagKey === flag.key}
+                  onClick={() => void toggleAdFlag(flag)}
+                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition ${
+                    flag.enabled
+                      ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                      : "bg-foreground/10 text-muted hover:bg-foreground/15"
+                  } disabled:opacity-50`}
+                  aria-pressed={flag.enabled}
+                >
+                  {savingFlagKey === flag.key ? "..." : flag.enabled ? "ON" : "OFF"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[11px] text-muted">
+          AdSense는 <code className="rounded bg-foreground/5 px-1">NEXT_PUBLIC_ADSENSE_CLIENT_ID</code>
+          와 슬롯 ID가 서버 환경 변수에 있어야 표시됩니다.
+        </p>
+      </section>
+
+      <div>
+        <h3 className="text-sm font-semibold">이미지 배너</h3>
+        <p className="mt-1 text-sm text-muted">
+          {HOUSE_BANNER_WIDTH}×{HOUSE_BANNER_HEIGHT}px 이미지로 등록하세요. 홈·설정·벽 목록에
+          표시됩니다.
+        </p>
+      </div>
+
       <form onSubmit={handleCreate} className="space-y-3 rounded-2xl border border-foreground/10 bg-surface p-4">
         <h3 className="text-sm font-semibold">새 배너</h3>
 
-        <label className="block text-xs text-muted">
-          배너 이미지 ({HOUSE_BANNER_WIDTH}×{HOUSE_BANNER_HEIGHT})
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            onChange={(e) => void handleFileChange(e.target.files?.[0] ?? null)}
-            className="mt-1 block w-full text-sm"
-          />
-        </label>
-        {imageHint ? <p className="text-[11px] text-muted">{imageHint}</p> : null}
-        {(previewUrl || imageUrl) && (
-          <div
-            className="overflow-hidden rounded-xl border border-foreground/10 bg-foreground/[0.04]"
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted">
+            배너 이미지 ({HOUSE_BANNER_WIDTH}×{HOUSE_BANNER_HEIGHT})
+          </p>
+          <label
+            className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border-2 border-dashed transition ${
+              previewUrl || imageUrl
+                ? "border-foreground/15 bg-foreground/[0.03]"
+                : "border-foreground/20 bg-foreground/[0.04] hover:border-foreground/35 hover:bg-foreground/[0.06]"
+            }`}
             style={{ aspectRatio: HOUSE_BANNER_ASPECT_RATIO }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={previewUrl || imageUrl || ""}
-              alt="미리보기"
-              className="h-full w-full object-cover"
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(e) => void handleFileChange(e.target.files?.[0] ?? null)}
+              className="absolute inset-0 z-10 cursor-pointer opacity-0"
+              aria-label="배너 이미지 선택"
             />
-          </div>
-        )}
+            {previewUrl || imageUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl || imageUrl || ""}
+                  alt="미리보기"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+                <span className="pointer-events-none relative z-[1] rounded-lg bg-background/90 px-3 py-1.5 text-xs font-semibold ring-1 ring-foreground/10">
+                  {imageUrl ? "이미지 바꾸기" : "업로드 중…"}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background">
+                  이미지 선택
+                </span>
+                <span className="px-4 text-center text-[11px] text-muted">
+                  JPEG · PNG · WebP · GIF · 클릭해서 파일 고르기
+                </span>
+              </>
+            )}
+          </label>
+          {imageHint ? <p className="text-[11px] text-muted">{imageHint}</p> : null}
+          {imageUrl ? (
+            <p className="text-[11px] font-medium text-emerald-700">업로드 완료 · 등록할 수 있어요</p>
+          ) : null}
+        </div>
 
         <input
           type="text"
