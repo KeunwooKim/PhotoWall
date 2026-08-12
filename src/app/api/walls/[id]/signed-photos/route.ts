@@ -10,7 +10,7 @@ import {
   isSafeWallPhotoStoragePath,
 } from "@/lib/storage/wall-photos";
 import { fetchWallFromDb } from "@/lib/supabase/walls";
-import { canEditWall, listWallCollaboratorUserIds } from "@/lib/supabase/wall-role";
+import { canEditWall } from "@/lib/supabase/wall-role";
 import { checkRateLimitAsync, getRequestIp } from "@/lib/rate-limit";
 
 const MAX_PATHS = 48;
@@ -72,20 +72,12 @@ export async function POST(
     const maySignLiveUploads =
       !!user && (await canEditWall(supabase, wallId, user.id));
 
-    const collaboratorIds = maySignLiveUploads
-      ? await listWallCollaboratorUserIds(admin ?? supabase, wallId)
-      : null;
-
+    // Only paths already on the wall (or preview), or this editor's own live uploads.
+    // Do NOT sign arbitrary paths under other collaborators' prefixes (IDOR).
     toSign = paths.filter((path) => {
-      // Saved scene / preview — always OK once wall access is confirmed.
       if (onWall.has(path)) return true;
-
-      // Live peer uploads before autosave: only known storage layout + wall collaborators.
       if (!isSafeWallPhotoStoragePath(path)) return false;
-      if (maySignLiveUploads && user && isOwnWallPhotoPath(path, user.id)) return true;
-      const ownerId = path.split("/")[0];
-      if (collaboratorIds?.has(ownerId)) return true;
-      return false;
+      return !!(maySignLiveUploads && user && isOwnWallPhotoPath(path, user.id));
     });
   } else if (user && ownPathsOnly) {
     toSign = paths.filter(

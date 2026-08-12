@@ -1,8 +1,9 @@
-/** Google AdSense — optional; slots render only when client ID is set. */
+/** Google AdSense client / publisher helpers. */
 
-export function getAdSenseClientId(): string | null {
-  const id = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID?.trim();
-  return id || null;
+export const ADSENSE_CLIENT_ID = "ca-pub-9751470689295736";
+
+export function getAdSenseClientId(): string {
+  return process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID?.trim() || ADSENSE_CLIENT_ID;
 }
 
 export function getAdSenseSlotHome(): string | null {
@@ -16,9 +17,8 @@ export function getAdSenseSlotLanding(): string | null {
 }
 
 /** ads.txt uses pub-XXXXXXXX; client ID is ca-pub-XXXXXXXX */
-export function getAdSensePublisherId(): string | null {
+export function getAdSensePublisherId(): string {
   const clientId = getAdSenseClientId();
-  if (!clientId) return null;
   if (clientId.startsWith("ca-pub-")) return clientId.slice(3);
   if (clientId.startsWith("pub-")) return clientId;
   return `pub-${clientId}`;

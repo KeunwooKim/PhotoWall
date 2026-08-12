@@ -2,8 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRoute, serviceRoleRequiredResponse } from "@/lib/admin/require-admin-route";
 import { toPublicSupabaseUrl } from "@/lib/supabase/env";
 import { HOUSE_BANNERS_BUCKET } from "@/types/house-banner";
+import { extensionForImageMime, sniffImageMime } from "@/lib/storage/image-magic";
 
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_BYTES = 5 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
@@ -26,28 +26,23 @@ export async function POST(request: NextRequest) {
   if (!(file instanceof File) || file.size === 0) {
     return applyCookies(NextResponse.json({ error: "file required" }, { status: 400 }));
   }
-  if (!ALLOWED_TYPES.has(file.type)) {
-    return applyCookies(
-      NextResponse.json({ error: "jpg/png/webp/gif만 업로드할 수 있어요" }, { status: 400 }),
-    );
-  }
   if (file.size > MAX_BYTES) {
     return applyCookies(NextResponse.json({ error: "이미지는 5MB 이하여야 해요" }, { status: 400 }));
   }
 
-  const ext =
-    file.type === "image/png"
-      ? "png"
-      : file.type === "image/webp"
-        ? "webp"
-        : file.type === "image/gif"
-          ? "gif"
-          : "jpg";
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const sniffed = sniffImageMime(buffer);
+  if (!sniffed) {
+    return applyCookies(
+      NextResponse.json({ error: "jpg/png/webp/gif만 업로드할 수 있어요" }, { status: 400 }),
+    );
+  }
+
+  const ext = extensionForImageMime(sniffed);
   const path = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   const { error } = await admin.storage.from(HOUSE_BANNERS_BUCKET).upload(path, buffer, {
-    contentType: file.type,
+    contentType: sniffed,
     upsert: false,
   });
 
