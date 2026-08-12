@@ -18,13 +18,14 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self' https://accounts.google.com",
-      // Next.js + Sentry browser SDK need inline/eval in production builds today
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com",
+      // Next.js + Sentry + Google AdSense (site verification / Auto ads)
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
       "style-src 'self' 'unsafe-inline'",
-      // Google OAuth avatars (lh3/lh4/…googleusercontent.com)
-      `img-src 'self' data: blob: ${api} https://*.googleusercontent.com`,
+      // Google OAuth avatars + AdSense creatives
+      `img-src 'self' data: blob: ${api} https://*.googleusercontent.com https://*.googlesyndication.com https://pagead2.googlesyndication.com https://www.google.com https://googleads.g.doubleclick.net`,
       "font-src 'self' data:",
-      `connect-src 'self' ${api} ${apiWs} https://*.ingest.us.sentry.io https://accounts.google.com https://www.googleapis.com`,
+      `connect-src 'self' ${api} ${apiWs} https://*.ingest.us.sentry.io https://accounts.google.com https://www.googleapis.com https://*.googlesyndication.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://partner.googleadservices.com`,
+      "frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://pagead2.googlesyndication.com https://www.googletagmanager.com",
       "worker-src 'self' blob:",
       "media-src 'self' blob:",
       "upgrade-insecure-requests",
