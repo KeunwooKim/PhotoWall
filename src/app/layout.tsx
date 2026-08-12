@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Noto_Sans_KR } from "next/font/google";
+import { getAdSenseClientId } from "@/lib/ads/adsense";
 import "./globals.css";
 import { ThemeProvider } from "@/providers/ThemeProvider";
 import ThemeScript from "@/providers/ThemeScript";
@@ -24,6 +25,8 @@ export const viewport = {
   viewportFit: "cover" as const,
 };
 
+const adsenseClientId = getAdSenseClientId();
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,6 +35,12 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
+        {/* AdSense site ownership — must be a real <script> in initial HTML <head> */}
+        <script
+          async
+          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClientId}`}
+          crossOrigin="anonymous"
+        />
         <ThemeScript />
       </head>
       <body className={`${notoSansKr.variable} antialiased`}>
