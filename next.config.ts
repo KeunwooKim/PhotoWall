@@ -18,9 +18,11 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self' https://accounts.google.com",
-      // Next.js + Sentry browser SDK need inline/eval in production builds today
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com",
+      // Next.js hydration needs 'unsafe-inline'. Prefer no 'unsafe-eval';
+      // Sentry/onnx may break if eval is required — watch production console.
+      "script-src 'self' 'unsafe-inline' https://browser.sentry-cdn.com",
       "style-src 'self' 'unsafe-inline'",
+      "script-src-attr 'none'",
       // Google OAuth avatars (lh3/lh4/…googleusercontent.com)
       `img-src 'self' data: blob: ${api} https://*.googleusercontent.com`,
       "font-src 'self' data:",

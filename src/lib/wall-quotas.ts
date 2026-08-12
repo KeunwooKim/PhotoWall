@@ -224,14 +224,13 @@ export function checkPhotoUpload(
   file: { size: number; type: string },
   plan: UserPlan,
 ): PhotoUploadViolation | null {
-  const type = file.type.toLowerCase();
+  const type = file.type.toLowerCase().trim();
   if (
-    type &&
+    !type ||
     !ALLOWED_PHOTO_MIME_TYPES.includes(type as (typeof ALLOWED_PHOTO_MIME_TYPES)[number])
   ) {
     return "invalid_type";
   }
-  // Some browsers leave type empty — allow and rely on size only
   if (file.size > getWallQuota(plan).maxPhotoBytes) return "too_large";
   return null;
 }

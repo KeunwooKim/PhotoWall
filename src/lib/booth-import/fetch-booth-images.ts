@@ -1,6 +1,8 @@
 import { isAllowedBoothUrl, isPrivateOrLocalHost, normalizeBoothUrl } from "./allowed-domains";
+import { assertPublicHostname } from "./resolve-public-host";
 import { extractPhotoUrlsFromHtml, htmlLooksExpired } from "./parse-download-page";
 import type { BoothImportResponse } from "./types";
+import { sniffImageMime } from "@/lib/storage/image-magic";
 
 const FETCH_TIMEOUT_MS = 12_000;
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
@@ -52,7 +54,7 @@ export function isAllowedBoothFetchUrl(
 }
 
 /**
- * Fetch with manual redirects so each hop is re-validated (SSRF).
+ * Fetch with manual redirects so each hop is re-validated (SSRF / DNS rebinding).
  */
 async function fetchWithTimeout(
   url: string,
@@ -65,6 +67,9 @@ async function fetchWithTimeout(
     if (!isAllowedBoothFetchUrl(current, pageUrlForAllow ?? current)) {
       throw new Error("blocked_redirect");
     }
+
+    const hostname = new URL(current).hostname;
+    await assertPublicHostname(hostname);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -124,10 +129,10 @@ async function imageUrlToDataUrl(
     const buffer = Buffer.from(await response.arrayBuffer());
     if (buffer.length === 0 || buffer.length > MAX_IMAGE_BYTES) return null;
 
-    const mime = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
-    if (!mime.startsWith("image/")) return null;
+    const sniffed = sniffImageMime(buffer);
+    if (!sniffed) return null;
 
-    return `data:${mime};base64,${buffer.toString("base64")}`;
+    return `data:${sniffed};base64,${buffer.toString("base64")}`;
   } catch {
     return null;
   }
