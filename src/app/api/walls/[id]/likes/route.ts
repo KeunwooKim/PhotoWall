@@ -65,6 +65,11 @@ export async function POST(
     );
   }
 
+  const access = await checkWallAccess(routeClient.supabase, id, user.id);
+  if (!access.allowed) {
+    return routeClient.applyCookies(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+  }
+
   const likes = await toggleWallLike(routeClient.supabase, id, user.id);
   if (!likes) {
     return NextResponse.json({ error: "Failed to toggle like" }, { status: 500 });

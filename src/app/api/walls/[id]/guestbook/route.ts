@@ -4,6 +4,11 @@ import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { ensureProfile } from "@/lib/supabase/profiles";
 import { checkWallAccess } from "@/lib/supabase/wall-access";
 import { featureDisabledResponse, isFeatureEnabled } from "@/lib/feature-flags-server";
+import { getUserPlan } from "@/lib/auth/user-plan";
+import { checkPhotoUpload, photoUploadMessage } from "@/lib/wall-quotas";
+
+/** Guestbook embeds as data URL — keep smaller than full wall photo caps. */
+const GUESTBOOK_MAX_BYTES = 4 * 1024 * 1024;
 
 export async function POST(
   request: NextRequest,
@@ -57,8 +62,34 @@ export async function POST(
     );
   }
 
+  const plan = await getUserPlan(user.id, routeClient.supabase);
+  if (!file.type) {
+    return routeClient.applyCookies(
+      NextResponse.json({ error: photoUploadMessage("invalid_type", plan) }, { status: 400 }),
+    );
+  }
+  const planViolation = checkPhotoUpload(file, plan);
+  if (planViolation === "invalid_type") {
+    return routeClient.applyCookies(
+      NextResponse.json({ error: photoUploadMessage("invalid_type", plan) }, { status: 400 }),
+    );
+  }
+  if (planViolation === "too_large" || file.size > GUESTBOOK_MAX_BYTES) {
+    return routeClient.applyCookies(
+      NextResponse.json(
+        {
+          error:
+            file.size > GUESTBOOK_MAX_BYTES
+              ? "방명록 사진은 4MB까지 올릴 수 있어요"
+              : photoUploadMessage("too_large", plan),
+        },
+        { status: 413 },
+      ),
+    );
+  }
+
   const buffer = Buffer.from(await file.arrayBuffer());
-  const mime = file.type || "image/jpeg";
+  const mime = file.type;
   const imageDataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
 
   const result = await addGuestbookPhoto(
