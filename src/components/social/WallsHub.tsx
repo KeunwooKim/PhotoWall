@@ -176,7 +176,11 @@ export default function WallsHub() {
         const detail = err.error ?? "";
         if (detail === "shared_wall_limit") {
           const max = err.maxOwnedSharedWalls ?? maxOwnedSharedWalls;
-          showMessage(err.message ?? `공동 벽은 ${max}개까지 만들 수 있어요`);
+          showMessage(
+            plan === "free"
+              ? `공동 벽은 ${max}개까지예요. 플러스로 더 만들 수 있어요`
+              : (err.message ?? `공동 벽은 ${max}개까지 만들 수 있어요`),
+          );
         } else if (detail.includes("create_shared_wall") || detail.includes("does not exist")) {
           showMessage("SQL 마이그레이션 필요: shared-walls-fix.sql 실행");
         } else if (detail.includes("Not authenticated")) {
@@ -340,10 +344,20 @@ export default function WallsHub() {
                 공동 벽 생성이 잠시 중단되었어요. 기존 벽은 계속 쓸 수 있어요.
               </p>
             ) : ownedSharedCount >= maxOwnedSharedWalls ? (
-              <p className="rounded-2xl border border-foreground/10 bg-surface px-4 py-3 text-xs text-muted">
-                공동 벽을 {maxOwnedSharedWalls}개까지 만들 수 있어요. 초대받은 벽은 제한에 포함되지
-                않아요.
-              </p>
+              <div className="space-y-2 rounded-2xl border border-foreground/10 bg-surface px-4 py-3">
+                <p className="text-xs text-muted">
+                  공동 벽을 {maxOwnedSharedWalls}개까지 만들 수 있어요. 초대받은 벽은 제한에
+                  포함되지 않아요.
+                </p>
+                {plan === "free" ? (
+                  <Link
+                    href="/upgrade"
+                    className="inline-flex text-xs font-semibold text-foreground underline underline-offset-2"
+                  >
+                    플러스로 공동 벽 더 만들기
+                  </Link>
+                ) : null}
+              </div>
             ) : (
               <form onSubmit={handleCreate} className="space-y-2">
                 <input
