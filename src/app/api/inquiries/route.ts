@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { checkRateLimitAsync } from "@/lib/rate-limit";
-import type { InquiryCategory } from "@/types/inquiry";
+import { getSiteBaseUrl } from "@/lib/site-url";
+import { INQUIRY_CATEGORY_LABELS, type InquiryCategory } from "@/types/inquiry";
 
 const VALID_CATEGORIES: InquiryCategory[] = [
   "general",
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
   const user = await getRouteUser(supabase, request);
 
   if (!user) {
-    return applyCookies(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
+    return applyCookies(NextResponse.json({ error: "로그인이 필요해요" }, { status: 401 }));
   }
 
   if (!(await checkRateLimitAsync(`inquiry:${user.id}`, 5, 60 * 60 * 1000))) {
@@ -39,20 +40,21 @@ export async function POST(request: NextRequest) {
 
   const category = body.category as InquiryCategory;
   if (!VALID_CATEGORIES.includes(category)) {
-    return applyCookies(NextResponse.json({ error: "Invalid category" }, { status: 400 }));
+    return applyCookies(NextResponse.json({ error: "잘못된 문의 유형이에요" }, { status: 400 }));
   }
 
   const subject = body.subject?.trim();
   const text = body.body?.trim();
 
   if (!subject || subject.length > 200) {
-    return applyCookies(NextResponse.json({ error: "Subject required (max 200)" }, { status: 400 }));
+    return applyCookies(NextResponse.json({ error: "제목을 입력해 주세요 (최대 200자)" }, { status: 400 }));
   }
 
   if (!text || text.length > 5000) {
-    return applyCookies(NextResponse.json({ error: "Body required (max 5000)" }, { status: 400 }));
+    return applyCookies(NextResponse.json({ error: "내용을 입력해 주세요 (최대 5000자)" }, { status: 400 }));
   }
 
+  // insert().select() needs inquiries_select_own (RETURNING) in addition to insert policy.
   const { data, error } = await supabase
     .from("inquiries")
     .insert({
@@ -68,26 +70,24 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    return applyCookies(NextResponse.json({ error: "Failed to submit inquiry" }, { status: 500 }));
+    console.error("[inquiries] insert failed", error.message, error.code);
+    return applyCookies(
+      NextResponse.json({ error: "문의 전송에 실패했어요" }, { status: 500 }),
+    );
   }
 
-  if (category === "abuse") {
-    const { notifyAbuseReport } = await import("@/lib/discord/notify");
-    notifyAbuseReport({
-      subject,
-      wallId: body.relatedWallId,
-      reporterId: user.id,
-    });
-  }
-
-  if (category === "business") {
-    const { notifyBusinessInquiry } = await import("@/lib/discord/notify");
-    notifyBusinessInquiry({
-      subject,
-      userId: user.id,
-      email: user.email,
-    });
-  }
+  const { notifyInquiry } = await import("@/lib/discord/notify");
+  notifyInquiry({
+    id: data.id,
+    category,
+    categoryLabel: INQUIRY_CATEGORY_LABELS[category],
+    subject,
+    body: text,
+    userId: user.id,
+    email: user.email,
+    relatedWallId: body.relatedWallId ?? null,
+    adminUrl: `${getSiteBaseUrl()}/admin/inquiries?id=${data.id}`,
+  });
 
   return applyCookies(NextResponse.json({ id: data.id }, { status: 201 }));
 }
