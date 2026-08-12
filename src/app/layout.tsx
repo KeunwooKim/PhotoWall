@@ -16,6 +16,9 @@ const notoSansKr = Noto_Sans_KR({
 export const metadata: Metadata = {
   title: "PhotoWall — 디지털 포토월",
   description: "네컷사진을 디지털 벽에 붙이고 꾸미는 Z세대 감성 포토월 서비스",
+  other: {
+    "google-adsense-account": adsenseClientId,
+  },
 };
 
 export const viewport = {
