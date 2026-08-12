@@ -15,7 +15,7 @@
 |------|------|------|
 | **P0** | 0 | — |
 | **P1** | 2 → **패치됨** | signed-photos IDOR, guestbook MIME/size |
-| **P2** | 다수 | 백로그 (아래) |
+| **P2** | 다수 → **대부분 패치** | CSP·magic-byte·DNS rebinding만 후순위 |
 | **회귀 OK** | 3 | 이전 AUDIT P1 중 SSRF / origin / likes·guestbook INSERT RLS |
 
 전체 평가: 기본 운영 보안(private storage, RLS, rate limit, cron fail-closed)은 양호.  
