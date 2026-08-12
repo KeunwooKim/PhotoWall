@@ -38,14 +38,43 @@ npm run audit:gate
 순서는 `.env.example` 주석 또는 `PROJECT.md` 참고.  
 검증: `npm run verify:supabase`
 
-## PM2 (이 서버)
+## PM2 (프로덕션 서버)
+
+프로덕션: `https://photowall.kr` (Cloudflare → 개인 Ubuntu + PM2). Cursor Cloud에는 서버 SSH가 없습니다.
+
+### 서버에서 배포
+
+```bash
+cd /path/to/PhotoWall          # 실제 앱 경로
+bash scripts/pull-and-deploy.sh
+# 또는: git pull && npm ci && npm run deploy:prod
+```
+
+배포 확인:
+
+```bash
+curl -sS https://photowall.kr/api/health
+# 기대: rateLimit 가 "ok" 또는 "degraded" (더 이상 "upstash" 문자열 아님)
+```
+
+### GitHub Actions (원클릭)
+
+워크플로: **Deploy PM2** (`workflow_dispatch`).  
+Repo → Settings → Secrets and variables → Actions 에 다음을 넣은 뒤 Actions 탭에서 Run:
+
+| Secret | 예 |
+|---|---|
+| `DEPLOY_HOST` | 서버 IP 또는 SSH 호스트 |
+| `DEPLOY_USER` | SSH 사용자 |
+| `DEPLOY_SSH_KEY` | deploy용 private key (전체 PEM) |
+| `DEPLOY_PATH` | 서버의 PhotoWall 절대 경로 |
+
+로컬 PM2:
 
 ```bash
 pm2 start ecosystem.config.cjs
 pm2 restart photowall
 ```
-
-프로덕션: `https://photowall.kr`
 
 ### 운영 체크리스트 (배포 전)
 
