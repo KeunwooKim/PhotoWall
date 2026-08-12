@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Gaegu } from "next/font/google";
 import AuthButton from "@/components/auth/AuthButton";
+import PhotoWallLogo from "@/components/brand/PhotoWallLogo";
+import AdSenseSlot from "@/components/ads/AdSenseSlot";
+import { getAdSenseSlotLanding } from "@/lib/ads/adsense";
 import PromoCollabDemo from "@/components/promo/PromoCollabDemo";
-import PromoHeroCollage from "@/components/promo/PromoHeroCollage";
+import PromoCollabInviteMock from "@/components/promo/PromoCollabInviteMock";
 import PromoWallShowcase from "@/components/promo/PromoWallShowcase";
 import { useAuth } from "@/hooks/useAuth";
 import "./promo-landing.css";
@@ -105,9 +108,12 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
         className="fixed inset-x-0 top-0 z-[200] flex h-[60px] items-center justify-between border-b border-[rgba(28,25,23,0.1)] bg-[rgba(250,247,242,0.88)] px-5 backdrop-blur-xl sm:px-10"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <Link href="/" className={`${displayFont.className} text-[22px] tracking-tight text-[#1c1917]`}>
-          Photo<span className="text-[#ff5b8d]">Wall</span>
-        </Link>
+        <PhotoWallLogo
+          variant="lockup"
+          height={36}
+          wordmarkClassName="text-[#1c1917]"
+          markFill="#faf7f2"
+        />
         <div className="flex items-center gap-3 sm:gap-5">
           {displayName ? (
             <span className="hidden text-[13px] text-[#9b8e82] sm:inline">{displayName}</span>
@@ -150,7 +156,8 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
           <p className="promo-reveal mt-6 max-w-[380px] text-base leading-relaxed text-[#9b8e82]">
             방 벽에 마스킹 테이프로 비뚤게 붙이던 그 감각.
             <br />
-            사진·스티커·낙서까지, 내 취향 그대로 꾸며요.
+            친구와 <strong className="font-medium text-[#1c1917]">같은 벽</strong>에 함께 붙일 수도
+            있어요.
           </p>
           <div className="promo-reveal mt-10 flex flex-wrap items-center gap-4">
             <Link
@@ -184,11 +191,15 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
               backgroundSize: "auto, auto, 12px 12px",
             }}
           />
-          <div className="promo-reveal relative z-[2] w-full">
-            <PromoHeroCollage />
+          <div className="promo-reveal relative z-[2] w-full max-w-[540px]">
+            <PromoCollabDemo variant="hero" />
           </div>
         </div>
       </section>
+
+      <div className="mx-auto max-w-[720px] px-6 py-8 sm:px-16">
+        <AdSenseSlot slot={getAdSenseSlotLanding()} plan={null} className="promo-reveal" />
+      </div>
 
       {/* Wall showcase tabs */}
       <PromoWallShowcase />
@@ -283,8 +294,8 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
             </Link>
           </div>
 
-          <div className="promo-reveal w-full">
-            <PromoCollabDemo />
+          <div className="promo-reveal flex w-full justify-center lg:justify-end">
+            <PromoCollabInviteMock />
           </div>
         </div>
       </section>
@@ -327,9 +338,12 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
         className="flex flex-wrap items-center justify-between gap-3 bg-[#1c1917] border-t border-[rgba(250,247,242,0.07)] px-6 py-7 sm:px-16"
         style={{ paddingBottom: "max(1.75rem, env(safe-area-inset-bottom))" }}
       >
-        <Link href="/" className={`${displayFont.className} text-lg text-[#faf7f2]`}>
-          Photo<span className="text-[#ff5b8d]">Wall</span>
-        </Link>
+        <PhotoWallLogo
+          variant="lockup"
+          height={32}
+          wordmarkClassName="text-[#faf7f2]"
+          markFill="#1c1917"
+        />
         <nav className="flex flex-wrap gap-5">
           {showHomeLink ? (
             <Link href="/" className="text-[12px] text-[rgba(250,247,242,0.3)] hover:text-[rgba(250,247,242,0.7)]">

@@ -9,13 +9,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import AuthButton from "@/components/auth/AuthButton";
 import HouseAdBanner from "@/components/HouseAdBanner";
-import { getWallQuota, type UserPlan } from "@/lib/wall-quotas";
+import { getWallQuota } from "@/lib/wall-quotas";
+import type { AdPlan } from "@/lib/ads/resolve-ad-plan";
 
 export default function WallsHub() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { flags } = useFeatureFlags();
-  const [plan, setPlan] = useState<UserPlan>("free");
-  const maxOwnedSharedWalls = getWallQuota(plan).maxOwnedSharedWalls;
+  const [plan, setPlan] = useState<AdPlan>(undefined);
+  const maxOwnedSharedWalls = getWallQuota(plan === "premium" ? "premium" : "free").maxOwnedSharedWalls;
   const [walls, setWalls] = useState<SharedWall[]>([]);
   const [invites, setInvites] = useState<WallMemberInvite[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -45,7 +46,7 @@ export default function WallsHub() {
       setFriends([]);
       setInvites([]);
       setPersonalWallTitle(null);
-      setPlan("free");
+      setPlan(null);
       return;
     }
 
@@ -75,6 +76,8 @@ export default function WallsHub() {
         const p = (await profileRes.json()) as Profile;
         setPersonalWallTitle(p.wallTitle?.trim() || null);
         setPlan(p.plan === "premium" ? "premium" : "free");
+      } else {
+        setPlan("free");
       }
     } catch {
       showMessage("공동 벽 목록을 불러오지 못했어요");

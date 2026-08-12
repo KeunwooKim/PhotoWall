@@ -5,9 +5,12 @@ import Link from "next/link";
 import { Jua } from "next/font/google";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import HouseAdBanner from "@/components/HouseAdBanner";
+import AdSenseSlot from "@/components/ads/AdSenseSlot";
+import HomeBoardSection from "@/components/home/HomeBoardSection";
 import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
 import CorkWallPreview from "@/components/home/CorkWallPreview";
+import PhotoWallLogo from "@/components/brand/PhotoWallLogo";
 import HomeDesktop from "@/components/home/HomeDesktop";
 import HomeBoardSheet from "@/components/home/HomeBoardSheet";
 import HomeNotifications, { type HomeNotice } from "@/components/home/HomeNotifications";
@@ -16,6 +19,8 @@ import { useStickerStoreGate } from "@/hooks/useStickerStoreGate";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
 import { countUnseenBoardItems } from "@/lib/board-seen";
+import { getAdSenseSlotHome } from "@/lib/ads/adsense";
+import { resolveAdPlan } from "@/lib/ads/resolve-ad-plan";
 import type { BoardItem } from "@/types/board";
 import type { Friend, Profile } from "@/types/profile";
 import type { SharedWall, WallMemberInvite } from "@/types/shared-wall";
@@ -163,6 +168,11 @@ export default function HomePage() {
 
   const visitableFriends = friends.filter((f) => f.wallVisitable && f.wallId);
   const hasUnread = notices.length > 0;
+  const adPlan = resolveAdPlan({
+    user: !!user,
+    authLoading,
+    profile,
+  });
   const displayName =
     profile?.displayName ??
     (user?.user_metadata?.full_name as string | undefined) ??
@@ -197,13 +207,7 @@ export default function HomePage() {
             className="sticky top-0 z-40 flex items-center justify-between bg-background/92 px-[22px] pb-2.5 backdrop-blur-md"
             style={{ paddingTop: "max(0.35rem, env(safe-area-inset-top))" }}
           >
-            <div className="flex items-center gap-1.5">
-              <span className={`${displayFont.className} text-[22px] tracking-tight`}>
-                PhotoWall
-              </span>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/stickers/basic/sparkle.svg" alt="" className="h-4 w-4" />
-            </div>
+            <PhotoWallLogo variant="lockup" height={36} />
             <div className="flex items-center gap-1.5">
               <BoardButton
                 hasUnseen={boardUnseen > 0}
@@ -215,10 +219,9 @@ export default function HomePage() {
 
           <div className="space-y-7 px-[18px] pb-28 pt-1">
             <AnnouncementBanner target="home" compact />
-            <HouseAdBanner
-              placement="home"
-              plan={profile?.plan === "premium" ? "premium" : user ? "free" : null}
-            />
+            <HomeBoardSection items={boardItems} />
+            <AdSenseSlot slot={getAdSenseSlotHome()} plan={adPlan} />
+            <HouseAdBanner placement="home" plan={adPlan} />
             {authError && <AuthErrorBanner message={authError} />}
 
             <section className="home-hero-enter">
@@ -255,7 +258,8 @@ export default function HomePage() {
             friendCode={profile?.friendCode ?? null}
             user={!!user}
             authLoading={authLoading}
-            plan={profile?.plan === "premium" ? "premium" : user ? "free" : null}
+            plan={adPlan}
+            boardItems={boardItems}
             recentPhotos={recentPhotos}
             wallThemeId={wallThemeId}
             wallId={wallId}
@@ -338,8 +342,7 @@ function StickerStoreTeaser() {
             공식·커뮤니티 팩을 설치해 벽에 붙여 보세요
           </p>
         </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/stickers/basic/sparkle.svg" alt="" className="h-7 w-7 shrink-0 opacity-80" />
+        <PhotoWallLogo variant="mark" height={32} href="" />
       </Link>
     </>
   );
