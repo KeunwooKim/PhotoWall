@@ -26,6 +26,7 @@ export const viewport = {
 };
 
 const adsenseClientId = getAdSenseClientId();
+const adsenseSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClientId}`;
 
 export default function RootLayout({
   children,
@@ -35,12 +36,12 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
-        {/* AdSense site ownership — must be a real <script> in initial HTML <head> */}
-        <script
-          async
-          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClientId}`}
-          crossOrigin="anonymous"
-        />
+        {/*
+          AdSense ownership crawlers require a literal <script src=…adsbygoogle.js?client=ca-pub-…>
+          in the initial HTML <head>. next/script (even beforeInteractive) only emits preload +
+          a client loader, which Google does not count as the snippet.
+        */}
+        <script async src={adsenseSrc} crossOrigin="anonymous" />
         <ThemeScript />
       </head>
       <body className={`${notoSansKr.variable} antialiased`}>

@@ -18,6 +18,8 @@ const eslintConfig = [
       "coverage/**",
       "public/**",
       "next-env.d.ts",
+      // PM2 entry is CommonJS by design
+      "scripts/**/*.cjs",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
