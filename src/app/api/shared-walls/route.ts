@@ -78,7 +78,10 @@ export async function POST(request: NextRequest) {
         NextResponse.json(
           {
             error: "shared_wall_limit",
-            message: `공동 벽을 ${max}개까지 만들 수 있어요`,
+            message:
+              plan === "free"
+                ? `공동 벽을 ${max}개까지 만들 수 있어요. 플러스로 더 만들 수 있어요`
+                : `공동 벽을 ${max}개까지 만들 수 있어요`,
             maxOwnedSharedWalls: max,
           },
           { status: 403 },
