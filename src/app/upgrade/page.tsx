@@ -77,74 +77,75 @@ export default function UpgradePage() {
           <p className="text-xs font-medium tracking-wide text-muted">요금제</p>
           <h1 className="text-2xl font-bold tracking-tight">{PLAN_UI_NAME.premium}</h1>
           <p className="text-sm leading-relaxed text-muted">
-            저장 공간과 꾸미기 한도를 넓혀 더 자유롭게 꾸며 보세요. 결제 연동 전에는 신청 후
-            관리자가 부여합니다.
+            더 많은 사진·공동 벽·저장 공간으로 벽을 키워 보세요. 결제 연동 전에는 신청 후 관리자가
+            부여합니다.
           </p>
         </header>
 
-        {!user && !isLoading ? (
+        {user || isLoading ? (
+          <div className="rounded-2xl bg-foreground/[0.03] px-4 py-4">
+            <p className="text-xs text-muted">현재 플랜</p>
+            <p className="mt-1 text-lg font-semibold">
+              {isLoading ? "확인 중…" : PLAN_UI_NAME[plan]}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(["free", "premium"] as const).map((key) => {
+            const q = WALL_QUOTAS[key];
+            const active = Boolean(user) && plan === key;
+            return (
+              <div
+                key={key}
+                className={`rounded-2xl border px-4 py-4 ${
+                  active
+                    ? "border-foreground/25 bg-foreground/[0.04]"
+                    : "border-foreground/8 bg-surface"
+                }`}
+              >
+                <p className="text-sm font-semibold">{PLAN_UI_NAME[key]}</p>
+                {key === "premium" ? (
+                  <p className="mt-1 text-xs text-muted">
+                    {formatPrice(PLUS_PRICE_KRW.monthly)}/월 · 연{" "}
+                    {formatPrice(PLUS_PRICE_KRW.yearly)}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-muted">무료</p>
+                )}
+                <ul className="mt-3 space-y-1.5 text-xs leading-relaxed text-muted">
+                  <li>저장 공간 {formatStorageQuotaLabel(q.maxStorageBytes)}</li>
+                  <li>공동 벽 {q.maxOwnedSharedWalls}개</li>
+                  <li>사진·스티커·텍스트 {q.maxSceneObjects}개</li>
+                  <li>장면 크기 {formatMb(q.maxSceneBytes)}</li>
+                  <li>사진 업로드 {formatMb(q.maxPhotoBytes)}</li>
+                  {key === "premium" ? <li>하우스 광고 없음</li> : <li>하우스 광고 표시</li>}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+
+        {isPlus ? (
+          <p className="rounded-2xl bg-foreground/[0.05] px-4 py-4 text-sm text-foreground">
+            이미 {PLAN_UI_NAME.premium}예요. 한도가 자동으로 적용됩니다.
+          </p>
+        ) : !user && !isLoading ? (
           <div className="space-y-3 rounded-2xl bg-foreground/[0.03] px-4 py-5">
-            <p className="text-sm text-muted">로그인 후 업그레이드를 신청할 수 있어요</p>
+            <p className="text-sm text-muted">로그인 후 플러스를 신청할 수 있어요</p>
             <AuthButton />
           </div>
         ) : (
-          <>
-            <div className="rounded-2xl bg-foreground/[0.03] px-4 py-4">
-              <p className="text-xs text-muted">현재 플랜</p>
-              <p className="mt-1 text-lg font-semibold">{PLAN_UI_NAME[plan]}</p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(["free", "premium"] as const).map((key) => {
-                const q = WALL_QUOTAS[key];
-                const active = plan === key;
-                return (
-                  <div
-                    key={key}
-                    className={`rounded-2xl border px-4 py-4 ${
-                      active
-                        ? "border-foreground/25 bg-foreground/[0.04]"
-                        : "border-foreground/8 bg-surface"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold">{PLAN_UI_NAME[key]}</p>
-                    {key === "premium" ? (
-                      <p className="mt-1 text-xs text-muted">
-                        {formatPrice(PLUS_PRICE_KRW.monthly)}/월 · 연{" "}
-                        {formatPrice(PLUS_PRICE_KRW.yearly)}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted">무료</p>
-                    )}
-                    <ul className="mt-3 space-y-1.5 text-xs leading-relaxed text-muted">
-                      <li>저장 공간 {formatStorageQuotaLabel(q.maxStorageBytes)}</li>
-                      <li>공동 벽 {q.maxOwnedSharedWalls}개</li>
-                      <li>장면 오브젝트 {q.maxSceneObjects}개</li>
-                      <li>장면 크기 {formatMb(q.maxSceneBytes)}</li>
-                      <li>사진 업로드 {formatMb(q.maxPhotoBytes)}</li>
-                    </ul>
-                  </div>
-                );
-              })}
-            </div>
-
-            {isPlus ? (
-              <p className="rounded-2xl bg-foreground/[0.05] px-4 py-4 text-sm text-foreground">
-                이미 {PLAN_UI_NAME.premium}예요. 한도가 자동으로 적용됩니다.
-              </p>
-            ) : (
-              <button
-                type="button"
-                disabled={!user || submitting}
-                onClick={() => void requestUpgrade()}
-                className="w-full rounded-2xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background transition active:scale-[0.99] disabled:opacity-50"
-              >
-                {submitting
-                  ? "신청 중…"
-                  : `${PLAN_UI_NAME.premium} 신청하기 · ${formatPrice(PLUS_PRICE_KRW.monthly)}/월`}
-              </button>
-            )}
-          </>
+          <button
+            type="button"
+            disabled={!user || submitting}
+            onClick={() => void requestUpgrade()}
+            className="w-full rounded-2xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background transition active:scale-[0.99] disabled:opacity-50"
+          >
+            {submitting
+              ? "신청 중…"
+              : `${PLAN_UI_NAME.premium} 신청하기 · ${formatPrice(PLUS_PRICE_KRW.monthly)}/월`}
+          </button>
         )}
 
         <Link href="/settings" className="block text-center text-sm text-muted underline">
