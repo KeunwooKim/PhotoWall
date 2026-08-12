@@ -56,6 +56,6 @@ export function useGuardWallObjectAdd(plan: UserPlan) {
   return {
     usage,
     guardAdd,
-    limitMessage: objectLimitReachedMessage(usage),
+    limitMessage: objectLimitReachedMessage(usage, plan),
   };
 }
