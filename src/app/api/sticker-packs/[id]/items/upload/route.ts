@@ -3,7 +3,6 @@ import sharp from "sharp";
 import { requireStickerUser } from "@/lib/stickers/require-sticker-user";
 import {
   STICKER_ASSETS_BUCKET,
-  STICKER_ITEM_ALLOWED_MIME,
   STICKER_ITEM_MAX_BYTES,
   STICKER_PACK_MAX_ITEMS,
   placementSizeFromNatural,
@@ -11,6 +10,7 @@ import {
   type StickerPackRow,
 } from "@/lib/stickers/ugc-types";
 import { itemToStickerDefinition } from "@/lib/stickers/ugc-registry";
+import { sniffImageMime } from "@/lib/storage/image-magic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -65,11 +65,6 @@ export async function POST(request: NextRequest, context: Ctx) {
   if (!(file instanceof File) || file.size === 0) {
     return applyCookies(NextResponse.json({ error: "file required" }, { status: 400 }));
   }
-  if (!STICKER_ITEM_ALLOWED_MIME.has(file.type)) {
-    return applyCookies(
-      NextResponse.json({ error: "png/webp만 업로드할 수 있어요" }, { status: 400 }),
-    );
-  }
   if (file.size > STICKER_ITEM_MAX_BYTES) {
     return applyCookies(
       NextResponse.json({ error: "이미지는 512KB 이하여야 해요" }, { status: 400 }),
@@ -83,6 +78,12 @@ export async function POST(request: NextRequest, context: Ctx) {
       : file.name.replace(/\.[^.]+$/, "").slice(0, 40) || "스티커";
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  const sniffed = sniffImageMime(buffer);
+  if (!sniffed || (sniffed !== "image/png" && sniffed !== "image/webp")) {
+    return applyCookies(
+      NextResponse.json({ error: "png/webp만 업로드할 수 있어요" }, { status: 400 }),
+    );
+  }
   let naturalW = 120;
   let naturalH = 120;
   try {
@@ -94,13 +95,13 @@ export async function POST(request: NextRequest, context: Ctx) {
   }
 
   const { width, height } = placementSizeFromNatural(naturalW, naturalH);
-  const ext = file.type === "image/webp" ? "webp" : "png";
+  const ext = sniffed === "image/webp" ? "webp" : "png";
   const itemId = crypto.randomUUID();
   const storagePath = `${userId}/${packId}/${itemId}.${ext}`;
 
   const { error: uploadError } = await supabase.storage
     .from(STICKER_ASSETS_BUCKET)
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false });
+    .upload(storagePath, buffer, { contentType: sniffed, upsert: false });
 
   if (uploadError) {
     return applyCookies(

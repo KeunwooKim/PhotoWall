@@ -49,13 +49,39 @@ async function loadWallAccessMeta(
   }
 
   // Migration 미적용 환경 fallback
-  const { data: wall } = await supabase
-    .from("walls")
-    .select("id, owner_id, is_shared")
-    .eq("id", wallId)
-    .maybeSingle();
+  type WallRow = {
+    id: string;
+    owner_id: string | null;
+    is_shared: boolean;
+    is_hidden?: boolean;
+  };
+  let wall: WallRow | null = null;
+
+  {
+    const first = await supabase
+      .from("walls")
+      .select("id, owner_id, is_shared, is_hidden")
+      .eq("id", wallId)
+      .maybeSingle();
+
+    if (first.error?.message?.includes("is_hidden")) {
+      const retry = await supabase
+        .from("walls")
+        .select("id, owner_id, is_shared")
+        .eq("id", wallId)
+        .maybeSingle();
+      wall = (retry.data as WallRow | null) ?? null;
+    } else if (!first.error) {
+      wall = (first.data as WallRow | null) ?? null;
+    }
+  }
 
   if (!wall) {
+    return { exists: false };
+  }
+
+  // Match RLS: hidden walls are invisible except to the owner.
+  if (wall.is_hidden && wall.owner_id !== visitorId) {
     return { exists: false };
   }
 
