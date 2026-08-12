@@ -36,7 +36,8 @@ export async function GET() {
       checks: {
         app: "ok",
         supabase,
-        rateLimit: upstash ? "upstash" : "memory",
+        // Do not advertise upstash vs memory to anonymous probes.
+        rateLimit: upstash || !isProd ? "ok" : "degraded",
       },
       uptimeSec: Math.floor(process.uptime()),
       latencyMs: Date.now() - started,

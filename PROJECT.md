@@ -703,7 +703,7 @@ erDiagram
 | **실시간 협업** | 공동 벽: Broadcast + Presence + 피어 선택 테두리 | 개인 벽은 미지원 |
 | **줌·이동** | 0.5×–4× 줌, 두 손가락 패닝, % 리셋 | Space+드래그 패닝·줌-to-selection 없음 |
 | **확장 캔버스** | 780×1200 시작 → 콘텐츠 기반 자동 확장 (최대 2400×4000) | Figma infinite canvas와 유사한 UX |
-| **개발 쿼터** | free: 160개·4MB·사진 10MB / premium: 400개·10MB·24MB | 벽 2배 확대에 맞춰 2배 상향 (2026-07-29) |
+| **플랜 쿼터** | free: 객체 80·씬 2.5MB·사진 8MB·스토리지 150MB·공유벽 1 / Plus: 500·16MB·30MB·5GB·공유벽 5 | Plus 전환을 위해 free 상한 축소 (2026-08-12). 소스: `src/lib/wall-quotas.ts` |
 
 ### 8.3 부족한 점 — Figma 대비 갭
 
@@ -969,6 +969,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | 2026-08-06 | **Omni 벽 확장** — 좌/상/우/하 grow·shrink, `homeOrigin` 예산 reclaim |
 | 2026-08-06 | **Realtime QA** — `verify:wall-realtime` live 2-session (patch/full/clear/Presence) |
 | 2026-08-06 | **npm overrides** — postcss 8.5.26 + sharp 0.35.3 → audit 0 (Next 16 없이) |
+| 2026-08-12 | **Free 쿼터 축소** — 객체 80·씬 2.5MB·사진 8MB·스토리지 150MB, warn 50%, `/upgrade` 비로그인 비교 |
 
 ---
 

@@ -18,7 +18,7 @@ const eslintConfig = [
       "coverage/**",
       "public/**",
       "next-env.d.ts",
-      // PM2 entry is CommonJS by design
+      // PM2 CJS bootstrap uses require(); keep it out of the TS ESLint project.
       "scripts/**/*.cjs",
     ],
   },
