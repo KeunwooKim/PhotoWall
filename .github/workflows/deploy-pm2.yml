@@ -1,0 +1,74 @@
+name: Deploy PM2
+
+# Manual production deploy to the Ubuntu + PM2 host behind photowall.kr.
+# Requires repository secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_PATH
+#
+# After secrets are set: Actions → Deploy PM2 → Run workflow → branch main.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA)"
+        required: true
+        default: "main"
+
+concurrency:
+  group: deploy-pm2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Require deploy secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          missing=
+          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_PATH; do
+            if [ -z "${!v}" ]; then
+              missing="$missing $v"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub Actions secrets:$missing"
+            echo "Add them under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 25m
+          script_stop: true
+          envs: DEPLOY_REF,DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            echo "[deploy] pwd=$(pwd) ref=$DEPLOY_REF"
+            git fetch origin "$DEPLOY_REF"
+            if git show-ref --verify --quiet "refs/remotes/origin/$DEPLOY_REF"; then
+              git checkout --force "$DEPLOY_REF"
+              git reset --hard "origin/$DEPLOY_REF"
+            else
+              git checkout --force --detach "$DEPLOY_REF"
+            fi
+            if [[ -x scripts/pull-and-deploy.sh ]]; then
+              REF="$DEPLOY_REF" bash scripts/pull-and-deploy.sh
+            else
+              npm ci
+              npm run deploy:prod
+            fi
+            curl -fsS --max-time 10 https://photowall.kr/api/health || true
+        env:
+          DEPLOY_REF: ${{ inputs.ref }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

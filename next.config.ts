@@ -18,9 +18,12 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self' https://accounts.google.com",
-      // Next.js + Sentry + Google AdSense
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
+      // Next.js hydration needs 'unsafe-inline'. Prefer no 'unsafe-eval'.
+      // Sentry/onnx may break if eval is required — watch production console.
+      // AdSense hosts for site verification / Auto ads.
+      "script-src 'self' 'unsafe-inline' https://browser.sentry-cdn.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
       "style-src 'self' 'unsafe-inline'",
+      "script-src-attr 'none'",
       // Google OAuth avatars + AdSense creatives
       `img-src 'self' data: blob: ${api} https://*.googleusercontent.com https://*.googlesyndication.com https://pagead2.googlesyndication.com https://www.google.com https://googleads.g.doubleclick.net`,
       "font-src 'self' data:",

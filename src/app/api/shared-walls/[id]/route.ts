@@ -123,7 +123,7 @@ export async function PATCH(
   if (violation) {
     return applyCookies(
       NextResponse.json(
-        { error: violation, message: sceneQuotaMessage(violation) },
+        { error: violation, message: sceneQuotaMessage(violation, plan) },
         { status: 413 },
       ),
     );

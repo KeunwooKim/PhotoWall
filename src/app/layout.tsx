@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Noto_Sans_KR } from "next/font/google";
+import { getAdSenseClientId } from "@/lib/ads/adsense";
 import { BRAND } from "@/lib/brand/assets";
 import { getSiteBaseUrl } from "@/lib/site-url";
 import "./globals.css";
@@ -16,6 +17,8 @@ const notoSansKr = Noto_Sans_KR({
 });
 
 const siteUrl = getSiteBaseUrl();
+const adsenseClientId = getAdSenseClientId();
+const adsenseSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClientId}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -39,6 +42,9 @@ export const metadata: Metadata = {
       "naver-site-verification": "b5d3caa6387bb5f31b1805c003a958ca4f92397b",
     },
   },
+  other: {
+    "google-adsense-account": adsenseClientId,
+  },
 };
 
 export const viewport = {
@@ -60,6 +66,12 @@ export default function RootLayout({
           name="naver-site-verification"
           content="b5d3caa6387bb5f31b1805c003a958ca4f92397b"
         />
+        {/*
+          AdSense ownership crawlers require a literal <script src=…adsbygoogle.js?client=ca-pub-…>
+          in the initial HTML <head>. next/script (even beforeInteractive) only emits preload +
+          a client loader, which Google does not count as the snippet.
+        */}
+        <script async src={adsenseSrc} crossOrigin="anonymous" />
         <ThemeScript />
       </head>
       <body className={`${notoSansKr.variable} antialiased`}>
