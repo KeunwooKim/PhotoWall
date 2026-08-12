@@ -114,14 +114,17 @@ main `WALL_QUOTAS.free`: 200 objects / 500MB / 6MB scene / 12MB photo / shared 1
 
 ## 9. P2 백로그 (수정 보류)
 
-1. Cron Bearer `timingSafeEqual`
-2. Admin API rate limit
-3. CSP nonce / unsafe-* 축소
-4. Health 응답에서 rateLimit 백엔드 이름 축소
-5. wall-access fallback `is_hidden` 필터
-6. 빈 MIME 업로드 + magic-byte
-7. 부스 private IP / DNS rebinding 심화
-8. verify 스크립트 signed-photos 403 오탐 문구
+1. ~~Cron Bearer `timingSafeEqual`~~ → **패치** (`src/lib/auth/timing-safe.ts`)
+2. ~~Admin API rate limit~~ → **패치** (`requireAdminRoute` 120/min)
+3. CSP nonce / unsafe-* 축소 → **수용** (Next/Sentry)
+4. ~~Health 응답에서 rateLimit 백엔드 이름 축소~~ → **패치** (`ok`/`degraded`)
+5. ~~wall-access fallback `is_hidden` 필터~~ → **패치**
+6. ~~빈 MIME 업로드~~ → **패치** (`checkPhotoUpload` 거부). magic-byte는 후순위
+7. ~~부스 private IP / IPv6 / link-local~~ → **패치**. DNS rebinding은 후순위
+8. ~~verify 스크립트 signed-photos 403 오탐~~ → **이미 OK** (401/403을 정상으로 집계)
+
+### P2 follow-up (2026-08-12 후속)
+위 1–2, 4–7 반영. CSP·magic-byte·DNS rebinding만 남음.
 
 ---
 

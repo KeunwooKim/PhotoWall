@@ -3,6 +3,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createRouteClient, getRouteUser } from "@/lib/supabase/route";
 import { isAdminUser } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/admin/service-client";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 
 export type AdminRouteContext = {
   user: User;
@@ -63,6 +64,14 @@ export async function requireAdminRoute(
     return {
       ok: false,
       response: applyCookies(NextResponse.json({ error: "Forbidden" }, { status: 403 })),
+    };
+  }
+
+  // Shared throttle for all admin APIs (stolen session / runaway UI loops).
+  if (!(await checkRateLimitAsync(`admin:${user.id}`, 120, 60_000))) {
+    return {
+      ok: false,
+      response: applyCookies(NextResponse.json({ error: "Too many requests" }, { status: 429 })),
     };
   }
 
