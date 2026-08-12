@@ -23,15 +23,39 @@ const BLOCKED_HOSTS = new Set([
   "localhost",
   "127.0.0.1",
   "0.0.0.0",
+  "::1",
+  "[::1]",
 ]);
 
 export function isPrivateOrLocalHost(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  if (BLOCKED_HOSTS.has(h)) return true;
-  if (h.endsWith(".local")) return true;
-  if (/^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (BLOCKED_HOSTS.has(h) || BLOCKED_HOSTS.has(hostname.toLowerCase())) return true;
+  if (h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".localhost")) return true;
+
+  // IPv4 private / link-local / CGNAT
+  if (
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
+    /^169\.254\./.test(h) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)
+  ) {
     return true;
   }
+
+  // IPv6 ULA / link-local / loopback
+  if (
+    h === "::1" ||
+    h.startsWith("fc") ||
+    h.startsWith("fd") ||
+    h.startsWith("fe80:") ||
+    h.startsWith("::ffff:127.") ||
+    h.startsWith("::ffff:10.") ||
+    h.startsWith("::ffff:192.168.")
+  ) {
+    return true;
+  }
+
   return false;
 }
 
