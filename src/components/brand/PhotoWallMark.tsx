@@ -1,43 +1,33 @@
 "use client";
 
-import { useId } from "react";
+import { BRAND } from "@/lib/brand/assets";
 
 interface PhotoWallMarkProps {
   size?: number;
   className?: string;
-  /** Inner square fill — defaults to page background via CSS variable. */
+  /**
+   * Kept for call-site compatibility (promo light/dark fills).
+   * Raster mark is already transparent — unused.
+   */
   fill?: string;
 }
 
-/** V5 — 2×2 filled grid + gradient stroke (crisp, transparent canvas). */
+/** V5 mark — transparent webp from design/logo-concepts (see scripts/optimize-brand-assets.mjs). */
 export default function PhotoWallMark({
   size = 32,
   className = "",
-  fill = "var(--background)",
 }: PhotoWallMarkProps) {
-  const gradId = `pw-mark-grad-${useId().replace(/:/g, "")}`;
-
   return (
-    <svg
+    // eslint-disable-next-line @next/next/no-img-element -- small brand mark; avoid next/image layout shift in headers
+    <img
+      src={BRAND.mark}
+      srcSet={`${BRAND.mark} 1x, ${BRAND.mark2x} 2x`}
       width={size}
       height={size}
-      viewBox="0 0 40 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
+      alt=""
+      draggable={false}
+      decoding="async"
       className={`block shrink-0 ${className}`}
-      shapeRendering="geometricPrecision"
-      aria-hidden
-    >
-      <defs>
-        <linearGradient id={gradId} x1="4" y1="20" x2="36" y2="20" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FF5B8D" />
-          <stop offset="1" stopColor="#B8E0D2" />
-        </linearGradient>
-      </defs>
-      <rect x="5" y="5" width="14" height="14" rx="3.5" fill={fill} stroke={`url(#${gradId})`} strokeWidth="2.2" />
-      <rect x="21" y="5" width="14" height="14" rx="3.5" fill={fill} stroke={`url(#${gradId})`} strokeWidth="2.2" />
-      <rect x="5" y="21" width="14" height="14" rx="3.5" fill={fill} stroke={`url(#${gradId})`} strokeWidth="2.2" />
-      <rect x="21" y="21" width="14" height="14" rx="3.5" fill={fill} stroke={`url(#${gradId})`} strokeWidth="2.2" />
-    </svg>
+    />
   );
 }
