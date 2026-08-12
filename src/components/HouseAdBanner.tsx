@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { HouseBannerPlacement, PublicHouseBanner } from "@/types/house-banner";
 import { HOUSE_BANNER_ASPECT_RATIO } from "@/types/house-banner";
-import type { UserPlan } from "@/lib/wall-quotas";
+import type { AdPlan } from "@/lib/ads/resolve-ad-plan";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 const DISMISS_KEY = "photowall_dismissed_house_banners";
 
@@ -27,26 +28,39 @@ function dismissId(id: string) {
 
 interface HouseAdBannerProps {
   placement: HouseBannerPlacement;
-  plan?: UserPlan | null;
+  /** `undefined` = plan not resolved yet — avoid flashing free ads for 플러스. */
+  plan?: AdPlan;
 }
 
-export default function HouseAdBanner({ placement, plan = null }: HouseAdBannerProps) {
+export default function HouseAdBanner({ placement, plan }: HouseAdBannerProps) {
+  const { flags, loading } = useFeatureFlags();
   const [items, setItems] = useState<PublicHouseBanner[]>([]);
 
   useEffect(() => {
-    if (plan === "premium") {
+    if (loading || !flags.house_banners) {
+      setItems([]);
+      return;
+    }
+    // Wait until plan is known so premium users never briefly see free-only creatives.
+    if (plan === undefined) {
       setItems([]);
       return;
     }
 
-    fetch(`/api/banners?placement=${placement}&plan=free`)
+    const planQuery = plan === "premium" ? "premium" : "free";
+    let cancelled = false;
+    fetch(`/api/banners?placement=${placement}&plan=${planQuery}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PublicHouseBanner[]) => {
+        if (cancelled) return;
         const dismissed = getDismissedIds();
         setItems(data.filter((item) => !dismissed.has(item.id)));
       })
       .catch(() => {});
-  }, [placement, plan]);
+    return () => {
+      cancelled = true;
+    };
+  }, [placement, plan, flags.house_banners, loading]);
 
   if (items.length === 0) return null;
 

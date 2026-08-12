@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/AppShell";
 import AuthButton from "@/components/auth/AuthButton";
-import InquiryForm from "@/components/settings/InquiryForm";
 import HouseAdBanner from "@/components/HouseAdBanner";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,6 +12,7 @@ import type { Profile } from "@/types/profile";
 import type { ThemeMode } from "@/lib/settings-storage";
 import { COLOR_PALETTES } from "@/lib/color-palettes";
 import { PLAN_UI_NAME } from "@/lib/wall-quotas";
+import { resolveAdPlan } from "@/lib/ads/resolve-ad-plan";
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: "light", label: "라이트" },
@@ -115,7 +115,11 @@ export default function SettingsPage() {
 
         <HouseAdBanner
           placement="settings"
-          plan={profile?.plan === "premium" ? "premium" : user ? "free" : null}
+          plan={resolveAdPlan({
+            user: !!user,
+            authLoading: isLoading,
+            profile,
+          })}
         />
 
         <section className="space-y-3">
@@ -247,16 +251,25 @@ export default function SettingsPage() {
 
           <div className="space-y-8">
         <section className="space-y-3">
-          <h2 className="text-xs font-medium tracking-wide text-muted">문의</h2>
-          {!user && !isLoading ? (
-            <p className="rounded-2xl bg-foreground/[0.03] px-4 py-4 text-sm text-muted">
-              로그인하면 문의를 보낼 수 있어요
-            </p>
-          ) : (
-            <div className="rounded-2xl bg-foreground/[0.03] px-4 py-4">
-              <InquiryForm />
+          <h2 className="text-xs font-medium tracking-wide text-muted">고객센터</h2>
+          <Link
+            href="/support"
+            className="flex items-center justify-between rounded-2xl bg-foreground/[0.03] px-4 py-4 transition active:bg-foreground/[0.05]"
+          >
+            <div>
+              <p className="text-sm font-semibold">고객센터</p>
+              <p className="mt-0.5 text-xs text-muted">자주 묻는 질문 · 문의하기</p>
             </div>
-          )}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden className="text-muted">
+              <path
+                d="M9 6l6 6-6 6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </Link>
         </section>
 
         {isAdmin && (
@@ -352,6 +365,16 @@ export default function SettingsPage() {
         <section className="space-y-3">
           <h2 className="text-xs font-medium tracking-wide text-muted">소개</h2>
           <div className="overflow-hidden rounded-2xl bg-foreground/[0.03]">
+            <Link
+              href="/news"
+              className="flex items-center justify-between border-b border-foreground/6 px-4 py-4 transition active:bg-foreground/[0.04]"
+            >
+              <div>
+                <p className="text-sm font-semibold">공지·이벤트</p>
+                <p className="mt-0.5 text-xs text-muted">운영 공지와 이벤트 전체 보기</p>
+              </div>
+              <Chevron />
+            </Link>
             <Link
               href="/about"
               className="flex items-center justify-between px-4 py-4 transition active:bg-foreground/[0.04]"

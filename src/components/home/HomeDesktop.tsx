@@ -6,11 +6,15 @@ import CorkWallPreview from "@/components/home/CorkWallPreview";
 import AuthButton from "@/components/auth/AuthButton";
 import AppDesktopSidebar from "@/components/layout/AppDesktopSidebar";
 import HouseAdBanner from "@/components/HouseAdBanner";
+import AdSenseSlot from "@/components/ads/AdSenseSlot";
+import HomeBoardSection from "@/components/home/HomeBoardSection";
+import { getAdSenseSlotHome } from "@/lib/ads/adsense";
 import { useStickerStoreGate } from "@/hooks/useStickerStoreGate";
 import type { HomeNotice } from "@/components/home/HomeNotifications";
 import type { Friend } from "@/types/profile";
 import type { SharedWall } from "@/types/shared-wall";
-import type { UserPlan } from "@/lib/wall-quotas";
+import type { BoardItem } from "@/types/board";
+import type { AdPlan } from "@/lib/ads/resolve-ad-plan";
 import { authFetch } from "@/lib/auth/api-fetch";
 
 const displayFont = Jua({
@@ -26,7 +30,8 @@ export interface HomeDesktopProps {
   friendCode: string | null;
   user: boolean;
   authLoading: boolean;
-  plan?: UserPlan | null;
+  plan?: AdPlan;
+  boardItems: BoardItem[];
   recentPhotos: string[];
   wallThemeId?: string | null;
   wallId: string | null;
@@ -48,7 +53,8 @@ export default function HomeDesktop({
   friendCode: _friendCode,
   user,
   authLoading,
-  plan = null,
+  plan,
+  boardItems,
   recentPhotos,
   wallThemeId = null,
   wallId,
@@ -124,6 +130,8 @@ export default function HomeDesktop({
           </div>
         )}
 
+        <HomeBoardSection items={boardItems} titleSize="desktop" />
+        <AdSenseSlot slot={getAdSenseSlotHome()} plan={plan} />
         <HouseAdBanner placement="home" plan={plan} />
 
         <section>
