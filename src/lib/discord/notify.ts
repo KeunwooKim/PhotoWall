@@ -1,7 +1,7 @@
 /**
  * Fire-and-forget Discord webhook helpers.
- * Set DISCORD_WEBHOOK_URL (channel Integrations → Webhooks).
- * Must also be set on Vercel for production alerts.
+ * - DISCORD_WEBHOOK_URL — 운영 알림 (가입, 오류 등)
+ * - DISCORD_INQUIRY_WEBHOOK_URL — 문의·신고 전용 (없으면 DISCORD_WEBHOOK_URL 사용)
  */
 
 export type DiscordPostResult = {
@@ -17,6 +17,7 @@ type DiscordEmbed = {
   color?: number;
   fields?: { name: string; value: string; inline?: boolean }[];
   footer?: { text: string };
+  url?: string;
 };
 
 type DiscordWebhookBody = {
@@ -24,9 +25,15 @@ type DiscordWebhookBody = {
   embeds?: DiscordEmbed[];
 };
 
-function webhookUrl(): string | undefined {
+function opsWebhookUrl(): string | undefined {
   const url = process.env.DISCORD_WEBHOOK_URL?.trim();
   return url || undefined;
+}
+
+function inquiryWebhookUrl(): string | undefined {
+  const inquiry = process.env.DISCORD_INQUIRY_WEBHOOK_URL?.trim();
+  if (inquiry) return inquiry;
+  return opsWebhookUrl();
 }
 
 /** Escape Discord markdown special chars in user-controlled text. */
@@ -34,10 +41,23 @@ export function escapeMd(text: string): string {
   return text.replace(/([\\*_`~|])/g, "\\$1").slice(0, 80);
 }
 
-export async function postDiscordPayload(body: DiscordWebhookBody): Promise<DiscordPostResult> {
-  const url = webhookUrl();
+function clip(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
+function embedBodyBlock(text: string, max = 900): string {
+  const safe = text.replace(/```/g, "'''").trim();
+  return `\`\`\`\n${clip(safe, max)}\n\`\`\``;
+}
+
+async function postToWebhook(
+  url: string | undefined,
+  body: DiscordWebhookBody,
+): Promise<DiscordPostResult> {
   if (!url) {
-    return { ok: false, configured: false, error: "DISCORD_WEBHOOK_URL is not set" };
+    return { ok: false, configured: false, error: "Discord webhook URL is not set" };
   }
 
   try {
@@ -65,8 +85,20 @@ export async function postDiscordPayload(body: DiscordWebhookBody): Promise<Disc
   }
 }
 
+export async function postDiscordPayload(body: DiscordWebhookBody): Promise<DiscordPostResult> {
+  return postToWebhook(opsWebhookUrl(), body);
+}
+
+export async function postInquiryDiscordPayload(body: DiscordWebhookBody): Promise<DiscordPostResult> {
+  return postToWebhook(inquiryWebhookUrl(), body);
+}
+
 export async function postDiscordMessage(content: string): Promise<DiscordPostResult> {
   return postDiscordPayload({ content });
+}
+
+export function isInquiryWebhookConfigured(): boolean {
+  return Boolean(inquiryWebhookUrl());
 }
 
 export function notifyNewUser(input: {
@@ -98,6 +130,69 @@ export function notifyBusinessInquiry(input: {
   const who = input.userId.slice(0, 8);
   const email = input.email ? ` · ${escapeMd(input.email)}` : "";
   void postDiscordMessage(`💼 Plus·제휴 문의 · **${subject}** (by \`${who}…\`${email})`);
+}
+
+const INQUIRY_EMBED_COLOR: Record<string, number> = {
+  general: 0x3b82f6,
+  bug: 0xf59e0b,
+  feature: 0x8b5cf6,
+  abuse: 0xef4444,
+  business: 0x10b981,
+};
+
+const INQUIRY_EMBED_EMOJI: Record<string, string> = {
+  general: "💬",
+  bug: "🐛",
+  feature: "💡",
+  abuse: "🚨",
+  business: "💼",
+};
+
+export function notifyInquiry(input: {
+  id: string;
+  category: string;
+  categoryLabel: string;
+  subject: string;
+  body: string;
+  userId: string;
+  email?: string | null;
+  relatedWallId?: string | null;
+  adminUrl: string;
+}): void {
+  const emoji = INQUIRY_EMBED_EMOJI[input.category] ?? "📩";
+  const color = INQUIRY_EMBED_COLOR[input.category] ?? 0x6b7280;
+  const shortUser = input.userId.slice(0, 8);
+
+  const fields: DiscordEmbed["fields"] = [
+    { name: "유형", value: input.categoryLabel, inline: true },
+    { name: "유저", value: `\`${shortUser}…\``, inline: true },
+  ];
+
+  if (input.email) {
+    fields.push({ name: "이메일", value: clip(input.email, 200), inline: true });
+  }
+  if (input.relatedWallId) {
+    fields.push({
+      name: "관련 벽",
+      value: `\`${input.relatedWallId.slice(0, 8)}…\``,
+      inline: true,
+    });
+  }
+
+  fields.push({ name: "내용", value: embedBodyBlock(input.body) });
+
+  void postInquiryDiscordPayload({
+    content: `${emoji} **새 문의** · ${escapeMd(input.subject)}`,
+    embeds: [
+      {
+        title: clip(input.subject, 200),
+        color,
+        fields,
+        url: input.adminUrl,
+        footer: { text: `문의 ID ${input.id.slice(0, 8)}… · 관리자에서 열기` },
+      },
+    ],
+  });
 }
 
 export function notifyAccountRestricted(input: {
