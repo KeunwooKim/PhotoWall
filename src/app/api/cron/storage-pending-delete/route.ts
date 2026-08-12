@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/admin/service-client";
 import { processDuePendingDeletes } from "@/lib/storage/pending-delete";
+import { authorizeBearerSecret } from "@/lib/auth/timing-safe";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 });
   }
 
-  const auth = request.headers.get("authorization")?.trim();
-  if (auth !== `Bearer ${secret}`) {
+  if (!authorizeBearerSecret(request.headers.get("authorization"), secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -13,6 +13,7 @@
     "verify:wall-omni": "npx --yes tsx scripts/verify-wall-omni.ts",
     "verify:wall-realtime": "npx --yes tsx scripts/verify-wall-realtime.ts",
     "verify": "npm run typecheck && npm run lint && npm run verify:wall-omni && npm run verify:wall-realtime",
+    "audit:deps": "npm audit --audit-level=high",
     "stickers:trim-mudo": "node scripts/trim-mudo-stickers.mjs",
     "stickers:catalog-mudo": "node scripts/trim-mudo-stickers.mjs --catalog-only",
     "stickers:process-summer": "node scripts/process-photowall-stickers.mjs summer",
@@ -29,7 +30,7 @@
     "assets:webp": "node scripts/convert-static-images-to-webp.mjs",
     "figma-ui": "node scripts/generate-figma-ui-html.mjs",
     "stickers:process-night": "node scripts/process-photowall-stickers.mjs night",
-    "audit:gate": "npm run build && npm run verify && node scripts/verify-supabase-migrations.mjs"
+    "audit:gate": "npm run build && npm run verify && npm run audit:deps && node scripts/verify-supabase-migrations.mjs"
   },
   "dependencies": {
     "@pixi/react": "^8.0.5",
