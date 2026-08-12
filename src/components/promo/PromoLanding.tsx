@@ -192,7 +192,7 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
             }}
           />
           <div className="promo-reveal relative z-[2] w-full max-w-[540px]">
-            <PromoCollabDemo variant="hero" />
+            <PromoCollabDemo />
           </div>
         </div>
       </section>
