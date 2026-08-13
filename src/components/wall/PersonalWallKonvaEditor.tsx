@@ -13,7 +13,11 @@ import { DEFAULT_WALL_THEME_ID, resolveWallThemeId } from "@/lib/wall-themes";
 import type { WallThemeId } from "@/types/wall";
 import { useAuth } from "@/hooks/useAuth";
 import { usePersonalWallLease } from "@/hooks/usePersonalWallLease";
-import { fetchCloudWall, saveWallToCloud } from "@/lib/auth/migrate-wall";
+import {
+  fetchCloudWall,
+  saveWallToCloud,
+  type CloudSaveResult,
+} from "@/lib/auth/migrate-wall";
 import { sceneRevisionFromJson } from "@/lib/wall-scene/scene-revision";
 import { clearWall, getOrCreateWallId, loadWall, saveWall, setPersonalWallId } from "@/lib/wall-storage";
 import { publishWall } from "@/lib/wall-share";
@@ -352,6 +356,56 @@ export default function PersonalWallKonvaEditor() {
     queueDirtyAutosaveRef.current();
   }, []);
 
+  /**
+   * Personal-wall OCC: the lease holder must not adopt a stale snapshot.
+   * 409 here is almost always this tab's own unsynchronized persist, or a
+   * kicked device's in-flight POST — retry once with the server revision.
+   */
+  const saveCloudKeepingLocal = useCallback(
+    async (
+      themeIdForSave: WallThemeId,
+      json: object,
+      userId: string,
+      baseRevision: number | undefined = serverRevisionRef.current,
+    ): Promise<CloudSaveResult> => {
+      const first = await saveWallToCloud(
+        themeIdForSave,
+        json,
+        wallIdRef.current,
+        baseRevision,
+        userId,
+      );
+      if (!first.conflictWall) return first;
+
+      const conflictRev = sceneRevisionFromJson(first.conflictWall.canvasJson);
+      const conflictDoc = parseWallScene(first.conflictWall.canvasJson, {
+        sanitize: false,
+      });
+      const localDoc = useWallSceneStore.getState().document;
+      if (
+        fingerprintPersistableScene(conflictDoc) ===
+        fingerprintPersistableScene(localDoc)
+      ) {
+        serverRevisionRef.current = conflictRev;
+        markCleanFromStore();
+        return {
+          wall: first.conflictWall,
+          migratedDocument: first.migratedDocument,
+        };
+      }
+
+      const liveJson = serializeWallScene(localDoc);
+      return saveWallToCloud(
+        themeIdForSave,
+        liveJson,
+        wallIdRef.current,
+        conflictRev,
+        userId,
+      );
+    },
+    [markCleanFromStore],
+  );
+
   const autoSave = useMemo(
     () =>
       debounce((_json: object, fingerprint: string) => {
@@ -384,14 +438,13 @@ export default function PersonalWallKonvaEditor() {
         }
 
         cloudSaveInFlightRef.current = true;
-        const baseRevision = serverRevisionRef.current;
+        const userId = userRef.current.id;
 
-        void saveWallToCloud(
+        void saveCloudKeepingLocal(
           themeIdRef.current,
           json,
-          wallIdRef.current,
-          baseRevision,
-          userRef.current?.id,
+          userId,
+          serverRevisionRef.current,
         )
           .then((result) => {
             if (result.migratedDocument) {
@@ -439,6 +492,7 @@ export default function PersonalWallKonvaEditor() {
       adoptConflictWall,
       markCleanFromStore,
       finishCloudSaveFlight,
+      saveCloudKeepingLocal,
     ],
   );
 
@@ -761,14 +815,16 @@ export default function PersonalWallKonvaEditor() {
         lastSavedFingerprintRef.current = cloudFp;
 
         if (cloudExpanded) {
-          // Persist the upsized wall so other devices keep the 2×3 floor.
-          void saveWallToCloud(
-            cloud.themeId,
-            cloudJson,
-            cloud.id,
-            cloudDoc.meta.revision ?? 0,
-            user.id,
-          ).then((saved) => {
+          // Await so a later Save cannot 409 against this same-tab persist.
+          cloudSaveInFlightRef.current = true;
+          try {
+            const saved = await saveWallToCloud(
+              cloud.themeId,
+              cloudJson,
+              cloud.id,
+              cloudDoc.meta.revision ?? 0,
+              user.id,
+            );
             if (saved.wall) {
               adoptWallId(saved.wall.id);
               serverRevisionRef.current = sceneRevisionFromJson(saved.wall.canvasJson);
@@ -776,8 +832,14 @@ export default function PersonalWallKonvaEditor() {
                 parseWallScene(saved.wall.canvasJson),
               );
               saveWall(saved.wall.themeId, saved.wall.canvasJson);
+            } else if (saved.conflictWall) {
+              serverRevisionRef.current = sceneRevisionFromJson(
+                saved.conflictWall.canvasJson,
+              );
             }
-          });
+          } finally {
+            cloudSaveInFlightRef.current = false;
+          }
         }
 
         if (alreadySameContent) {
@@ -904,21 +966,39 @@ export default function PersonalWallKonvaEditor() {
           lastSavedFingerprintRef.current = fingerprintPersistableScene(doc);
           setLoadedCanvasJson(json);
           if (user?.id) {
-            void saveWallToCloud(
-              themeIdRef.current,
-              json,
-              wallIdRef.current,
-              serverRevisionRef.current,
-              user.id,
-            ).then((result) => {
-              if (result.migratedDocument) {
-                useWallSceneStore.getState().loadDocument(result.migratedDocument);
-              }
-              if (result.wall) {
-                adoptWallId(result.wall.id);
-                serverRevisionRef.current = sceneRevisionFromJson(result.wall.canvasJson);
-              }
-            });
+            if (cloudSaveInFlightRef.current) {
+              pendingCloudSaveRef.current = true;
+            } else {
+              cloudSaveInFlightRef.current = true;
+              void saveCloudKeepingLocal(
+                themeIdRef.current,
+                json,
+                user.id,
+                serverRevisionRef.current,
+              )
+                .then((result) => {
+                  if (result.migratedDocument) {
+                    useWallSceneStore.getState().loadDocument(result.migratedDocument);
+                  }
+                  if (result.conflictWall) {
+                    adoptConflictWall(
+                      result.conflictWall,
+                      result.message ||
+                        "다른 기기에서 벽이 먼저 저장됐어요. 다시 불러왔어요.",
+                    );
+                    return;
+                  }
+                  if (result.wall) {
+                    adoptWallId(result.wall.id);
+                    serverRevisionRef.current = sceneRevisionFromJson(
+                      result.wall.canvasJson,
+                    );
+                  }
+                })
+                .finally(() => {
+                  finishCloudSaveFlight();
+                });
+            }
           }
 
           if (pendingScanFiles.length > 0 && pendingImports.length === 0) {
@@ -952,6 +1032,9 @@ export default function PersonalWallKonvaEditor() {
     wallPlan,
     persistLocal,
     adoptWallId,
+    saveCloudKeepingLocal,
+    adoptConflictWall,
+    finishCloudSaveFlight,
   ]);
 
   const handlePhotoUpload = useCallback(
@@ -1243,12 +1326,11 @@ export default function PersonalWallKonvaEditor() {
           return;
         }
         cloudSaveInFlightRef.current = true;
-        void saveWallToCloud(
+        void saveCloudKeepingLocal(
           next,
           json,
-          wallIdRef.current,
-          serverRevisionRef.current,
           userRef.current.id,
+          serverRevisionRef.current,
         )
           .then((result) => {
             if (result.migratedDocument) {
@@ -1282,6 +1364,7 @@ export default function PersonalWallKonvaEditor() {
       adoptConflictWall,
       markCleanFromStore,
       finishCloudSaveFlight,
+      saveCloudKeepingLocal,
       showToast,
     ],
   );
@@ -1307,12 +1390,11 @@ export default function PersonalWallKonvaEditor() {
 
       cloudSaveInFlightRef.current = true;
       try {
-        const result = await saveWallToCloud(
+        const result = await saveCloudKeepingLocal(
           themeId,
           json,
-          wallIdRef.current,
-          serverRevisionRef.current,
           user.id,
+          serverRevisionRef.current,
         );
         if (result.migratedDocument) {
           runWithoutWallPersist(() => {
@@ -1359,6 +1441,7 @@ export default function PersonalWallKonvaEditor() {
     adoptConflictWall,
     markCleanFromStore,
     finishCloudSaveFlight,
+    saveCloudKeepingLocal,
   ]);
 
   const handleClear = useCallback(() => {
@@ -1374,12 +1457,11 @@ export default function PersonalWallKonvaEditor() {
     );
     markPreviewDirty();
     if (userRef.current) {
-      void saveWallToCloud(
+      void saveCloudKeepingLocal(
         themeIdRef.current,
         json,
-        wallIdRef.current,
-        serverRevisionRef.current,
         userRef.current.id,
+        serverRevisionRef.current,
       ).then((result) => {
         if (result.wall) {
           adoptWallId(result.wall.id);
@@ -1388,7 +1470,7 @@ export default function PersonalWallKonvaEditor() {
       });
     }
     showToast("벽을 비웠어요");
-  }, [showToast, persistLocal, adoptWallId, markPreviewDirty]);
+  }, [showToast, persistLocal, adoptWallId, markPreviewDirty, saveCloudKeepingLocal]);
 
   const handleShare = useCallback(async () => {
     if (!userRef.current) {
