@@ -66,18 +66,6 @@ export interface PhotoCropRect {
   height: number;
 }
 
-export type PhotoDecoSlot = "tl" | "tr" | "bl" | "br";
-
-/** Corner sticker bound to a photo (moves/resizes with it). */
-export interface PhotoDecoration {
-  stickerId: string;
-  slot: PhotoDecoSlot;
-  /** Extra nudge in photo-local px */
-  dx?: number;
-  dy?: number;
-  scale?: number;
-}
-
 export interface WallScenePhoto extends WallSceneObjectBase {
   type: "photo";
   /** wall-photo://path, https signed URL, or data: URL */
@@ -90,8 +78,8 @@ export interface WallScenePhoto extends WallSceneObjectBase {
   source?: "guestbook";
   /** Catalog id from photo-frames (one per photo). */
   frameId?: string;
-  /** Corner decorations; one per slot. */
-  decorations?: PhotoDecoration[];
+  /** Catalog id from photo-decos — themed border set (one per photo). */
+  decoId?: string;
 }
 
 export interface WallSceneEmoji extends WallSceneObjectBase {

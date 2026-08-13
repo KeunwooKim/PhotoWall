@@ -5,7 +5,7 @@ import {
   getObjectDisplayDimensions,
   objectSupportsSizeEdit,
 } from "@/lib/wall-scene/object-dimensions";
-import { clearPhotoDecorations, clearPhotoFrame } from "@/lib/photo-frames";
+import { clearPhotoDeco, clearPhotoFrame } from "@/lib/photo-frames";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 
@@ -205,7 +205,7 @@ export default function WallObjectInspector({
           onStartColorEdit ||
           onUpscalePhoto ||
           object.frameId ||
-          object.decorations?.length) && (
+          object.decoId) && (
           <div className="flex flex-col gap-1.5">
             {onStartCrop && (
               <button
@@ -244,13 +244,13 @@ export default function WallObjectInspector({
                 프레임 제거
               </button>
             ) : null}
-            {object.decorations?.length ? (
+            {object.decoId ? (
               <button
                 type="button"
-                onClick={() => clearPhotoDecorations(object.id)}
+                onClick={() => clearPhotoDeco(object.id)}
                 className="w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 text-xs font-medium text-foreground transition hover:bg-foreground/5 active:scale-[0.98]"
               >
-                장식 지우기
+                테두리 제거
               </button>
             ) : null}
           </div>

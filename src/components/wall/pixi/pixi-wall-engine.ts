@@ -34,17 +34,22 @@ import {
   type LiveWallLayout,
   getEffectiveWallBounds,
 } from "@/lib/wall-scene/wall-drag-expand";
-import { getStickerById, ensureStickersForIds } from "@/lib/stickers";
+import { getStickerById } from "@/lib/stickers";
 import {
   computeSlice9Rects,
   cssHexToNumber,
   filmSprocketRects,
-  getDecorationLocalBox,
+  getFramePatternCanvas,
   getPhotoFrame,
   getPhotoFrameInset,
   getPhotoFrameOuterSize,
   getPhotoTransformerBox,
 } from "@/lib/photo-frames";
+import {
+  getPhotoDeco,
+  getPhotoDecoCanvas,
+  getPhotoDecoOuterSize,
+} from "@/lib/photo-decos";
 import { getPenStyle, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import {
   HIGHLIGHTER_OPACITY,
@@ -754,18 +759,27 @@ export class PixiWallEngine {
   }
 
   private async buildPhoto(root: Container, object: WallScenePhoto): Promise<void> {
-    const decoIds = (object.decorations ?? []).map((item) => item.stickerId);
-    if (decoIds.length) await ensureStickersForIds(decoIds);
-
     const frame = getPhotoFrame(object.frameId);
     const inset = getPhotoFrameInset(object);
     const outer = getPhotoFrameOuterSize(object);
 
     if (frame && (inset.left || inset.top || inset.right || inset.bottom)) {
-      const matte = new Graphics()
-        .rect(outer.offsetX, outer.offsetY, outer.width, outer.height)
-        .fill({ color: cssHexToNumber(frame.matteFill ?? "#ffffff") });
-      root.addChild(matte);
+      const patternCanvas = frame.pattern ? getFramePatternCanvas(frame) : null;
+      if (patternCanvas) {
+        const tile = new TilingSprite({
+          texture: Texture.from(patternCanvas),
+          width: outer.width,
+          height: outer.height,
+        });
+        tile.x = outer.offsetX;
+        tile.y = outer.offsetY;
+        root.addChild(tile);
+      } else {
+        const matte = new Graphics()
+          .rect(outer.offsetX, outer.offsetY, outer.width, outer.height)
+          .fill({ color: cssHexToNumber(frame.matteFill ?? "#ffffff") });
+        root.addChild(matte);
+      }
       if (frame.id === "frame.film") {
         for (const hole of filmSprocketRects(object, inset)) {
           const sprocket = new Graphics()
@@ -834,42 +848,38 @@ export class PixiWallEngine {
           root.addChild(sliceSprite);
         }
       }
+    } else if (frame?.kind === "overlay" && frame.src) {
+      const overlay = await this.textureFor(frame.src);
+      if (overlay) {
+        const sprite = new Sprite(overlay);
+        sprite.x = outer.offsetX;
+        sprite.y = outer.offsetY;
+        sprite.width = outer.width;
+        sprite.height = outer.height;
+        root.addChild(sprite);
+      }
     }
 
-    await this.buildPhotoDecorations(root, object);
+    await this.buildPhotoDeco(root, object);
   }
 
-  private async buildPhotoDecorations(root: Container, object: WallScenePhoto): Promise<void> {
-    for (const deco of object.decorations ?? []) {
-      const box = getDecorationLocalBox(object, deco);
-      const def = getStickerById(deco.stickerId);
-      if (!box) continue;
-      if (!def) {
-        void ensureStickersForIds([deco.stickerId]);
-        continue;
-      }
-      if (def.kind === "emoji") {
-        const text = new Text({
-          text: def.src,
-          style: {
-            fontSize: Math.min(box.width, box.height),
-            fontFamily: "Apple Color Emoji, Segoe UI Emoji, sans-serif",
-          },
-        });
-        text.x = box.x;
-        text.y = box.y;
-        root.addChild(text);
-        continue;
-      }
-      const texture = await this.textureFor(def.src);
-      if (!texture) continue;
-      const sprite = new Sprite(texture);
-      sprite.x = box.x;
-      sprite.y = box.y;
-      sprite.width = box.width;
-      sprite.height = box.height;
-      root.addChild(sprite);
+  private async buildPhotoDeco(root: Container, object: WallScenePhoto): Promise<void> {
+    const deco = getPhotoDeco(object.decoId);
+    if (!deco) return;
+    const box = getPhotoDecoOuterSize(object);
+    let texture: Texture | null = null;
+    if (deco.src) texture = await this.textureFor(deco.src);
+    if (!texture) {
+      const canvas = getPhotoDecoCanvas(object);
+      if (canvas) texture = Texture.from(canvas);
     }
+    if (!texture) return;
+    const sprite = new Sprite(texture);
+    sprite.x = box.offsetX;
+    sprite.y = box.offsetY;
+    sprite.width = box.width;
+    sprite.height = box.height;
+    root.addChild(sprite);
   }
 
   private async buildSticker(root: Container, object: WallSceneSticker): Promise<void> {

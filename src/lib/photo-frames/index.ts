@@ -1,5 +1,9 @@
-export type { PhotoFrameDefinition, PhotoFrameKind, PhotoFrameSlice9 } from "./types";
-export { PHOTO_DECO_SLOTS } from "./types";
+export type {
+  PhotoFrameDefinition,
+  PhotoFrameKind,
+  PhotoFramePatternId,
+  PhotoFrameSlice9,
+} from "./types";
 export {
   PHOTO_FRAMES,
   getListedPhotoFrames,
@@ -8,20 +12,19 @@ export {
 export {
   computeSlice9Rects,
   filmSprocketRects,
-  flipPhotoDecorations,
-  flipPhotoDecoSlot,
-  getDecorationLocalBox,
   getPhotoFrameInset,
   getPhotoFrameOuterSize,
   getPhotoTransformerBox,
-  nextPhotoDecoSlot,
+  getPhotoVisualOuterSize,
+  unionPhotoOuter,
 } from "./layout";
-export type { DecorationLocalBox, PhotoFrameInsetPx, PhotoOuterBox, Slice9Rect } from "./layout";
+export type { PhotoFrameInsetPx, PhotoOuterBox, Slice9Rect } from "./layout";
 export { cssHexToNumber, cssHexToRgba } from "./color";
+export { getFramePatternCanvas, patternSwatchCss } from "./patterns";
 export {
-  applyPhotoDecoration,
+  applyPhotoDeco,
   applyPhotoFrame,
-  clearPhotoDecorations,
+  clearPhotoDeco,
   clearPhotoFrame,
 } from "./apply";
 export type { ApplyPhotoDecorResult } from "./apply";

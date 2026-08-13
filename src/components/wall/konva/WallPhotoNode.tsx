@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Group, Image as KonvaImage, Rect, Text as KonvaText } from "react-konva";
+import { Group, Image as KonvaImage, Rect } from "react-konva";
 import type Konva from "konva";
 import { getCachedHtmlImage, loadHtmlImage } from "@/lib/storage/load-html-image";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
-import type { PhotoCropRect, PhotoDecoration, WallScenePhoto } from "@/types/wall-scene-v2";
+import type { PhotoCropRect, WallScenePhoto } from "@/types/wall-scene-v2";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { wrapKonvaNode } from "@/lib/wall-scene/realtime/wrap-konva-node";
 import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
@@ -17,15 +17,19 @@ import {
 } from "@/lib/wall-scene/group-drag";
 import { useResolvedImageSrc } from "./useResolvedImageSrc";
 import { useNodeContextTrigger } from "./useNodeContextTrigger";
-import { ensureStickersForIds, getStickerById } from "@/lib/stickers";
 import {
   computeSlice9Rects,
   filmSprocketRects,
-  getDecorationLocalBox,
+  getFramePatternCanvas,
   getPhotoFrame,
   getPhotoFrameInset,
   getPhotoFrameOuterSize,
 } from "@/lib/photo-frames";
+import {
+  getPhotoDeco,
+  getPhotoDecoCanvas,
+  getPhotoDecoOuterSize,
+} from "@/lib/photo-decos";
 
 interface WallPhotoNodeProps {
   object: WallScenePhoto;
@@ -186,20 +190,7 @@ export default function WallPhotoNode({
   const inset = getPhotoFrameInset(object);
   const outer = getPhotoFrameOuterSize(object);
   const sprockets = frame?.id === "frame.film" ? filmSprocketRects(object, inset) : [];
-
-  const [stickerEpoch, setStickerEpoch] = useState(0);
-
-  useEffect(() => {
-    const ids = (object.decorations ?? []).map((item) => item.stickerId);
-    if (!ids.length) return;
-    let cancelled = false;
-    void ensureStickersForIds(ids).then(() => {
-      if (!cancelled) setStickerEpoch((n) => n + 1);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [object.decorations]);
+  const patternCanvas = frame?.pattern ? getFramePatternCanvas(frame) : null;
 
   return (
     <Group
@@ -243,7 +234,9 @@ export default function WallPhotoNode({
           y={outer.offsetY}
           width={outer.width}
           height={outer.height}
-          fill={frame.matteFill ?? "#ffffff"}
+          fill={patternCanvas ? undefined : (frame.matteFill ?? "#ffffff")}
+          fillPatternImage={patternCanvas as unknown as HTMLImageElement | undefined}
+          fillPatternRepeat={patternCanvas ? "repeat" : undefined}
           listening
         />
       ) : null}
@@ -272,13 +265,10 @@ export default function WallPhotoNode({
       {frame?.kind === "slice9" && frame.src && frame.slice9 ? (
         <PhotoSlice9Overlay src={frame.src} outer={outer} slice={frame.slice9} />
       ) : null}
-      {(object.decorations ?? []).map((deco) => (
-        <PhotoCornerNode
-          key={`${deco.slot}-${deco.stickerId}-${stickerEpoch}`}
-          photo={object}
-          deco={deco}
-        />
-      ))}
+      {frame?.kind === "overlay" && frame.src ? (
+        <PhotoOverlayImage src={frame.src} outer={outer} />
+      ) : null}
+      {object.decoId ? <PhotoDecoOverlay photo={object} /> : null}
     </Group>
   );
 }
@@ -346,36 +336,40 @@ function PhotoSlice9Overlay({
   );
 }
 
-function PhotoCornerNode({
-  photo,
-  deco,
+function PhotoOverlayImage({
+  src,
+  outer,
 }: {
-  photo: WallScenePhoto;
-  deco: PhotoDecoration;
+  src: string;
+  outer: { offsetX: number; offsetY: number; width: number; height: number };
 }) {
-  const def = getStickerById(deco.stickerId);
-  const box = getDecorationLocalBox(photo, deco);
-  const image = useHtmlImage(def && def.kind !== "emoji" ? def.src : undefined);
-  if (!box) return null;
-  if (def?.kind === "emoji") {
-    return (
-      <KonvaText
-        text={def.src}
-        x={box.x}
-        y={box.y}
-        width={box.width}
-        height={box.height}
-        fontSize={Math.min(box.width, box.height)}
-        listening
-      />
-    );
-  }
+  const image = useHtmlImage(src);
   if (!image) return null;
   return (
     <KonvaImage
       image={image}
-      x={box.x}
-      y={box.y}
+      x={outer.offsetX}
+      y={outer.offsetY}
+      width={outer.width}
+      height={outer.height}
+      listening
+      perfectDrawEnabled={false}
+    />
+  );
+}
+
+function PhotoDecoOverlay({ photo }: { photo: WallScenePhoto }) {
+  const deco = getPhotoDeco(photo.decoId);
+  const overlayImage = useHtmlImage(deco?.src);
+  const box = getPhotoDecoOuterSize(photo);
+  const canvas = useMemo(() => (overlayImage ? null : getPhotoDecoCanvas(photo)), [overlayImage, photo]);
+  const image = overlayImage ?? canvas;
+  if (!image) return null;
+  return (
+    <KonvaImage
+      image={image}
+      x={box.offsetX}
+      y={box.offsetY}
       width={box.width}
       height={box.height}
       listening

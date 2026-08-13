@@ -1,6 +1,6 @@
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
-import { getPhotoFrameOuterSize } from "@/lib/photo-frames/layout";
+import { getPhotoVisualOuterSize } from "@/lib/photo-frames/layout";
 
 /**
  * Wall AABB in world coordinates.
@@ -396,7 +396,7 @@ export function getSceneObjectExtents(obj: WallSceneObject): {
   const scaleY = obj.scaleY ?? 1;
 
   if (obj.type === "photo") {
-    const outer = getPhotoFrameOuterSize(obj);
+    const outer = getPhotoVisualOuterSize(obj);
     return rotatedRectExtents(
       obj.x + outer.offsetX * scaleX,
       obj.y + outer.offsetY * scaleY,

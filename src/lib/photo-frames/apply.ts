@@ -1,10 +1,9 @@
-import { ensureStickersForIds } from "@/lib/stickers";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
-import type { PhotoDecoSlot, PhotoDecoration, WallScenePhoto } from "@/types/wall-scene-v2";
+import type { WallScenePhoto } from "@/types/wall-scene-v2";
+import { getPhotoDeco } from "@/lib/photo-decos/catalog";
 import { getPhotoFrame } from "./catalog";
-import { nextPhotoDecoSlot } from "./layout";
 
-export type ApplyPhotoDecorResult = "ok" | "not-photo" | "unknown-frame";
+export type ApplyPhotoDecorResult = "ok" | "not-photo" | "unknown-frame" | "unknown-deco";
 
 function photoById(photoId: string): WallScenePhoto | null {
   const object = useWallSceneStore.getState().document.objects.find((item) => item.id === photoId);
@@ -30,32 +29,22 @@ export function applyPhotoFrame(photoId: string, frameId: string | null): ApplyP
   return "ok";
 }
 
-export function applyPhotoDecoration(
-  photoId: string,
-  stickerId: string,
-  slot?: PhotoDecoSlot,
-): ApplyPhotoDecorResult {
+export function applyPhotoDeco(photoId: string, decoId: string | null): ApplyPhotoDecorResult {
   const photo = photoById(photoId);
   if (!photo) return "not-photo";
-  void ensureStickersForIds([stickerId]);
-  const resolvedSlot = nextPhotoDecoSlot(photo.decorations, slot);
-  const deco: PhotoDecoration = { stickerId, slot: resolvedSlot };
-  const rest = (photo.decorations ?? []).filter((item) => item.slot !== resolvedSlot);
-  const next: WallScenePhoto = { ...photo, decorations: [...rest, deco] };
-  commitPhoto(next);
-  return "ok";
-}
-
-export function clearPhotoDecorations(photoId: string): ApplyPhotoDecorResult {
-  const photo = photoById(photoId);
-  if (!photo) return "not-photo";
-  if (!photo.decorations?.length) return "ok";
+  if (decoId && !getPhotoDeco(decoId)) return "unknown-deco";
   const next: WallScenePhoto = { ...photo };
-  delete next.decorations;
+  if (decoId) next.decoId = decoId;
+  else delete next.decoId;
+  delete (next as { decorations?: unknown }).decorations;
   commitPhoto(next);
   return "ok";
 }
 
 export function clearPhotoFrame(photoId: string): ApplyPhotoDecorResult {
   return applyPhotoFrame(photoId, null);
+}
+
+export function clearPhotoDeco(photoId: string): ApplyPhotoDecorResult {
+  return applyPhotoDeco(photoId, null);
 }

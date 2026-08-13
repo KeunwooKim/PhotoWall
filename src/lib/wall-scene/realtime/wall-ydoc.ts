@@ -1,6 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { WallBounds } from "@/lib/wall-bounds";
-import type { PhotoDecoration, WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
+import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
 import { dedupePresencePeers, mergePeerPresence, presencePeerKey } from "@/lib/wall-scene/presence-utils";
 import { throttle } from "@/lib/throttle";
 
@@ -85,8 +85,8 @@ export type WallObjectPatch = Partial<
   fontSize?: number;
   /** Photo frame catalog id. null clears. */
   frameId?: string | null;
-  /** Photo corner decorations. null clears. */
-  decorations?: PhotoDecoration[] | null;
+  /** Photo border-deco catalog id. null clears. */
+  decoId?: string | null;
 };
 
 type SyncPayload =

@@ -1,6 +1,6 @@
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
-import { getPhotoFrameOuterSize } from "@/lib/photo-frames/layout";
+import { getPhotoVisualOuterSize } from "@/lib/photo-frames/layout";
 
 export interface ViewportRect {
   x: number;
@@ -14,7 +14,7 @@ function objectBounds(obj: WallSceneObject): ViewportRect {
   const scaleY = obj.scaleY ?? 1;
 
   if (obj.type === "photo") {
-    const outer = getPhotoFrameOuterSize(obj);
+    const outer = getPhotoVisualOuterSize(obj);
     return {
       x: obj.x + outer.offsetX * scaleX,
       y: obj.y + outer.offsetY * scaleY,

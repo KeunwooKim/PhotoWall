@@ -11,8 +11,6 @@ export interface StickerDefinition {
   defaultHeight?: number;
   tags?: string[];
   premium?: boolean;
-  /** When set, picker 테두리 tab binds this sticker to a photo corner. */
-  attach?: "photo-corner";
 }
 
 export interface StickerCategory {

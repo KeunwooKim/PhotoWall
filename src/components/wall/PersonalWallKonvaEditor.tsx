@@ -31,10 +31,9 @@ import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
 import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
 import {
-  applyPhotoDecoration,
+  applyPhotoDeco,
   applyPhotoFrame,
 } from "@/lib/photo-frames";
-import type { PhotoDecoSlot } from "@/types/wall-scene-v2";
 import {
   countSelectedQuotaObjects,
   getClipboardQuotaObjectCount,
@@ -1004,14 +1003,14 @@ export default function PersonalWallKonvaEditor() {
     [selectedPhoto, showToast],
   );
 
-  const handleApplyCorner = useCallback(
-    (stickerId: string, slot: PhotoDecoSlot) => {
+  const handleApplyDeco = useCallback(
+    (decoId: string) => {
       if (!selectedPhoto) {
         showToast("사진을 먼저 선택해 주세요");
         return;
       }
-      const result = applyPhotoDecoration(selectedPhoto.id, stickerId, slot);
-      if (result !== "ok") showToast("장식을 붙이지 못했어요");
+      const result = applyPhotoDeco(selectedPhoto.id, decoId);
+      if (result !== "ok") showToast("테두리를 붙이지 못했어요");
     },
     [selectedPhoto, showToast],
   );
@@ -1719,8 +1718,9 @@ export default function PersonalWallKonvaEditor() {
             onAddSticker={handleAddSticker}
             selectedPhotoId={selectedPhoto?.id ?? null}
             activeFrameId={selectedPhoto?.frameId ?? null}
+            activeDecoId={selectedPhoto?.decoId ?? null}
             onApplyFrame={handleApplyFrame}
-            onApplyCorner={handleApplyCorner}
+            onApplyDeco={handleApplyDeco}
             returnTo="/wall/edit"
           />
         </div>
@@ -1994,8 +1994,9 @@ export default function PersonalWallKonvaEditor() {
         onAddSticker={handleAddSticker}
         selectedPhotoId={selectedPhoto?.id ?? null}
         activeFrameId={selectedPhoto?.frameId ?? null}
+        activeDecoId={selectedPhoto?.decoId ?? null}
         onApplyFrame={handleApplyFrame}
-        onApplyCorner={handleApplyCorner}
+        onApplyDeco={handleApplyDeco}
         returnTo="/wall/edit"
       />
     </div>

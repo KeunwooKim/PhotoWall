@@ -27,8 +27,3 @@ export {
   STICKER_PACK_MIN_ITEMS,
   ugcStickerId,
 } from "./ugc-types";
-export {
-  getPhotoCornerStickers,
-  isPhotoCornerSticker,
-  PHOTO_CORNER_STICKER_IDS,
-} from "./photo-corner";

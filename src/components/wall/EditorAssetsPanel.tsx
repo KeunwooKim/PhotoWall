@@ -7,7 +7,6 @@ import { WALL_THEMES } from "@/lib/wall-themes";
 import { hrefWithWallReturn } from "@/lib/wall-return-path";
 import StickerPicker from "./StickerPicker";
 import PhotoDecorPickers from "./PhotoDecorPickers";
-import type { PhotoDecoSlot } from "@/types/wall-scene-v2";
 
 interface EditorAssetsPanelProps {
   isOpen: boolean;
@@ -18,8 +17,9 @@ interface EditorAssetsPanelProps {
   onAddSticker: (stickerId: string) => void;
   selectedPhotoId?: string | null;
   activeFrameId?: string | null;
+  activeDecoId?: string | null;
   onApplyFrame?: (frameId: string) => void;
-  onApplyCorner?: (stickerId: string, slot: PhotoDecoSlot) => void;
+  onApplyDeco?: (decoId: string) => void;
   /** Where QR / scan should return (personal edit or shared editor). */
   returnTo?: string;
   /** docked = desktop column beside tool rail; drawer = mobile slide-over */
@@ -36,8 +36,9 @@ export default function EditorAssetsPanel({
   onAddSticker,
   selectedPhotoId = null,
   activeFrameId = null,
+  activeDecoId = null,
   onApplyFrame,
-  onApplyCorner,
+  onApplyDeco,
   returnTo = "/wall/edit",
   variant = "docked",
 }: EditorAssetsPanelProps) {
@@ -145,11 +146,12 @@ export default function EditorAssetsPanel({
           <StickerPicker onSelect={onAddSticker} />
         </section>
 
-        {onApplyFrame && onApplyCorner && (
+        {onApplyFrame && onApplyDeco && (
           <PhotoDecorPickers
             onApplyFrame={onApplyFrame}
-            onApplyCorner={onApplyCorner}
+            onApplyDeco={onApplyDeco}
             activeFrameId={selectedPhotoId ? activeFrameId : null}
+            activeDecoId={selectedPhotoId ? activeDecoId : null}
           />
         )}
       </div>

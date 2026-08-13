@@ -24,7 +24,7 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
           ...base,
           src: object.src,
           frameId: object.frameId ?? null,
-          decorations: object.decorations ?? null,
+          decoId: object.decoId ?? null,
         };
       }
       if (object.type === "sticker") return { ...base, stickerId: object.stickerId };

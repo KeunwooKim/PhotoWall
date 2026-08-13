@@ -1,7 +1,6 @@
-import { getStickerById } from "@/lib/stickers";
-import type { PhotoDecoration, PhotoDecoSlot, WallScenePhoto } from "@/types/wall-scene-v2";
+import type { WallScenePhoto } from "@/types/wall-scene-v2";
+import { getPhotoDecoOuterSize } from "@/lib/photo-decos/layout";
 import { getPhotoFrame } from "./catalog";
-import { PHOTO_DECO_SLOTS } from "./types";
 
 export interface PhotoFrameInsetPx {
   top: number;
@@ -13,13 +12,6 @@ export interface PhotoFrameInsetPx {
 export interface PhotoOuterBox {
   offsetX: number;
   offsetY: number;
-  width: number;
-  height: number;
-}
-
-export interface DecorationLocalBox {
-  x: number;
-  y: number;
   width: number;
   height: number;
 }
@@ -38,12 +30,35 @@ export function getPhotoFrameInset(photo: WallScenePhoto): PhotoFrameInsetPx {
   };
 }
 
+export function unionPhotoOuter(a: PhotoOuterBox, b: PhotoOuterBox): PhotoOuterBox {
+  const minX = Math.min(a.offsetX, b.offsetX);
+  const minY = Math.min(a.offsetY, b.offsetY);
+  const maxX = Math.max(a.offsetX + a.width, b.offsetX + b.width);
+  const maxY = Math.max(a.offsetY + a.height, b.offsetY + b.height);
+  return { offsetX: minX, offsetY: minY, width: maxX - minX, height: maxY - minY };
+}
+
+export function getPhotoFrameOuterSize(photo: WallScenePhoto): PhotoOuterBox {
+  const inset = getPhotoFrameInset(photo);
+  return {
+    offsetX: -inset.left,
+    offsetY: -inset.top,
+    width: photo.width + inset.left + inset.right,
+    height: photo.height + inset.top + inset.bottom,
+  };
+}
+
+/** Frame inset ∪ deco hang — hitbox / transformer / culling. */
+export function getPhotoVisualOuterSize(photo: WallScenePhoto): PhotoOuterBox {
+  return unionPhotoOuter(getPhotoFrameOuterSize(photo), getPhotoDecoOuterSize(photo));
+}
+
 export function getPhotoTransformerBox(
   photo: WallScenePhoto,
   scaleX: number,
   scaleY: number,
 ): { ox: number; oy: number; boxW: number; boxH: number } {
-  const outer = getPhotoFrameOuterSize(photo);
+  const outer = getPhotoVisualOuterSize(photo);
   const absX = Math.abs(scaleX) || 1;
   const absY = Math.abs(scaleY) || 1;
   const boxW = Math.max(1, outer.width * absX);
@@ -75,89 +90,6 @@ export function filmSprocketRects(
   return rects;
 }
 
-export function getPhotoFrameOuterSize(photo: WallScenePhoto): PhotoOuterBox {
-  const inset = getPhotoFrameInset(photo);
-  return {
-    offsetX: -inset.left,
-    offsetY: -inset.top,
-    width: photo.width + inset.left + inset.right,
-    height: photo.height + inset.top + inset.bottom,
-  };
-}
-
-export function nextPhotoDecoSlot(
-  decorations: PhotoDecoration[] | undefined,
-  preferred?: PhotoDecoSlot,
-): PhotoDecoSlot {
-  if (preferred) return preferred;
-  const used = new Set((decorations ?? []).map((item) => item.slot));
-  return PHOTO_DECO_SLOTS.find((slot) => !used.has(slot)) ?? "tl";
-}
-
-export function flipPhotoDecoSlot(slot: PhotoDecoSlot, axis: "horizontal" | "vertical"): PhotoDecoSlot {
-  if (axis === "horizontal") {
-    if (slot === "tl") return "tr";
-    if (slot === "tr") return "tl";
-    if (slot === "bl") return "br";
-    return "bl";
-  }
-  if (slot === "tl") return "bl";
-  if (slot === "bl") return "tl";
-  if (slot === "tr") return "br";
-  return "tr";
-}
-
-export function flipPhotoDecorations(
-  decorations: PhotoDecoration[] | undefined,
-  axis: "horizontal" | "vertical",
-): PhotoDecoration[] | undefined {
-  if (!decorations?.length) return decorations;
-  return decorations.map((item) => ({
-    ...item,
-    slot: flipPhotoDecoSlot(item.slot, axis),
-  }));
-}
-
-/** Corner sticker box in photo-local px (origin = photo top-left). */
-export function getDecorationLocalBox(
-  photo: WallScenePhoto,
-  deco: PhotoDecoration,
-): DecorationLocalBox | null {
-  const def = getStickerById(deco.stickerId);
-  const baseW = def?.defaultWidth ?? def?.defaultSize ?? 64;
-  const baseH = def?.defaultHeight ?? def?.defaultSize ?? 64;
-  const scale = deco.scale ?? 1;
-  const width = Math.max(8, baseW * scale);
-  const height = Math.max(8, baseH * scale);
-  const hang = 0.4;
-  let x = 0;
-  let y = 0;
-  switch (deco.slot) {
-    case "tl":
-      x = -width * hang;
-      y = -height * hang;
-      break;
-    case "tr":
-      x = photo.width - width * (1 - hang);
-      y = -height * hang;
-      break;
-    case "bl":
-      x = -width * hang;
-      y = photo.height - height * (1 - hang);
-      break;
-    case "br":
-      x = photo.width - width * (1 - hang);
-      y = photo.height - height * (1 - hang);
-      break;
-  }
-  return {
-    x: x + (deco.dx ?? 0),
-    y: y + (deco.dy ?? 0),
-    width,
-    height,
-  };
-}
-
 export interface Slice9Rect {
   sx: number;
   sy: number;
@@ -169,7 +101,7 @@ export interface Slice9Rect {
   dh: number;
 }
 
-/** Nine dest/source rects for a PNG frame around the photo. */
+/** Eight dest/source rects for a PNG frame around the photo (center hole skipped). */
 export function computeSlice9Rects(
   srcW: number,
   srcH: number,
@@ -199,7 +131,7 @@ export function computeSlice9Rects(
   const rects: Slice9Rect[] = [];
   for (let ri = 0; ri < rows.length; ri++) {
     for (let ci = 0; ci < cols.length; ci++) {
-      if (ri === 1 && ci === 1) continue; // transparent hole — photo shows through
+      if (ri === 1 && ci === 1) continue;
       const row = rows[ri];
       const col = cols[ci];
       rects.push({
