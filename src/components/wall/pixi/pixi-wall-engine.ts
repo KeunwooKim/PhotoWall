@@ -45,7 +45,7 @@ import {
   getPhotoFrameOuterSize,
   getPhotoTransformerBox,
 } from "@/lib/photo-frames";
-import { coverBlitRects, fourCutHolesInPhoto, getFourCutSkin } from "@/lib/four-cut";
+import { coverBlitRects, fourCutHoleStrokeStyle, fourCutHolesInPhoto, getFourCutSkin, getFourCutThemeCanvas } from "@/lib/four-cut";
 import { getPenStyle, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import {
   HIGHLIGHTER_OPACITY,
@@ -868,10 +868,25 @@ export class PixiWallEngine {
     const dests = fourCutHolesInPhoto(object);
     if (!fourCut || !skin || !dests) return false;
 
-    const matte = new Graphics()
-      .rect(0, 0, object.width, object.height)
-      .fill({ color: cssHexToNumber(skin.fill) });
-    root.addChild(matte);
+    if (skin.src) {
+      const matte = new Graphics()
+        .rect(0, 0, object.width, object.height)
+        .fill({ color: cssHexToNumber(skin.fill) });
+      root.addChild(matte);
+    } else {
+      const chrome = getFourCutThemeCanvas(skin, object.width, object.height);
+      if (chrome) {
+        const sprite = new Sprite(Texture.from(chrome));
+        sprite.width = object.width;
+        sprite.height = object.height;
+        root.addChild(sprite);
+      } else {
+        const matte = new Graphics()
+          .rect(0, 0, object.width, object.height)
+          .fill({ color: cssHexToNumber(skin.fill) });
+        root.addChild(matte);
+      }
+    }
 
     const resolved = await this.resolveSrc(object.src);
     const texture = await this.textureFor(object.src);
@@ -918,6 +933,18 @@ export class PixiWallEngine {
         sprite.height = object.height;
         root.addChild(sprite);
       }
+    } else {
+      const stroke = fourCutHoleStrokeStyle(skin, Math.min(object.width, object.height));
+      const g = new Graphics();
+      for (const dest of dests) {
+        g.rect(dest.x, dest.y, dest.width, dest.height);
+      }
+      g.stroke({
+        width: stroke.width,
+        color: cssHexToNumber(stroke.color),
+        alpha: stroke.alpha,
+      });
+      root.addChild(g);
     }
     return true;
   }

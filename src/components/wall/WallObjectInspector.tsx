@@ -248,10 +248,12 @@ export default function WallObjectInspector({
             {object.fourCut?.skinId ? (
               <button
                 type="button"
-                onClick={() => clearFourCutSkin(object.id)}
+                onClick={() => {
+                  void clearFourCutSkin(object.id);
+                }}
                 className="w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 text-xs font-medium text-foreground transition hover:bg-foreground/5 active:scale-[0.98]"
               >
-                원본 테두리
+                원본
               </button>
             ) : null}
           </div>

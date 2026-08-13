@@ -12,6 +12,21 @@ const GRID_FOOTER = 0.09;
 const GRID_GAP_X = 0.03;
 const GRID_GAP_Y = 0.025;
 
+/** Source-pixel windows at the catalog hole fractions (used when detect missed). */
+export function canonicalFourCutWindows(
+  layout: FourCutLayout,
+  sourceWidth: number,
+  sourceHeight: number,
+): [PhotoCropRect, PhotoCropRect, PhotoCropRect, PhotoCropRect] {
+  const holes = fourCutHoleFractions(layout);
+  return holes.map((hole) => ({
+    x: hole.x * sourceWidth,
+    y: hole.y * sourceHeight,
+    width: hole.width * sourceWidth,
+    height: hole.height * sourceHeight,
+  })) as [PhotoCropRect, PhotoCropRect, PhotoCropRect, PhotoCropRect];
+}
+
 export function fourCutHoleFractions(layout: FourCutLayout): FourCutHoleFractions[] {
   if (layout === "grid2x2") {
     const cellW = (1 - 2 * GRID_SIDE - GRID_GAP_X) / 2;
@@ -37,6 +52,17 @@ export function fourCutHoleFractions(layout: FourCutLayout): FourCutHoleFraction
     width: cellW,
     height: cellH,
   }));
+}
+
+export function fourCutChromeBands(layout: FourCutLayout): {
+  header: number;
+  footer: number;
+  side: number;
+} {
+  if (layout === "grid2x2") {
+    return { header: GRID_HEADER, footer: GRID_FOOTER, side: GRID_SIDE };
+  }
+  return { header: STACK_HEADER, footer: STACK_FOOTER, side: STACK_SIDE };
 }
 
 export function fourCutHolesInPhoto(photo: WallScenePhoto): PhotoCropRect[] | null {

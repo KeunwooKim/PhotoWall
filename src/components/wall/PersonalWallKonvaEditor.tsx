@@ -1053,7 +1053,7 @@ export default function PersonalWallKonvaEditor() {
           plan: wallPlan,
         });
         if (added.fourCut) {
-          showToast("인생네컷으로 보여요. 테두리를 바꿔 보세요");
+          showToast("인생네컷으로 보여요. 테마를 바꿔 보세요");
         }
       } catch (err) {
         showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
@@ -1095,8 +1095,14 @@ export default function PersonalWallKonvaEditor() {
         showToast("사진을 먼저 선택해 주세요");
         return;
       }
-      const result = applyFourCutSkin(selectedPhoto.id, skinId);
-      if (result !== "ok") showToast("네컷 테두리를 바꾸지 못했어요");
+      void applyFourCutSkin(selectedPhoto.id, skinId).then((result) => {
+        if (result === "ok") return;
+        if (result === "no-source-size") {
+          showToast("사진을 불러온 뒤 다시 시도해 주세요");
+          return;
+        }
+        showToast("네컷 테두리를 바꾸지 못했어요");
+      });
     },
     [selectedPhoto, showToast],
   );
@@ -1804,7 +1810,6 @@ export default function PersonalWallKonvaEditor() {
             selectedPhotoId={selectedPhoto?.id ?? null}
             activeFrameId={selectedPhoto?.frameId ?? null}
             onApplyFrame={handleApplyFrame}
-            fourCutLayout={selectedPhoto?.fourCut?.layout ?? null}
             activeFourCutSkinId={selectedPhoto?.fourCut?.skinId ?? null}
             onApplyFourCutSkin={handleApplyFourCutSkin}
             returnTo="/wall/edit"
@@ -2081,7 +2086,6 @@ export default function PersonalWallKonvaEditor() {
         selectedPhotoId={selectedPhoto?.id ?? null}
         activeFrameId={selectedPhoto?.frameId ?? null}
         onApplyFrame={handleApplyFrame}
-        fourCutLayout={selectedPhoto?.fourCut?.layout ?? null}
         activeFourCutSkinId={selectedPhoto?.fourCut?.skinId ?? null}
         onApplyFourCutSkin={handleApplyFourCutSkin}
         returnTo="/wall/edit"

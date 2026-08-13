@@ -18,7 +18,6 @@ interface EditorAssetsPanelProps {
   selectedPhotoId?: string | null;
   activeFrameId?: string | null;
   onApplyFrame?: (frameId: string) => void;
-  fourCutLayout?: "stack4" | "grid2x2" | null;
   activeFourCutSkinId?: string | null;
   onApplyFourCutSkin?: (skinId: string | null) => void;
   /** Where QR / scan should return (personal edit or shared editor). */
@@ -38,7 +37,6 @@ export default function EditorAssetsPanel({
   selectedPhotoId = null,
   activeFrameId = null,
   onApplyFrame,
-  fourCutLayout = null,
   activeFourCutSkinId = null,
   onApplyFourCutSkin,
   returnTo = "/wall/edit",
@@ -119,6 +117,15 @@ export default function EditorAssetsPanel({
           </Link>
         </section>
 
+        {onApplyFrame && (
+          <PhotoDecorPickers
+            onApplyFrame={onApplyFrame}
+            activeFrameId={selectedPhotoId ? activeFrameId : null}
+            activeSkinId={selectedPhotoId ? (activeFourCutSkinId ?? null) : undefined}
+            onApplyFourCutSkin={onApplyFourCutSkin}
+          />
+        )}
+
         <section className="space-y-2">
           <h3 className="text-[11px] font-medium text-muted">벽지</h3>
           <div className="grid max-h-44 grid-cols-1 gap-1.5 overflow-y-auto pr-0.5">
@@ -147,16 +154,6 @@ export default function EditorAssetsPanel({
           <h3 className="text-[11px] font-medium text-muted">스티커</h3>
           <StickerPicker onSelect={onAddSticker} />
         </section>
-
-        {onApplyFrame && (
-          <PhotoDecorPickers
-            onApplyFrame={onApplyFrame}
-            activeFrameId={selectedPhotoId ? activeFrameId : null}
-            fourCutLayout={selectedPhotoId ? fourCutLayout : null}
-            activeSkinId={selectedPhotoId ? activeFourCutSkinId : null}
-            onApplyFourCutSkin={onApplyFourCutSkin}
-          />
-        )}
       </div>
     </>
   );

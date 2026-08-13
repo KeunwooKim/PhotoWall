@@ -25,7 +25,13 @@ import {
   getPhotoFrameInset,
   getPhotoFrameOuterSize,
 } from "@/lib/photo-frames";
-import { coverBlitRects, fourCutHolesInPhoto, getFourCutSkin } from "@/lib/four-cut";
+import {
+  coverBlitRects,
+  fourCutHoleStrokeStyle,
+  fourCutHolesInPhoto,
+  getFourCutSkin,
+  getFourCutThemeCanvas,
+} from "@/lib/four-cut";
 
 interface WallPhotoNodeProps {
   object: WallScenePhoto;
@@ -195,6 +201,14 @@ export default function WallPhotoNode({
           coverBlitRects(object.fourCut!.windows[index], dest),
         )
       : [];
+  const fourCutThemeCanvas =
+    fourCutSkin && !fourCutSkin.src
+      ? getFourCutThemeCanvas(fourCutSkin, object.width, object.height)
+      : null;
+  const fourCutStroke =
+    fourCutSkin && !fourCutSkin.src
+      ? fourCutHoleStrokeStyle(fourCutSkin, Math.min(object.width, object.height))
+      : null;
 
   return (
     <Group
@@ -233,14 +247,26 @@ export default function WallPhotoNode({
       onDragEnd={handleDragEnd}
     >
       {fourCutSkin ? (
-        <Rect
-          x={0}
-          y={0}
-          width={object.width}
-          height={object.height}
-          fill={fourCutSkin.fill}
-          listening
-        />
+        fourCutThemeCanvas ? (
+          <KonvaImage
+            image={fourCutThemeCanvas}
+            x={0}
+            y={0}
+            width={object.width}
+            height={object.height}
+            listening
+            perfectDrawEnabled={false}
+          />
+        ) : (
+          <Rect
+            x={0}
+            y={0}
+            width={object.width}
+            height={object.height}
+            fill={fourCutSkin.fill}
+            listening
+          />
+        )
       ) : frame && (inset.left || inset.top || inset.right || inset.bottom) ? (
         <Rect
           x={outer.offsetX}
@@ -296,6 +322,22 @@ export default function WallPhotoNode({
           outer={{ offsetX: 0, offsetY: 0, width: object.width, height: object.height }}
         />
       ) : null}
+      {fourCutStroke && fourCutHoles
+        ? fourCutHoles.map((hole, index) => (
+            <Rect
+              key={`fourcut-stroke-${index}`}
+              x={hole.x}
+              y={hole.y}
+              width={hole.width}
+              height={hole.height}
+              stroke={fourCutStroke.color}
+              strokeWidth={fourCutStroke.width}
+              opacity={fourCutStroke.alpha}
+              listening={false}
+              perfectDrawEnabled={false}
+            />
+          ))
+        : null}
       {fourCutSkin ? null : frame?.kind === "slice9" && frame.src && frame.slice9 ? (
         <PhotoSlice9Overlay src={frame.src} outer={outer} slice={frame.slice9} />
       ) : null}

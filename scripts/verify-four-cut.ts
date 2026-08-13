@@ -1,5 +1,5 @@
 import { detectFourCutLayout } from "../src/lib/four-cut/detect";
-import { fourCutHoleFractions } from "../src/lib/four-cut/layout";
+import { canonicalFourCutWindows, fourCutHoleFractions } from "../src/lib/four-cut/layout";
 import { getFourCutSkin, getListedFourCutSkins } from "../src/lib/four-cut/catalog";
 import { sanitizeFourCutFields } from "../src/lib/four-cut/sanitize";
 import type { RgbaBuffer } from "../src/lib/four-cut/types";
@@ -117,9 +117,19 @@ function fillRect(
 {
   assert(fourCutHoleFractions("stack4").length === 4, "stack4 has 4 holes");
   assert(fourCutHoleFractions("grid2x2").length === 4, "grid2x2 has 4 holes");
+  const canon = canonicalFourCutWindows("stack4", 100, 200);
+  assert(canon.length === 4, "canonical stack windows");
+  assert(Math.abs(canon[0].x - fourCutHoleFractions("stack4")[0].x * 100) < 1e-6, "canonical x from fractions");
   assert(getListedFourCutSkins("stack4").length >= 3, "listed stack skins");
   assert(getListedFourCutSkins("grid2x2").length >= 3, "listed grid skins");
   assert(getFourCutSkin("fourcut.stack.white")?.layout === "stack4", "white stack skin");
+  assert(getFourCutSkin("fourcut.stack.white")?.kind === "booth", "white is booth theme");
+  assert(getFourCutSkin("fourcut.stack.black")?.kind === "film", "black is film theme");
+  assert(getFourCutSkin("fourcut.stack.cream")?.kind === "paper", "cream is paper theme");
+  assert(getFourCutSkin("fourcut.stack.pink")?.kind === "gingham", "pink is gingham theme");
+  assert(getFourCutSkin("fourcut.stack.sky")?.kind === "dots", "sky is dots theme");
+  assert(getFourCutSkin("fourcut.grid.white")?.kind === "booth", "grid white is booth theme");
+  assert(Boolean(getFourCutSkin("fourcut.stack.pink")?.pattern), "pink has pattern");
   assert(!getFourCutSkin("nope"), "unknown skin is undefined");
 }
 
