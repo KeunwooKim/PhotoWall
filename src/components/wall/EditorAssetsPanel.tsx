@@ -18,6 +18,9 @@ interface EditorAssetsPanelProps {
   selectedPhotoId?: string | null;
   activeFrameId?: string | null;
   onApplyFrame?: (frameId: string) => void;
+  fourCutLayout?: "stack4" | "grid2x2" | null;
+  activeFourCutSkinId?: string | null;
+  onApplyFourCutSkin?: (skinId: string | null) => void;
   /** Where QR / scan should return (personal edit or shared editor). */
   returnTo?: string;
   /** docked = desktop column beside tool rail; drawer = mobile slide-over */
@@ -35,6 +38,9 @@ export default function EditorAssetsPanel({
   selectedPhotoId = null,
   activeFrameId = null,
   onApplyFrame,
+  fourCutLayout = null,
+  activeFourCutSkinId = null,
+  onApplyFourCutSkin,
   returnTo = "/wall/edit",
   variant = "docked",
 }: EditorAssetsPanelProps) {
@@ -146,6 +152,9 @@ export default function EditorAssetsPanel({
           <PhotoDecorPickers
             onApplyFrame={onApplyFrame}
             activeFrameId={selectedPhotoId ? activeFrameId : null}
+            fourCutLayout={selectedPhotoId ? fourCutLayout : null}
+            activeSkinId={selectedPhotoId ? activeFourCutSkinId : null}
+            onApplyFourCutSkin={onApplyFourCutSkin}
           />
         )}
       </div>

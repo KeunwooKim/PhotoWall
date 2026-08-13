@@ -6,14 +6,21 @@ import { isGuestPhotoRef } from "@/lib/storage/guest-photo-refs";
 import { isWallPhotoRef } from "@/lib/storage/wall-photos";
 import { randomHomePlacementPosition } from "@/lib/wall-scene/wall-home-placement";
 import { photoPlacementSize } from "@/lib/wall-scene/photo-placement";
+import { detectFourCutFromImage } from "@/lib/four-cut/detect";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
 import type { UserPlan } from "@/lib/wall-quotas";
 
-async function loadImageSize(src: string): Promise<{ width: number; height: number }> {
+async function loadImageSize(src: string): Promise<{
+  width: number;
+  height: number;
+  image: HTMLImageElement;
+}> {
   const img = await loadHtmlImage(src);
-  return { width: img.naturalWidth, height: img.naturalHeight };
+  return { width: img.naturalWidth, height: img.naturalHeight, image: img };
 }
+
+export type AddPhotoToWallResult = { fourCut: boolean };
 
 export async function addPhotoToWallScene(
   file: File,
@@ -25,7 +32,7 @@ export async function addPhotoToWallScene(
     position?: { x: number; y: number };
     plan?: UserPlan;
   },
-): Promise<void> {
+): Promise<AddPhotoToWallResult> {
   const plan = options.plan ?? "free";
   const ref = await resolvePhotoUrl(file, options.userId, plan);
 
@@ -38,7 +45,7 @@ export async function addPhotoToWallScene(
       ? await resolveWallPhotoSrc(ref, options.wallId)
       : ref;
 
-  const { width: naturalW, height: naturalH } = await loadImageSize(displaySrc);
+  const { width: naturalW, height: naturalH, image } = await loadImageSize(displaySrc);
   const { width, height } = photoPlacementSize(naturalW, naturalH, options.wallWidth);
 
   const fallback = randomHomePlacementPosition(options.wallWidth, options.wallHeight);
@@ -48,6 +55,7 @@ export async function addPhotoToWallScene(
   const objects = useWallSceneStore.getState().document.objects;
   const maxZ = objects.reduce((max, o) => Math.max(max, o.zIndex), 0);
 
+  let fourCut = false;
   const photo: WallScenePhoto = {
     id: crypto.randomUUID(),
     type: "photo",
@@ -62,8 +70,19 @@ export async function addPhotoToWallScene(
     height,
   };
 
+  try {
+    const detected = detectFourCutFromImage(image);
+    if (detected) {
+      photo.fourCut = detected;
+      fourCut = true;
+    }
+  } catch {
+    // Keep as a normal photo.
+  }
+
   useWallSceneStore.getState().recordHistory();
   useWallSceneStore.getState().upsertObject(photo);
   useWallSceneStore.getState().setSelectedIds([photo.id]);
   useWallSceneStore.getState().bumpRevision();
+  return { fourCut };
 }

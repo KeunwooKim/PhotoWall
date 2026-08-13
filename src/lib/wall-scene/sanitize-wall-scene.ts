@@ -14,6 +14,7 @@ import { computeOmniWallGrowFromContent } from "@/lib/wall-scene/wall-omni-expan
 import { memorySafeWallMax } from "@/lib/wall-device";
 import { clampWallTextContent } from "@/lib/wall-scene/text-content";
 import { sanitizePhotoDecorFields } from "@/lib/photo-frames/sanitize";
+import { sanitizeFourCutFields } from "@/lib/four-cut/sanitize";
 import type { WallSceneDocument, WallSceneObject } from "@/types/wall-scene-v2";
 
 function finiteOr(value: number, fallback: number): number {
@@ -47,7 +48,7 @@ function sanitizeObjectNumbers(object: WallSceneObject): WallSceneObject {
     next.text = clampWallTextContent(next.text);
   }
 
-  return sanitizePhotoDecorFields(next);
+  return sanitizeFourCutFields(sanitizePhotoDecorFields(next));
 }
 
 function scaleObjectToWall(

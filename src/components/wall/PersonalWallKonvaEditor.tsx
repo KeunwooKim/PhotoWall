@@ -37,6 +37,7 @@ import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
 import {
   applyPhotoFrame,
 } from "@/lib/photo-frames";
+import { applyFourCutSkin } from "@/lib/four-cut";
 import {
   countSelectedQuotaObjects,
   getClipboardQuotaObjectCount,
@@ -1044,13 +1045,16 @@ export default function PersonalWallKonvaEditor() {
         return;
       }
       try {
-        await addPhotoToWallScene(file, {
+        const added = await addPhotoToWallScene(file, {
           userId: user?.id,
           wallId,
           wallWidth: wallBounds.width,
           wallHeight: wallBounds.height,
           plan: wallPlan,
         });
+        if (added.fourCut) {
+          showToast("인생네컷으로 보여요. 테두리를 바꿔 보세요");
+        }
       } catch (err) {
         showToast(err instanceof Error ? err.message : "사진을 붙이지 못했어요");
       }
@@ -1081,6 +1085,18 @@ export default function PersonalWallKonvaEditor() {
       }
       const result = applyPhotoFrame(selectedPhoto.id, frameId);
       if (result !== "ok") showToast("프레임을 붙이지 못했어요");
+    },
+    [selectedPhoto, showToast],
+  );
+
+  const handleApplyFourCutSkin = useCallback(
+    (skinId: string | null) => {
+      if (!selectedPhoto) {
+        showToast("사진을 먼저 선택해 주세요");
+        return;
+      }
+      const result = applyFourCutSkin(selectedPhoto.id, skinId);
+      if (result !== "ok") showToast("네컷 테두리를 바꾸지 못했어요");
     },
     [selectedPhoto, showToast],
   );
@@ -1788,6 +1804,9 @@ export default function PersonalWallKonvaEditor() {
             selectedPhotoId={selectedPhoto?.id ?? null}
             activeFrameId={selectedPhoto?.frameId ?? null}
             onApplyFrame={handleApplyFrame}
+            fourCutLayout={selectedPhoto?.fourCut?.layout ?? null}
+            activeFourCutSkinId={selectedPhoto?.fourCut?.skinId ?? null}
+            onApplyFourCutSkin={handleApplyFourCutSkin}
             returnTo="/wall/edit"
           />
         </div>
@@ -2062,6 +2081,9 @@ export default function PersonalWallKonvaEditor() {
         selectedPhotoId={selectedPhoto?.id ?? null}
         activeFrameId={selectedPhoto?.frameId ?? null}
         onApplyFrame={handleApplyFrame}
+        fourCutLayout={selectedPhoto?.fourCut?.layout ?? null}
+        activeFourCutSkinId={selectedPhoto?.fourCut?.skinId ?? null}
+        onApplyFourCutSkin={handleApplyFourCutSkin}
         returnTo="/wall/edit"
       />
     </div>

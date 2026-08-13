@@ -25,6 +25,7 @@ import {
   getPhotoFrameInset,
   getPhotoFrameOuterSize,
 } from "@/lib/photo-frames";
+import { coverBlitRects, fourCutHolesInPhoto, getFourCutSkin } from "@/lib/four-cut";
 
 interface WallPhotoNodeProps {
   object: WallScenePhoto;
@@ -186,6 +187,14 @@ export default function WallPhotoNode({
   const outer = getPhotoFrameOuterSize(object);
   const sprockets = frame?.id === "frame.film" ? filmSprocketRects(object, inset) : [];
   const patternCanvas = frame?.pattern ? getFramePatternCanvas(frame) : null;
+  const fourCutSkin = getFourCutSkin(object.fourCut?.skinId);
+  const fourCutHoles = fourCutHolesInPhoto(object);
+  const fourCutBlits =
+    object.fourCut && fourCutHoles
+      ? fourCutHoles.map((dest, index) =>
+          coverBlitRects(object.fourCut!.windows[index], dest),
+        )
+      : [];
 
   return (
     <Group
@@ -223,7 +232,16 @@ export default function WallPhotoNode({
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
     >
-      {frame && (inset.left || inset.top || inset.right || inset.bottom) ? (
+      {fourCutSkin ? (
+        <Rect
+          x={0}
+          y={0}
+          width={object.width}
+          height={object.height}
+          fill={fourCutSkin.fill}
+          listening
+        />
+      ) : frame && (inset.left || inset.top || inset.right || inset.bottom) ? (
         <Rect
           x={outer.offsetX}
           y={outer.offsetY}
@@ -235,7 +253,7 @@ export default function WallPhotoNode({
           listening
         />
       ) : null}
-      {sprockets.map((hole, index) => (
+      {fourCutSkin ? null : sprockets.map((hole, index) => (
         <Rect
           key={`sprocket-${index}`}
           x={hole.x}
@@ -246,7 +264,22 @@ export default function WallPhotoNode({
           listening={false}
         />
       ))}
-      {shownImage ? (
+      {fourCutSkin && shownImage
+        ? fourCutBlits.map((blit, index) => (
+            <KonvaImage
+              key={`fourcut-${index}`}
+              image={shownImage}
+              x={blit.dx}
+              y={blit.dy}
+              width={blit.dw}
+              height={blit.dh}
+              crop={{ x: blit.sx, y: blit.sy, width: blit.sw, height: blit.sh }}
+              imageSmoothingEnabled
+              perfectDrawEnabled={false}
+              shadowForStrokeEnabled={false}
+            />
+          ))
+        : shownImage && !fourCutSkin ? (
         <KonvaImage
           image={shownImage}
           width={object.width}
@@ -257,10 +290,16 @@ export default function WallPhotoNode({
           shadowForStrokeEnabled={false}
         />
       ) : null}
-      {frame?.kind === "slice9" && frame.src && frame.slice9 ? (
+      {fourCutSkin?.src ? (
+        <PhotoOverlayImage
+          src={fourCutSkin.src}
+          outer={{ offsetX: 0, offsetY: 0, width: object.width, height: object.height }}
+        />
+      ) : null}
+      {fourCutSkin ? null : frame?.kind === "slice9" && frame.src && frame.slice9 ? (
         <PhotoSlice9Overlay src={frame.src} outer={outer} slice={frame.slice9} />
       ) : null}
-      {frame?.kind === "overlay" && frame.src ? (
+      {fourCutSkin ? null : frame?.kind === "overlay" && frame.src ? (
         <PhotoOverlayImage src={frame.src} outer={outer} />
       ) : null}
     </Group>

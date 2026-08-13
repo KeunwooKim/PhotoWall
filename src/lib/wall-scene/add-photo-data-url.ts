@@ -4,8 +4,10 @@ import { dataUrlToBlob, putGuestPhoto } from "@/lib/storage/guest-photos";
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
 import { randomHomePlacementPosition } from "@/lib/wall-scene/wall-home-placement";
 import { photoPlacementSize } from "@/lib/wall-scene/photo-placement";
+import { detectFourCutFromImage } from "@/lib/four-cut/detect";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
+import type { AddPhotoToWallResult } from "@/lib/wall-scene/add-photo";
 
 export async function addPhotoDataUrlToWallScene(
   dataUrl: string,
@@ -14,7 +16,7 @@ export async function addPhotoDataUrlToWallScene(
     wallHeight: number;
     position?: { x: number; y: number };
   },
-): Promise<void> {
+): Promise<AddPhotoToWallResult> {
   const blob = dataUrlToBlob(dataUrl);
   let src = dataUrl;
   let displaySrc = dataUrl;
@@ -30,10 +32,9 @@ export async function addPhotoDataUrlToWallScene(
     }
   }
 
-  const { width: naturalW, height: naturalH } = await loadHtmlImage(displaySrc).then((img) => ({
-    width: img.naturalWidth,
-    height: img.naturalHeight,
-  }));
+  const image = await loadHtmlImage(displaySrc);
+  const naturalW = image.naturalWidth;
+  const naturalH = image.naturalHeight;
 
   const { width, height } = photoPlacementSize(naturalW, naturalH, options.wallWidth);
 
@@ -58,8 +59,16 @@ export async function addPhotoDataUrlToWallScene(
     height,
   };
 
+  try {
+    const detected = detectFourCutFromImage(image);
+    if (detected) photo.fourCut = detected;
+  } catch {
+    // Keep as a normal photo.
+  }
+
   useWallSceneStore.getState().recordHistory();
   useWallSceneStore.getState().upsertObject(photo);
   useWallSceneStore.getState().setSelectedIds([photo.id]);
   useWallSceneStore.getState().bumpRevision();
+  return { fourCut: !!photo.fourCut };
 }

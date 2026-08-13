@@ -66,6 +66,17 @@ export interface PhotoCropRect {
   height: number;
 }
 
+/** Vertical 4-stack (인생네컷) or 2×2 booth print. */
+export type FourCutLayout = "stack4" | "grid2x2";
+
+export interface WallSceneFourCut {
+  layout: FourCutLayout;
+  /** Source-pixel windows. stack4: top→bottom. grid2x2: TL→TR→BL→BR. */
+  windows: [PhotoCropRect, PhotoCropRect, PhotoCropRect, PhotoCropRect];
+  /** Catalog skin. Absent/null keeps the original bitmap chrome. */
+  skinId?: string | null;
+}
+
 export interface WallScenePhoto extends WallSceneObjectBase {
   type: "photo";
   /** wall-photo://path, https signed URL, or data: URL */
@@ -78,6 +89,8 @@ export interface WallScenePhoto extends WallSceneObjectBase {
   source?: "guestbook";
   /** Catalog id from photo-frames (one per photo). */
   frameId?: string;
+  /** Detected 네컷 strip — windows stay on the original src. */
+  fourCut?: WallSceneFourCut;
 }
 
 export interface WallSceneEmoji extends WallSceneObjectBase {

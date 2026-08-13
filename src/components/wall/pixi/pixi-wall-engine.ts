@@ -45,6 +45,7 @@ import {
   getPhotoFrameOuterSize,
   getPhotoTransformerBox,
 } from "@/lib/photo-frames";
+import { coverBlitRects, fourCutHolesInPhoto, getFourCutSkin } from "@/lib/four-cut";
 import { getPenStyle, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import {
   HIGHLIGHTER_OPACITY,
@@ -754,6 +755,8 @@ export class PixiWallEngine {
   }
 
   private async buildPhoto(root: Container, object: WallScenePhoto): Promise<void> {
+    if (await this.buildFourCutSkinnedPhoto(root, object)) return;
+
     const frame = getPhotoFrame(object.frameId);
     const inset = getPhotoFrameInset(object);
     const outer = getPhotoFrameOuterSize(object);
@@ -854,6 +857,69 @@ export class PixiWallEngine {
         root.addChild(sprite);
       }
     }
+  }
+
+  private async buildFourCutSkinnedPhoto(
+    root: Container,
+    object: WallScenePhoto,
+  ): Promise<boolean> {
+    const fourCut = object.fourCut;
+    const skin = getFourCutSkin(fourCut?.skinId);
+    const dests = fourCutHolesInPhoto(object);
+    if (!fourCut || !skin || !dests) return false;
+
+    const matte = new Graphics()
+      .rect(0, 0, object.width, object.height)
+      .fill({ color: cssHexToNumber(skin.fill) });
+    root.addChild(matte);
+
+    const resolved = await this.resolveSrc(object.src);
+    const texture = await this.textureFor(object.src);
+    const meta = this.textureMeta.get(resolved);
+    const sx = meta ? meta.displayWidth / Math.max(1, meta.naturalWidth) : 1;
+    const sy = meta ? meta.displayHeight / Math.max(1, meta.naturalHeight) : 1;
+
+    for (let i = 0; i < 4; i++) {
+      const dest = dests[i];
+      if (!texture) {
+        const placeholder = new Graphics()
+          .rect(dest.x, dest.y, dest.width, dest.height)
+          .fill({ color: 0xcccccc, alpha: 0.5 });
+        root.addChild(placeholder);
+        continue;
+      }
+      const blit = coverBlitRects(fourCut.windows[i], dest);
+      const cropFrame = new Rectangle(
+        Math.max(0, blit.sx * sx),
+        Math.max(0, blit.sy * sy),
+        Math.max(1, blit.sw * sx),
+        Math.max(1, blit.sh * sy),
+      );
+      cropFrame.width = Math.min(cropFrame.width, Math.max(1, texture.width - cropFrame.x));
+      cropFrame.height = Math.min(cropFrame.height, Math.max(1, texture.height - cropFrame.y));
+      const piece = new Texture({
+        source: texture.source,
+        frame: cropFrame,
+        dynamic: true,
+      });
+      const sprite = new Sprite(piece);
+      sprite.x = blit.dx;
+      sprite.y = blit.dy;
+      sprite.width = blit.dw;
+      sprite.height = blit.dh;
+      root.addChild(sprite);
+    }
+
+    if (skin.src) {
+      const overlay = await this.textureFor(skin.src);
+      if (overlay) {
+        const sprite = new Sprite(overlay);
+        sprite.width = object.width;
+        sprite.height = object.height;
+        root.addChild(sprite);
+      }
+    }
+    return true;
   }
 
   private async buildSticker(root: Container, object: WallSceneSticker): Promise<void> {

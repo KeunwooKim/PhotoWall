@@ -24,6 +24,9 @@ export function applyPhotoFrame(photoId: string, frameId: string | null): ApplyP
   const next: WallScenePhoto = { ...photo };
   if (frameId) next.frameId = frameId;
   else delete next.frameId;
+  if (frameId && next.fourCut?.skinId) {
+    next.fourCut = { ...next.fourCut, skinId: null };
+  }
   commitPhoto(next);
   return "ok";
 }
