@@ -17,9 +17,7 @@ interface EditorAssetsPanelProps {
   onAddSticker: (stickerId: string) => void;
   selectedPhotoId?: string | null;
   activeFrameId?: string | null;
-  activeDecoId?: string | null;
   onApplyFrame?: (frameId: string) => void;
-  onApplyDeco?: (decoId: string) => void;
   /** Where QR / scan should return (personal edit or shared editor). */
   returnTo?: string;
   /** docked = desktop column beside tool rail; drawer = mobile slide-over */
@@ -36,9 +34,7 @@ export default function EditorAssetsPanel({
   onAddSticker,
   selectedPhotoId = null,
   activeFrameId = null,
-  activeDecoId = null,
   onApplyFrame,
-  onApplyDeco,
   returnTo = "/wall/edit",
   variant = "docked",
 }: EditorAssetsPanelProps) {
@@ -146,12 +142,10 @@ export default function EditorAssetsPanel({
           <StickerPicker onSelect={onAddSticker} />
         </section>
 
-        {onApplyFrame && onApplyDeco && (
+        {onApplyFrame && (
           <PhotoDecorPickers
             onApplyFrame={onApplyFrame}
-            onApplyDeco={onApplyDeco}
             activeFrameId={selectedPhotoId ? activeFrameId : null}
-            activeDecoId={selectedPhotoId ? activeDecoId : null}
           />
         )}
       </div>

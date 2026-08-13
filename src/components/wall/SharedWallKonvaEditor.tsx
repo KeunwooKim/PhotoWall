@@ -29,7 +29,6 @@ import { addPhotoDataUrlToWallScene } from "@/lib/wall-scene/add-photo-data-url"
 import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
 import {
-  applyPhotoDeco,
   applyPhotoFrame,
 } from "@/lib/photo-frames";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
@@ -987,18 +986,6 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     [selectedPhoto, showToast],
   );
 
-  const handleApplyDeco = useCallback(
-    (decoId: string) => {
-      if (!selectedPhoto) {
-        showToast("사진을 먼저 선택해 주세요");
-        return;
-      }
-      const result = applyPhotoDeco(selectedPhoto.id, decoId);
-      if (result !== "ok") showToast("테두리를 붙이지 못했어요");
-    },
-    [selectedPhoto, showToast],
-  );
-
   const handleThemeChange = useCallback(
     (next: WallThemeId) => {
       setThemeId(next);
@@ -1387,9 +1374,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onAddSticker={handleAddSticker}
             selectedPhotoId={selectedPhoto?.id ?? null}
             activeFrameId={selectedPhoto?.frameId ?? null}
-            activeDecoId={selectedPhoto?.decoId ?? null}
             onApplyFrame={handleApplyFrame}
-            onApplyDeco={handleApplyDeco}
             returnTo={`/shared/${sharedId}`}
           />
         </div>
@@ -1662,9 +1647,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onAddSticker={handleAddSticker}
         selectedPhotoId={selectedPhoto?.id ?? null}
         activeFrameId={selectedPhoto?.frameId ?? null}
-        activeDecoId={selectedPhoto?.decoId ?? null}
         onApplyFrame={handleApplyFrame}
-        onApplyDeco={handleApplyDeco}
         returnTo={`/shared/${sharedId}`}
       />
     </div>

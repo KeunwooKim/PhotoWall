@@ -31,7 +31,6 @@ import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
 import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
 import {
-  applyPhotoDeco,
   applyPhotoFrame,
 } from "@/lib/photo-frames";
 import {
@@ -1003,18 +1002,6 @@ export default function PersonalWallKonvaEditor() {
     [selectedPhoto, showToast],
   );
 
-  const handleApplyDeco = useCallback(
-    (decoId: string) => {
-      if (!selectedPhoto) {
-        showToast("사진을 먼저 선택해 주세요");
-        return;
-      }
-      const result = applyPhotoDeco(selectedPhoto.id, decoId);
-      if (result !== "ok") showToast("테두리를 붙이지 못했어요");
-    },
-    [selectedPhoto, showToast],
-  );
-
   const handleDelete = useCallback(() => {
     if (selectedIds.length === 0) return;
     useWallSceneStore.getState().removeSelectedObjects();
@@ -1718,9 +1705,7 @@ export default function PersonalWallKonvaEditor() {
             onAddSticker={handleAddSticker}
             selectedPhotoId={selectedPhoto?.id ?? null}
             activeFrameId={selectedPhoto?.frameId ?? null}
-            activeDecoId={selectedPhoto?.decoId ?? null}
             onApplyFrame={handleApplyFrame}
-            onApplyDeco={handleApplyDeco}
             returnTo="/wall/edit"
           />
         </div>
@@ -1994,9 +1979,7 @@ export default function PersonalWallKonvaEditor() {
         onAddSticker={handleAddSticker}
         selectedPhotoId={selectedPhoto?.id ?? null}
         activeFrameId={selectedPhoto?.frameId ?? null}
-        activeDecoId={selectedPhoto?.decoId ?? null}
         onApplyFrame={handleApplyFrame}
-        onApplyDeco={handleApplyDeco}
         returnTo="/wall/edit"
       />
     </div>

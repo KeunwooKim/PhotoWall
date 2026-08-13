@@ -85,8 +85,6 @@ export type WallObjectPatch = Partial<
   fontSize?: number;
   /** Photo frame catalog id. null clears. */
   frameId?: string | null;
-  /** Photo border-deco catalog id. null clears. */
-  decoId?: string | null;
 };
 
 type SyncPayload =

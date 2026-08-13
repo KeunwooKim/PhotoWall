@@ -78,8 +78,6 @@ export interface WallScenePhoto extends WallSceneObjectBase {
   source?: "guestbook";
   /** Catalog id from photo-frames (one per photo). */
   frameId?: string;
-  /** Catalog id from photo-decos — themed border set (one per photo). */
-  decoId?: string;
 }
 
 export interface WallSceneEmoji extends WallSceneObjectBase {

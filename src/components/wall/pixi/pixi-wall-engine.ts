@@ -45,11 +45,6 @@ import {
   getPhotoFrameOuterSize,
   getPhotoTransformerBox,
 } from "@/lib/photo-frames";
-import {
-  getPhotoDeco,
-  getPhotoDecoCanvas,
-  getPhotoDecoOuterSize,
-} from "@/lib/photo-decos";
 import { getPenStyle, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import {
   HIGHLIGHTER_OPACITY,
@@ -859,27 +854,6 @@ export class PixiWallEngine {
         root.addChild(sprite);
       }
     }
-
-    await this.buildPhotoDeco(root, object);
-  }
-
-  private async buildPhotoDeco(root: Container, object: WallScenePhoto): Promise<void> {
-    const deco = getPhotoDeco(object.decoId);
-    if (!deco) return;
-    const box = getPhotoDecoOuterSize(object);
-    let texture: Texture | null = null;
-    if (deco.src) texture = await this.textureFor(deco.src);
-    if (!texture) {
-      const canvas = getPhotoDecoCanvas(object);
-      if (canvas) texture = Texture.from(canvas);
-    }
-    if (!texture) return;
-    const sprite = new Sprite(texture);
-    sprite.x = box.offsetX;
-    sprite.y = box.offsetY;
-    sprite.width = box.width;
-    sprite.height = box.height;
-    root.addChild(sprite);
   }
 
   private async buildSticker(root: Container, object: WallSceneSticker): Promise<void> {

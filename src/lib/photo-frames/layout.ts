@@ -1,5 +1,4 @@
 import type { WallScenePhoto } from "@/types/wall-scene-v2";
-import { getPhotoDecoOuterSize } from "@/lib/photo-decos/layout";
 import { getPhotoFrame } from "./catalog";
 
 export interface PhotoFrameInsetPx {
@@ -30,14 +29,6 @@ export function getPhotoFrameInset(photo: WallScenePhoto): PhotoFrameInsetPx {
   };
 }
 
-export function unionPhotoOuter(a: PhotoOuterBox, b: PhotoOuterBox): PhotoOuterBox {
-  const minX = Math.min(a.offsetX, b.offsetX);
-  const minY = Math.min(a.offsetY, b.offsetY);
-  const maxX = Math.max(a.offsetX + a.width, b.offsetX + b.width);
-  const maxY = Math.max(a.offsetY + a.height, b.offsetY + b.height);
-  return { offsetX: minX, offsetY: minY, width: maxX - minX, height: maxY - minY };
-}
-
 export function getPhotoFrameOuterSize(photo: WallScenePhoto): PhotoOuterBox {
   const inset = getPhotoFrameInset(photo);
   return {
@@ -48,9 +39,9 @@ export function getPhotoFrameOuterSize(photo: WallScenePhoto): PhotoOuterBox {
   };
 }
 
-/** Frame inset ∪ deco hang — hitbox / transformer / culling. */
+/** Hitbox / transformer / culling (frame inset). */
 export function getPhotoVisualOuterSize(photo: WallScenePhoto): PhotoOuterBox {
-  return unionPhotoOuter(getPhotoFrameOuterSize(photo), getPhotoDecoOuterSize(photo));
+  return getPhotoFrameOuterSize(photo);
 }
 
 export function getPhotoTransformerBox(

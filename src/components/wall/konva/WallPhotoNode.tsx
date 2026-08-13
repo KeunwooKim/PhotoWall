@@ -25,11 +25,6 @@ import {
   getPhotoFrameInset,
   getPhotoFrameOuterSize,
 } from "@/lib/photo-frames";
-import {
-  getPhotoDeco,
-  getPhotoDecoCanvas,
-  getPhotoDecoOuterSize,
-} from "@/lib/photo-decos";
 
 interface WallPhotoNodeProps {
   object: WallScenePhoto;
@@ -268,7 +263,6 @@ export default function WallPhotoNode({
       {frame?.kind === "overlay" && frame.src ? (
         <PhotoOverlayImage src={frame.src} outer={outer} />
       ) : null}
-      {object.decoId ? <PhotoDecoOverlay photo={object} /> : null}
     </Group>
   );
 }
@@ -352,26 +346,6 @@ function PhotoOverlayImage({
       y={outer.offsetY}
       width={outer.width}
       height={outer.height}
-      listening
-      perfectDrawEnabled={false}
-    />
-  );
-}
-
-function PhotoDecoOverlay({ photo }: { photo: WallScenePhoto }) {
-  const deco = getPhotoDeco(photo.decoId);
-  const overlayImage = useHtmlImage(deco?.src);
-  const box = getPhotoDecoOuterSize(photo);
-  const canvas = useMemo(() => (overlayImage ? null : getPhotoDecoCanvas(photo)), [overlayImage, photo]);
-  const image = overlayImage ?? canvas;
-  if (!image) return null;
-  return (
-    <KonvaImage
-      image={image}
-      x={box.offsetX}
-      y={box.offsetY}
-      width={box.width}
-      height={box.height}
       listening
       perfectDrawEnabled={false}
     />
