@@ -27,7 +27,7 @@ export interface WallSceneMeta {
    */
   wallpaperOffset?: { x: number; y: number };
   /**
-   * @deprecated Center-origin walls use a fixed home frame at DEFAULT_WALL_BOUNDS.
+   * @deprecated Center-origin walls use a fixed home frame at DEFAULT_WALL_BOUNDS (2×3).
    * Kept for migrate-on-load of legacy scenes.
    */
   homeOrigin?: { x: number; y: number };
@@ -36,6 +36,11 @@ export interface WallSceneMeta {
    * Shared via realtime + persist so all collaborators share the same lock.
    */
   wallSizeLocked?: boolean;
+  /**
+   * When true, empty wall edges may reclaim after drag-end (not during drag).
+   * Default off — expand-only until enabled in wall settings.
+   */
+  wallShrinkEnabled?: boolean;
 }
 
 export interface WallSceneObjectBase {
@@ -61,6 +66,18 @@ export interface PhotoCropRect {
   height: number;
 }
 
+export type PhotoDecoSlot = "tl" | "tr" | "bl" | "br";
+
+/** Corner sticker bound to a photo (moves/resizes with it). */
+export interface PhotoDecoration {
+  stickerId: string;
+  slot: PhotoDecoSlot;
+  /** Extra nudge in photo-local px */
+  dx?: number;
+  dy?: number;
+  scale?: number;
+}
+
 export interface WallScenePhoto extends WallSceneObjectBase {
   type: "photo";
   /** wall-photo://path, https signed URL, or data: URL */
@@ -71,6 +88,10 @@ export interface WallScenePhoto extends WallSceneObjectBase {
   crop?: PhotoCropRect;
   /** Set when posted via guestbook API — used for admin scrub */
   source?: "guestbook";
+  /** Catalog id from photo-frames (one per photo). */
+  frameId?: string;
+  /** Corner decorations; one per slot. */
+  decorations?: PhotoDecoration[];
 }
 
 export interface WallSceneEmoji extends WallSceneObjectBase {

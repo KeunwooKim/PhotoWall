@@ -31,6 +31,11 @@ import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
 import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
 import {
+  applyPhotoDecoration,
+  applyPhotoFrame,
+} from "@/lib/photo-frames";
+import type { PhotoDecoSlot } from "@/types/wall-scene-v2";
+import {
   countSelectedQuotaObjects,
   getClipboardQuotaObjectCount,
 } from "@/lib/wall-scene/clipboard-objects";
@@ -39,7 +44,7 @@ import {
   countOutsideObjectsOnWall,
 } from "@/lib/wall-scene/bring-objects-onto-wall";
 import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
-import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
+import { fingerprintPersistableScene, fingerprintSceneObjects } from "@/lib/wall-scene/scene-fingerprint";
 import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
 import { registerWallSizeLockBlockedHandler } from "@/lib/wall-scene/wall-size-lock";
 import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
@@ -185,6 +190,7 @@ export default function PersonalWallKonvaEditor() {
     if (selectedIds.length !== 1 || editingTextId) return null;
     return sceneObjects.find((o) => o.id === selectedIds[0]) ?? null;
   }, [editingTextId, selectedIds, sceneObjects]);
+  const selectedPhoto = inspectorObject?.type === "photo" ? inspectorObject : null;
 
   const {
     cropPhotoId,
@@ -350,21 +356,29 @@ export default function PersonalWallKonvaEditor() {
 
   const autoSave = useMemo(
     () =>
-      debounce((json: object, fingerprint: string) => {
+      debounce((_json: object, fingerprint: string) => {
         if (!persistEnabledRef.current) return;
         if (!isEditorRef.current) return;
+
+        // Drop schedules from before cloud sync / conflict adopt — they still
+        // hold a stale scene snapshot and would overwrite newer cloud state.
+        const liveDoc = useWallSceneStore.getState().document;
+        const liveFp = fingerprintPersistableScene(liveDoc);
+        if (fingerprint !== liveFp) return;
+        if (liveFp === lastSavedFingerprintRef.current) return;
+
+        const json = serializeWallScene(liveDoc);
         persistLocal(json);
         markPreviewDirty();
 
         if (!userRef.current) {
-          lastSavedFingerprintRef.current = fingerprint;
+          lastSavedFingerprintRef.current = liveFp;
           return;
         }
 
         // Never autosave an empty scene to cloud — refresh race used to wipe DB
         // while storage photos still existed. Explicit clear/save can still wipe.
-        const objectCount = useWallSceneStore.getState().document.objects.length;
-        if (objectCount === 0) return;
+        if (liveDoc.objects.length === 0) return;
 
         if (cloudSaveInFlightRef.current) {
           pendingCloudSaveRef.current = true;
@@ -648,8 +662,11 @@ export default function PersonalWallKonvaEditor() {
       const localCount = localDoc?.objects.length ?? 0;
 
       if (cloud) {
-        const cloudDoc = parseWallScene(cloud.canvasJson);
+        const cloudRaw = parseWallScene(cloud.canvasJson, { sanitize: false });
+        const cloudDoc = sanitizeWallScene(cloudRaw);
         const cloudCount = cloudDoc.objects.length;
+        const cloudExpanded =
+          fingerprintPersistableScene(cloudRaw) !== fingerprintPersistableScene(cloudDoc);
 
         // Empty cloud must not wipe a non-empty local wall (refresh / race heal)
         if (cloudCount === 0 && localCount > 0 && local && localDoc) {
@@ -683,20 +700,21 @@ export default function PersonalWallKonvaEditor() {
           return;
         }
 
-        // Prefer newer local when both have content
+        // Push local when it is revision-ahead, or same revision with different
+        // objects (offline edits — scene revision often stays put until a cloud
+        // save returns). Same revision + same objects but newer localStorage
+        // updatedAt must NOT win: sanitize/autosave refresh that timestamp and
+        // used to overwrite the cloud wall.
         if (local && localDoc && localCount > 0 && cloudCount > 0) {
           const localRev = localDoc.meta.revision ?? 0;
           const cloudRev = cloudDoc.meta.revision ?? 0;
-          const localTime = Date.parse(local.updatedAt);
-          const cloudTime = Date.parse(cloud.updatedAt);
-          const localNewer =
-            localRev > cloudRev ||
-            (localRev === cloudRev &&
-              !Number.isNaN(localTime) &&
-              !Number.isNaN(cloudTime) &&
-              localTime > cloudTime + 1000);
+          const localObjectsDiffer =
+            fingerprintSceneObjects(localDoc.objects) !==
+            fingerprintSceneObjects(cloudDoc.objects);
+          const localAhead =
+            localRev > cloudRev || (localRev === cloudRev && localObjectsDiffer);
 
-          if (localNewer) {
+          if (localAhead) {
             const json = serializeWallScene(localDoc);
             const saved = await saveWallToCloud(
               local.themeId,
@@ -705,6 +723,13 @@ export default function PersonalWallKonvaEditor() {
               cloudRev,
               user.id,
             );
+            if (saved.conflictWall) {
+              adoptConflictWall(
+                saved.conflictWall,
+                saved.message || "다른 기기에서 벽이 먼저 저장됐어요. 다시 불러왔어요.",
+              );
+              return;
+            }
             if (saved.migratedDocument) {
               useWallSceneStore.getState().loadDocument(saved.migratedDocument);
             }
@@ -723,28 +748,49 @@ export default function PersonalWallKonvaEditor() {
         }
 
         // Cloud wins (or revisions equal) — sync quietly when already showing this wall.
+        const cloudJson = serializeWallScene(cloudDoc);
         const cloudFp = fingerprintPersistableScene(cloudDoc);
         const storeFp = fingerprintPersistableScene(useWallSceneStore.getState().document);
         const localFp = localDoc ? fingerprintPersistableScene(localDoc) : null;
         const alreadySameContent = storeFp === cloudFp || localFp === cloudFp;
 
-        // Write local BEFORE adoptWallId so any concurrent reload sees cloud data
-        saveWall(cloud.themeId, cloud.canvasJson);
+        // Prefer sanitized (min 2×3) JSON so local + stage never re-shrink.
+        saveWall(cloud.themeId, cloudJson);
         adoptWallId(cloud.id);
         serverRevisionRef.current = cloudDoc.meta.revision ?? 0;
         setThemeId(resolveWallThemeId(cloud.themeId));
         await prefetchWallScenePhotoUrls(cloudDoc, cloud.id);
         lastSavedFingerprintRef.current = cloudFp;
 
+        if (cloudExpanded) {
+          // Persist the upsized wall so other devices keep the 2×3 floor.
+          void saveWallToCloud(
+            cloud.themeId,
+            cloudJson,
+            cloud.id,
+            cloudDoc.meta.revision ?? 0,
+            user.id,
+          ).then((saved) => {
+            if (saved.wall) {
+              adoptWallId(saved.wall.id);
+              serverRevisionRef.current = sceneRevisionFromJson(saved.wall.canvasJson);
+              lastSavedFingerprintRef.current = fingerprintPersistableScene(
+                parseWallScene(saved.wall.canvasJson),
+              );
+              saveWall(saved.wall.themeId, saved.wall.canvasJson);
+            }
+          });
+        }
+
         if (alreadySameContent) {
           // Refs/localStorage updated; skip remount toast spam on every login.
           if (storeFp !== cloudFp) {
-            setLoadedCanvasJson(cloud.canvasJson);
+            setLoadedCanvasJson(cloudJson);
           }
           return;
         }
 
-        setLoadedCanvasJson(cloud.canvasJson);
+        setLoadedCanvasJson(cloudJson);
         showToast("클라우드 벽을 불러왔어요");
         return;
       }
@@ -785,7 +831,7 @@ export default function PersonalWallKonvaEditor() {
       }
       persistEnabledRef.current = true;
     }
-  }, [user, showToast, adoptWallId]);
+  }, [user, showToast, adoptWallId, adoptConflictWall]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -801,6 +847,9 @@ export default function PersonalWallKonvaEditor() {
     syncedUserRef.current = user.id;
     cloudSyncDoneRef.current = false;
     persistEnabledRef.current = false;
+    // Cancel any debounce armed from the localStorage-first paint so it cannot
+    // POST an old scene after cloud sync finishes.
+    autoSaveCancelRef.current();
     setIsCloudSyncing(true);
     void syncCloudWall().finally(() => setIsCloudSyncing(false));
   }, [user, isReady, authLoading, syncCloudWall]);
@@ -941,6 +990,30 @@ export default function PersonalWallKonvaEditor() {
       if (!added) showToast("스티커를 붙이지 못했어요");
     },
     [wallBounds.width, wallBounds.height, showToast, guardAdd, limitMessage],
+  );
+
+  const handleApplyFrame = useCallback(
+    (frameId: string) => {
+      if (!selectedPhoto) {
+        showToast("사진을 먼저 선택해 주세요");
+        return;
+      }
+      const result = applyPhotoFrame(selectedPhoto.id, frameId);
+      if (result !== "ok") showToast("프레임을 붙이지 못했어요");
+    },
+    [selectedPhoto, showToast],
+  );
+
+  const handleApplyCorner = useCallback(
+    (stickerId: string, slot: PhotoDecoSlot) => {
+      if (!selectedPhoto) {
+        showToast("사진을 먼저 선택해 주세요");
+        return;
+      }
+      const result = applyPhotoDecoration(selectedPhoto.id, stickerId, slot);
+      if (result !== "ok") showToast("장식을 붙이지 못했어요");
+    },
+    [selectedPhoto, showToast],
   );
 
   const handleDelete = useCallback(() => {
@@ -1397,6 +1470,12 @@ export default function PersonalWallKonvaEditor() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!isEditorRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       const target = e.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
 
@@ -1507,12 +1586,45 @@ export default function PersonalWallKonvaEditor() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleCopy, handleCut, handleDelete, handleDuplicate, handleGroup, handlePaste, handleSelectAll, handleUngroup, mode, nudgeSelection, redo, selectedIds.length, undo]);
 
+  useEffect(() => {
+    if (isEditor) return;
+    setIsMenuOpen(false);
+    setIsAssetsOpen(false);
+    setEditingTextId(null);
+    useWallSceneStore.getState().clearSelection();
+  }, [isEditor]);
+
   if (!loadedCanvasJson) {
     return <WallLoadingOverlay title="내 벽 불러오는 중..." />;
   }
 
   return (
-    <div className={`flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-background ${wallTextFontVariables}`}>
+    <div className={`relative flex h-[100dvh] w-screen flex-col overflow-hidden overscroll-none bg-background ${wallTextFontVariables}`}>
+      {!isEditor && (
+        <div
+          className="absolute inset-0 z-[70] flex items-start justify-center bg-background/55 backdrop-blur-[3px]"
+          aria-modal="true"
+          role="dialog"
+          aria-label="다른 기기에서 편집 중"
+        >
+          <div
+            className="flex max-w-[min(92vw,420px)] items-center gap-2 rounded-full bg-foreground px-3 py-2 text-xs text-background shadow-lg sm:text-sm"
+            style={{
+              marginTop: "max(0.75rem, calc(env(safe-area-inset-top) + 3.25rem))",
+            }}
+          >
+            <span className="pl-1">다른 기기에서 편집 중이에요</span>
+            <button
+              type="button"
+              onClick={() => void handleReclaimEditor()}
+              className="shrink-0 rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground"
+            >
+              여기서 다시 편집
+            </button>
+          </div>
+        </div>
+      )}
+
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-50 px-3"
         style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
@@ -1605,6 +1717,10 @@ export default function PersonalWallKonvaEditor() {
             onThemeChange={handleThemeChange}
             onPhotoUpload={handlePhotoUpload}
             onAddSticker={handleAddSticker}
+            selectedPhotoId={selectedPhoto?.id ?? null}
+            activeFrameId={selectedPhoto?.frameId ?? null}
+            onApplyFrame={handleApplyFrame}
+            onApplyCorner={handleApplyCorner}
             returnTo="/wall/edit"
           />
         </div>
@@ -1670,20 +1786,7 @@ export default function PersonalWallKonvaEditor() {
             />
           )}
 
-          {!isEditor && (
-            <div className="absolute left-1/2 top-3 z-40 flex max-w-[min(92vw,420px)] -translate-x-1/2 items-center gap-2 rounded-full bg-foreground px-3 py-2 text-xs text-background shadow-lg sm:text-sm">
-              <span className="pl-1">다른 기기에서 편집 중이에요</span>
-              <button
-                type="button"
-                onClick={() => void handleReclaimEditor()}
-                className="shrink-0 rounded-full bg-background px-3 py-1 text-xs font-medium text-foreground"
-              >
-                여기서 다시 편집
-              </button>
-            </div>
-          )}
-
-          {editingTextObject && mode === "select" && (
+          {editingTextObject && mode === "select" && isEditor && (
             <div className="md:hidden">
               <TextStyleBar object={editingTextObject} onClose={() => setEditingTextId(null)} />
             </div>
@@ -1889,6 +1992,10 @@ export default function PersonalWallKonvaEditor() {
         onThemeChange={handleThemeChange}
         onPhotoUpload={handlePhotoUpload}
         onAddSticker={handleAddSticker}
+        selectedPhotoId={selectedPhoto?.id ?? null}
+        activeFrameId={selectedPhoto?.frameId ?? null}
+        onApplyFrame={handleApplyFrame}
+        onApplyCorner={handleApplyCorner}
         returnTo="/wall/edit"
       />
     </div>

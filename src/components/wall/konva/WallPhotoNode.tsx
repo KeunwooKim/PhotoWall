@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Group, Image as KonvaImage } from "react-konva";
+import { Group, Image as KonvaImage, Rect, Text as KonvaText } from "react-konva";
 import type Konva from "konva";
 import { getCachedHtmlImage, loadHtmlImage } from "@/lib/storage/load-html-image";
 import { createLivePatchBroadcaster } from "@/lib/wall-scene/realtime/live-object-patch";
 import type { WallObjectPatch } from "@/lib/wall-scene/realtime/wall-ydoc";
-import type { PhotoCropRect, WallScenePhoto } from "@/types/wall-scene-v2";
-import { useWallSceneStore } from "@/stores/wall-scene-store";
+import type { PhotoCropRect, PhotoDecoration, WallScenePhoto } from "@/types/wall-scene-v2";
 import { registerWallNode, setWallNodeDragging } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { wrapKonvaNode } from "@/lib/wall-scene/realtime/wrap-konva-node";
 import { applyDragSnapToNode, beginDragSnap, clearDragSnapGuides } from "@/lib/wall-scene/drag-snap";
@@ -18,6 +17,15 @@ import {
 } from "@/lib/wall-scene/group-drag";
 import { useResolvedImageSrc } from "./useResolvedImageSrc";
 import { useNodeContextTrigger } from "./useNodeContextTrigger";
+import { ensureStickersForIds, getStickerById } from "@/lib/stickers";
+import {
+  computeSlice9Rects,
+  filmSprocketRects,
+  getDecorationLocalBox,
+  getPhotoFrame,
+  getPhotoFrameInset,
+  getPhotoFrameOuterSize,
+} from "@/lib/photo-frames";
 
 interface WallPhotoNodeProps {
   object: WallScenePhoto;
@@ -174,6 +182,25 @@ export default function WallPhotoNode({
     };
   }, [object.crop, shownImage]);
 
+  const frame = getPhotoFrame(object.frameId);
+  const inset = getPhotoFrameInset(object);
+  const outer = getPhotoFrameOuterSize(object);
+  const sprockets = frame?.id === "frame.film" ? filmSprocketRects(object, inset) : [];
+
+  const [stickerEpoch, setStickerEpoch] = useState(0);
+
+  useEffect(() => {
+    const ids = (object.decorations ?? []).map((item) => item.stickerId);
+    if (!ids.length) return;
+    let cancelled = false;
+    void ensureStickersForIds(ids).then(() => {
+      if (!cancelled) setStickerEpoch((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [object.decorations]);
+
   return (
     <Group
       ref={attachGroupRef}
@@ -210,18 +237,149 @@ export default function WallPhotoNode({
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
     >
+      {frame && (inset.left || inset.top || inset.right || inset.bottom) ? (
+        <Rect
+          x={outer.offsetX}
+          y={outer.offsetY}
+          width={outer.width}
+          height={outer.height}
+          fill={frame.matteFill ?? "#ffffff"}
+          listening
+        />
+      ) : null}
+      {sprockets.map((hole, index) => (
+        <Rect
+          key={`sprocket-${index}`}
+          x={hole.x}
+          y={hole.y}
+          width={hole.width}
+          height={hole.height}
+          fill="#d4d4d4"
+          listening={false}
+        />
+      ))}
       {shownImage ? (
         <KonvaImage
           image={shownImage}
           width={object.width}
           height={object.height}
           crop={konvaCrop}
-          // Prefer smoother sampling when the stage pixelRatio is < 1 (memory cap).
           imageSmoothingEnabled
           perfectDrawEnabled={false}
           shadowForStrokeEnabled={false}
         />
       ) : null}
+      {frame?.kind === "slice9" && frame.src && frame.slice9 ? (
+        <PhotoSlice9Overlay src={frame.src} outer={outer} slice={frame.slice9} />
+      ) : null}
+      {(object.decorations ?? []).map((deco) => (
+        <PhotoCornerNode
+          key={`${deco.slot}-${deco.stickerId}-${stickerEpoch}`}
+          photo={object}
+          deco={deco}
+        />
+      ))}
     </Group>
+  );
+}
+
+function useHtmlImage(src: string | undefined): HTMLImageElement | null {
+  const [image, setImage] = useState<HTMLImageElement | null>(() =>
+    src ? getCachedHtmlImage(src) : null,
+  );
+  useEffect(() => {
+    if (!src) {
+      setImage(null);
+      return;
+    }
+    const cached = getCachedHtmlImage(src);
+    if (cached) {
+      setImage(cached);
+      return;
+    }
+    let cancelled = false;
+    void loadHtmlImage(src)
+      .then((img) => {
+        if (!cancelled) setImage(img);
+      })
+      .catch(() => {
+        if (!cancelled) setImage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+  return image;
+}
+
+function PhotoSlice9Overlay({
+  src,
+  outer,
+  slice,
+}: {
+  src: string;
+  outer: { offsetX: number; offsetY: number; width: number; height: number };
+  slice: { top: number; right: number; bottom: number; left: number };
+}) {
+  const image = useHtmlImage(src);
+  const rects = useMemo(() => {
+    if (!image) return [];
+    return computeSlice9Rects(image.naturalWidth, image.naturalHeight, outer, slice);
+  }, [image, outer, slice]);
+  if (!image) return null;
+  return (
+    <>
+      {rects.map((rect, index) => (
+        <KonvaImage
+          key={index}
+          image={image}
+          x={rect.dx}
+          y={rect.dy}
+          width={rect.dw}
+          height={rect.dh}
+          crop={{ x: rect.sx, y: rect.sy, width: rect.sw, height: rect.sh }}
+          listening
+          perfectDrawEnabled={false}
+        />
+      ))}
+    </>
+  );
+}
+
+function PhotoCornerNode({
+  photo,
+  deco,
+}: {
+  photo: WallScenePhoto;
+  deco: PhotoDecoration;
+}) {
+  const def = getStickerById(deco.stickerId);
+  const box = getDecorationLocalBox(photo, deco);
+  const image = useHtmlImage(def && def.kind !== "emoji" ? def.src : undefined);
+  if (!box) return null;
+  if (def?.kind === "emoji") {
+    return (
+      <KonvaText
+        text={def.src}
+        x={box.x}
+        y={box.y}
+        width={box.width}
+        height={box.height}
+        fontSize={Math.min(box.width, box.height)}
+        listening
+      />
+    );
+  }
+  if (!image) return null;
+  return (
+    <KonvaImage
+      image={image}
+      x={box.x}
+      y={box.y}
+      width={box.width}
+      height={box.height}
+      listening
+      perfectDrawEnabled={false}
+    />
   );
 }

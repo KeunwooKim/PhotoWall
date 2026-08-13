@@ -6,6 +6,8 @@ import type { WallThemeId } from "@/types/wall";
 import { WALL_THEMES } from "@/lib/wall-themes";
 import { hrefWithWallReturn } from "@/lib/wall-return-path";
 import StickerPicker from "./StickerPicker";
+import PhotoDecorPickers from "./PhotoDecorPickers";
+import type { PhotoDecoSlot } from "@/types/wall-scene-v2";
 
 interface EditorAssetsPanelProps {
   isOpen: boolean;
@@ -14,6 +16,10 @@ interface EditorAssetsPanelProps {
   onThemeChange: (id: WallThemeId) => void;
   onPhotoUpload: (file: File) => void;
   onAddSticker: (stickerId: string) => void;
+  selectedPhotoId?: string | null;
+  activeFrameId?: string | null;
+  onApplyFrame?: (frameId: string) => void;
+  onApplyCorner?: (stickerId: string, slot: PhotoDecoSlot) => void;
   /** Where QR / scan should return (personal edit or shared editor). */
   returnTo?: string;
   /** docked = desktop column beside tool rail; drawer = mobile slide-over */
@@ -28,6 +34,10 @@ export default function EditorAssetsPanel({
   onThemeChange,
   onPhotoUpload,
   onAddSticker,
+  selectedPhotoId = null,
+  activeFrameId = null,
+  onApplyFrame,
+  onApplyCorner,
   returnTo = "/wall/edit",
   variant = "docked",
 }: EditorAssetsPanelProps) {
@@ -49,7 +59,7 @@ export default function EditorAssetsPanel({
       <div className="flex items-center justify-between border-b border-foreground/10 px-3 py-2.5">
         <div>
           <p className="text-[11px] font-semibold tracking-wide text-muted">에셋</p>
-          <p className="text-[10px] text-muted">사진 · 스캔 · 벽지 · 스티커</p>
+          <p className="text-[10px] text-muted">사진 · 스캔 · 벽지 · 스티커 · 프레임</p>
         </div>
         <button
           type="button"
@@ -134,6 +144,14 @@ export default function EditorAssetsPanel({
           <h3 className="text-[11px] font-medium text-muted">스티커</h3>
           <StickerPicker onSelect={onAddSticker} />
         </section>
+
+        {onApplyFrame && onApplyCorner && (
+          <PhotoDecorPickers
+            onApplyFrame={onApplyFrame}
+            onApplyCorner={onApplyCorner}
+            activeFrameId={selectedPhotoId ? activeFrameId : null}
+          />
+        )}
       </div>
     </>
   );

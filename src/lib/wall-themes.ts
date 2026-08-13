@@ -1,10 +1,10 @@
 import type { WallTheme, WallThemeId } from "@/types/wall";
-import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
+import { WALL_HOME_TILE_HEIGHT, WALL_HOME_TILE_WIDTH } from "@/lib/wall-bounds";
 
 export const DEFAULT_WALL_THEME_ID: WallThemeId = "magic-partition";
 
-/** One wallpaper tile = default wall size — expanding reveals more tiles. */
-export const WALL_TILE_SIZE = `${DEFAULT_WALL_BOUNDS.width}px ${DEFAULT_WALL_BOUNDS.height}px`;
+/** One wallpaper tile = home cell size — expanding reveals more tiles. */
+export const WALL_TILE_SIZE = `${WALL_HOME_TILE_WIDTH}px ${WALL_HOME_TILE_HEIGHT}px`;
 
 /** DB·localStorage에 남아 있는 구 벽지 ID → 현재 벽지 */
 const LEGACY_THEME_IDS: Record<string, WallThemeId> = {

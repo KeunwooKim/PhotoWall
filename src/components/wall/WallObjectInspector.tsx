@@ -5,6 +5,7 @@ import {
   getObjectDisplayDimensions,
   objectSupportsSizeEdit,
 } from "@/lib/wall-scene/object-dimensions";
+import { clearPhotoDecorations, clearPhotoFrame } from "@/lib/photo-frames";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 
@@ -200,7 +201,11 @@ export default function WallObjectInspector({
       </div>
 
       {object.type === "photo" &&
-        (onStartCrop || onStartColorEdit || onUpscalePhoto) && (
+        (onStartCrop ||
+          onStartColorEdit ||
+          onUpscalePhoto ||
+          object.frameId ||
+          object.decorations?.length) && (
           <div className="flex flex-col gap-1.5">
             {onStartCrop && (
               <button
@@ -230,6 +235,24 @@ export default function WallObjectInspector({
                 {upscaleBusy ? "업스케일 중…" : "화질 업스케일"}
               </button>
             )}
+            {object.frameId ? (
+              <button
+                type="button"
+                onClick={() => clearPhotoFrame(object.id)}
+                className="w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 text-xs font-medium text-foreground transition hover:bg-foreground/5 active:scale-[0.98]"
+              >
+                프레임 제거
+              </button>
+            ) : null}
+            {object.decorations?.length ? (
+              <button
+                type="button"
+                onClick={() => clearPhotoDecorations(object.id)}
+                className="w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 text-xs font-medium text-foreground transition hover:bg-foreground/5 active:scale-[0.98]"
+              >
+                장식 지우기
+              </button>
+            ) : null}
           </div>
         )}
       {object.type === "photo" && (

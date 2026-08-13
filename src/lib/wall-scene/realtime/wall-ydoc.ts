@@ -1,6 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { WallBounds } from "@/lib/wall-bounds";
-import type { WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
+import type { PhotoDecoration, WallPresenceState, WallSceneObject } from "@/types/wall-scene-v2";
 import { dedupePresencePeers, mergePeerPresence, presencePeerKey } from "@/lib/wall-scene/presence-utils";
 import { throttle } from "@/lib/throttle";
 
@@ -12,6 +12,7 @@ export type WallSyncMeta = {
   wallBounds: WallBounds;
   wallpaperOffset?: { x: number; y: number };
   wallSizeLocked?: boolean;
+  wallShrinkEnabled?: boolean;
   /** Wallpaper theme — not part of canvas JSON; synced separately for live peers. */
   themeId?: string;
 };
@@ -82,6 +83,10 @@ export type WallObjectPatch = Partial<
   width?: number;
   /** Text / emoji font size (baked from vertical or uniform resize). */
   fontSize?: number;
+  /** Photo frame catalog id. null clears. */
+  frameId?: string | null;
+  /** Photo corner decorations. null clears. */
+  decorations?: PhotoDecoration[] | null;
 };
 
 type SyncPayload =
@@ -94,6 +99,7 @@ type SyncPayload =
       wallBounds?: WallBounds;
       wallpaperOffset?: { x: number; y: number };
       wallSizeLocked?: boolean;
+      wallShrinkEnabled?: boolean;
       themeId?: string;
     }
   | { kind: "clear"; sessionId: string; userId: string }
@@ -122,6 +128,7 @@ type SyncPayload =
       wallBounds: WallBounds;
       wallpaperOffset?: { x: number; y: number };
       wallSizeLocked?: boolean;
+      wallShrinkEnabled?: boolean;
       positions?: Array<{ id: string; x: number; y: number }>;
     }
   | {
@@ -253,6 +260,7 @@ export class WallRealtimeSession {
       wallBounds: live.wallBounds,
       wallpaperOffset: live.wallpaperOffset,
       wallSizeLocked: live.wallSizeLocked,
+      wallShrinkEnabled: live.wallShrinkEnabled,
       positions: live.positions,
     });
   }
@@ -366,6 +374,7 @@ export class WallRealtimeSession {
                 wallBounds: msg.wallBounds,
                 wallpaperOffset: msg.wallpaperOffset,
                 wallSizeLocked: msg.wallSizeLocked,
+                wallShrinkEnabled: msg.wallShrinkEnabled,
                 themeId: msg.themeId,
               }
             : undefined;
@@ -408,6 +417,7 @@ export class WallRealtimeSession {
           wallBounds: msg.wallBounds,
           wallpaperOffset: msg.wallpaperOffset,
           wallSizeLocked: msg.wallSizeLocked,
+          wallShrinkEnabled: msg.wallShrinkEnabled,
           positions: msg.positions,
         });
         return;
@@ -534,6 +544,7 @@ export class WallRealtimeSession {
       wallBounds: meta.wallBounds,
       wallpaperOffset: meta.wallpaperOffset,
       wallSizeLocked: meta.wallSizeLocked,
+      wallShrinkEnabled: meta.wallShrinkEnabled,
       themeId: meta.themeId,
     });
   }

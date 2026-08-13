@@ -11,6 +11,12 @@ export function mergeObjectPatch(
   if ("groupId" in patch && patch.groupId === null) {
     delete merged.groupId;
   }
+  if ("frameId" in patch && patch.frameId === null && merged.type === "photo") {
+    delete (merged as { frameId?: string }).frameId;
+  }
+  if ("decorations" in patch && patch.decorations === null && merged.type === "photo") {
+    delete (merged as { decorations?: unknown }).decorations;
+  }
 
   return merged as WallSceneObject;
 }

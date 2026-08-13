@@ -28,6 +28,11 @@ import { addPhotoToWallScene } from "@/lib/wall-scene/add-photo";
 import { addPhotoDataUrlToWallScene } from "@/lib/wall-scene/add-photo-data-url";
 import { applyUpscaleToWallPhoto } from "@/lib/photo-edit/apply-upscale-to-photo";
 import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
+import {
+  applyPhotoDecoration,
+  applyPhotoFrame,
+} from "@/lib/photo-frames";
+import type { PhotoDecoSlot } from "@/types/wall-scene-v2";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
 import { consumePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import {
@@ -40,6 +45,7 @@ import {
 } from "@/lib/wall-scene/bring-objects-onto-wall";
 import { parseWallScene, serializeWallScene } from "@/lib/wall-scene/fabric-import";
 import { fingerprintPersistableScene } from "@/lib/wall-scene/scene-fingerprint";
+import { sanitizeWallScene } from "@/lib/wall-scene/sanitize-wall-scene";
 import { runWithoutWallPersist } from "@/lib/wall-scene/realtime/wall-persist-gate";
 import { registerWallSizeLockBlockedHandler } from "@/lib/wall-scene/wall-size-lock";
 import { debounce } from "@/lib/debounce";
@@ -171,6 +177,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     if (selectedIds.length !== 1 || editingTextId) return null;
     return sceneObjects.find((o) => o.id === selectedIds[0]) ?? null;
   }, [editingTextId, selectedIds, sceneObjects]);
+  const selectedPhoto = inspectorObject?.type === "photo" ? inspectorObject : null;
 
   const {
     cropPhotoId,
@@ -384,6 +391,12 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     () =>
       debounce((json: object, fingerprint: string) => {
         if (!user || !persistEnabledRef.current) return;
+
+        const liveDoc = useWallSceneStore.getState().document;
+        const liveFp = fingerprintPersistableScene(liveDoc);
+        if (fingerprint !== liveFp) return;
+        if (liveFp === lastSavedFingerprintRef.current) return;
+
         if (cloudSaveInFlightRef.current) {
           pendingCloudSaveRef.current = true;
           return;
@@ -392,7 +405,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         void saveSharedWallToCloud(
           sharedId,
           themeIdRef.current,
-          json,
+          serializeWallScene(liveDoc),
           serverRevisionRef.current,
         )
           .then((result) => {
@@ -568,13 +581,31 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       setSharedWallTitle(wall.title);
       setThemeId(resolveWallThemeId(wall.themeId));
 
-      const { parseWallScene } = await import("@/lib/wall-scene/fabric-import");
-      const doc = parseWallScene(wall.canvasJson);
+      const raw = parseWallScene(wall.canvasJson, { sanitize: false });
+      const doc = sanitizeWallScene(raw);
       await prefetchWallScenePhotoUrls(doc, sharedId);
 
-      setLoadedCanvasJson(wall.canvasJson);
+      const json = serializeWallScene(doc);
+      setLoadedCanvasJson(json);
       serverRevisionRef.current = doc.meta.revision ?? 0;
       setLoadState("ready");
+
+      // Upsize legacy/small walls to the 2×3 floor and persist so peers stay in sync.
+      if (fingerprintPersistableScene(raw) !== fingerprintPersistableScene(doc)) {
+        void saveSharedWallToCloud(
+          sharedId,
+          resolveWallThemeId(wall.themeId),
+          json,
+          doc.meta.revision ?? 0,
+        ).then((saved) => {
+          if (saved.wall) {
+            serverRevisionRef.current = sceneRevisionFromJson(saved.wall.canvasJson);
+            lastSavedFingerprintRef.current = fingerprintPersistableScene(
+              parseWallScene(saved.wall.canvasJson),
+            );
+          }
+        });
+      }
     })();
   }, [sharedId, user, isAuthLoading]);
 
@@ -943,6 +974,30 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
       if (!added) showToast("스티커를 붙이지 못했어요");
     },
     [wallBounds.width, wallBounds.height, showToast, guardAdd, limitMessage],
+  );
+
+  const handleApplyFrame = useCallback(
+    (frameId: string) => {
+      if (!selectedPhoto) {
+        showToast("사진을 먼저 선택해 주세요");
+        return;
+      }
+      const result = applyPhotoFrame(selectedPhoto.id, frameId);
+      if (result !== "ok") showToast("프레임을 붙이지 못했어요");
+    },
+    [selectedPhoto, showToast],
+  );
+
+  const handleApplyCorner = useCallback(
+    (stickerId: string, slot: PhotoDecoSlot) => {
+      if (!selectedPhoto) {
+        showToast("사진을 먼저 선택해 주세요");
+        return;
+      }
+      const result = applyPhotoDecoration(selectedPhoto.id, stickerId, slot);
+      if (result !== "ok") showToast("장식을 붙이지 못했어요");
+    },
+    [selectedPhoto, showToast],
   );
 
   const handleThemeChange = useCallback(
@@ -1331,6 +1386,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onThemeChange={handleThemeChange}
             onPhotoUpload={handlePhotoUpload}
             onAddSticker={handleAddSticker}
+            selectedPhotoId={selectedPhoto?.id ?? null}
+            activeFrameId={selectedPhoto?.frameId ?? null}
+            onApplyFrame={handleApplyFrame}
+            onApplyCorner={handleApplyCorner}
             returnTo={`/shared/${sharedId}`}
           />
         </div>
@@ -1601,6 +1660,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onThemeChange={handleThemeChange}
         onPhotoUpload={handlePhotoUpload}
         onAddSticker={handleAddSticker}
+        selectedPhotoId={selectedPhoto?.id ?? null}
+        activeFrameId={selectedPhoto?.frameId ?? null}
+        onApplyFrame={handleApplyFrame}
+        onApplyCorner={handleApplyCorner}
         returnTo={`/shared/${sharedId}`}
       />
     </div>

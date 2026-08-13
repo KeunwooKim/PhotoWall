@@ -19,7 +19,14 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
         zIndex: object.zIndex,
         groupId: object.groupId ?? null,
       };
-      if (object.type === "photo") return { ...base, src: object.src };
+      if (object.type === "photo") {
+        return {
+          ...base,
+          src: object.src,
+          frameId: object.frameId ?? null,
+          decorations: object.decorations ?? null,
+        };
+      }
       if (object.type === "sticker") return { ...base, stickerId: object.stickerId };
       if (object.type === "emoji") return { ...base, text: object.text };
       if (object.type === "text") {
@@ -53,6 +60,7 @@ export function fingerprintPersistableScene(doc: WallSceneDocument): string {
   return JSON.stringify({
     wallBounds: doc.meta.wallBounds,
     wallSizeLocked: !!doc.meta.wallSizeLocked,
+    wallShrinkEnabled: !!doc.meta.wallShrinkEnabled,
     objects: sortForFingerprint(doc.objects),
   });
 }

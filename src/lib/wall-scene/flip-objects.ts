@@ -1,6 +1,7 @@
+import { flipPhotoDecorations } from "@/lib/photo-frames/layout";
 import { isTransformableObject } from "@/lib/wall-scene/selectable-objects";
 import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
-import type { WallSceneObject } from "@/types/wall-scene-v2";
+import type { PhotoDecoration, WallSceneObject } from "@/types/wall-scene-v2";
 
 export interface FlipPatch {
   id: string;
@@ -8,6 +9,7 @@ export interface FlipPatch {
   y?: number;
   scaleX?: number;
   scaleY?: number;
+  decorations?: PhotoDecoration[];
 }
 
 export type FlipAxis = "horizontal" | "vertical";
@@ -60,12 +62,16 @@ export function computeFlipPatches(
     const dims = flipDimensions(object);
     if (!dims) continue;
 
+    const flippedDecos =
+      object.type === "photo" ? flipPhotoDecorations(object.decorations, axis) : undefined;
+
     if (axis === "horizontal") {
       const nextScaleX = -(object.scaleX ?? 1);
       patches.push({
         id: object.id,
         scaleX: nextScaleX,
         x: object.x + dims.width,
+        ...(flippedDecos ? { decorations: flippedDecos } : {}),
       });
       continue;
     }
@@ -75,6 +81,7 @@ export function computeFlipPatches(
       id: object.id,
       scaleY: nextScaleY,
       y: object.y + dims.height,
+      ...(flippedDecos ? { decorations: flippedDecos } : {}),
     });
   }
 

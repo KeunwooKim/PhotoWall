@@ -34,7 +34,17 @@ import {
   type LiveWallLayout,
   getEffectiveWallBounds,
 } from "@/lib/wall-scene/wall-drag-expand";
-import { getStickerById } from "@/lib/stickers";
+import { getStickerById, ensureStickersForIds } from "@/lib/stickers";
+import {
+  computeSlice9Rects,
+  cssHexToNumber,
+  filmSprocketRects,
+  getDecorationLocalBox,
+  getPhotoFrame,
+  getPhotoFrameInset,
+  getPhotoFrameOuterSize,
+  getPhotoTransformerBox,
+} from "@/lib/photo-frames";
 import { getPenStyle, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import {
   HIGHLIGHTER_OPACITY,
@@ -744,6 +754,28 @@ export class PixiWallEngine {
   }
 
   private async buildPhoto(root: Container, object: WallScenePhoto): Promise<void> {
+    const decoIds = (object.decorations ?? []).map((item) => item.stickerId);
+    if (decoIds.length) await ensureStickersForIds(decoIds);
+
+    const frame = getPhotoFrame(object.frameId);
+    const inset = getPhotoFrameInset(object);
+    const outer = getPhotoFrameOuterSize(object);
+
+    if (frame && (inset.left || inset.top || inset.right || inset.bottom)) {
+      const matte = new Graphics()
+        .rect(outer.offsetX, outer.offsetY, outer.width, outer.height)
+        .fill({ color: cssHexToNumber(frame.matteFill ?? "#ffffff") });
+      root.addChild(matte);
+      if (frame.id === "frame.film") {
+        for (const hole of filmSprocketRects(object, inset)) {
+          const sprocket = new Graphics()
+            .rect(hole.x, hole.y, hole.width, hole.height)
+            .fill({ color: 0xd4d4d4 });
+          root.addChild(sprocket);
+        }
+      }
+    }
+
     const resolved = await this.resolveSrc(object.src);
     const texture = await this.textureFor(object.src);
     if (!texture) {
@@ -751,36 +783,93 @@ export class PixiWallEngine {
         .rect(0, 0, object.width, object.height)
         .fill({ color: 0xcccccc, alpha: 0.5 });
       root.addChild(placeholder);
-      return;
+    } else {
+      let displayTexture = texture;
+      if (object.crop) {
+        const meta = this.textureMeta.get(resolved);
+        if (meta) {
+          const sx = meta.displayWidth / Math.max(1, meta.naturalWidth);
+          const sy = meta.displayHeight / Math.max(1, meta.naturalHeight);
+          const cropFrame = new Rectangle(
+            Math.max(0, object.crop.x * sx),
+            Math.max(0, object.crop.y * sy),
+            Math.max(1, object.crop.width * sx),
+            Math.max(1, object.crop.height * sy),
+          );
+          cropFrame.width = Math.min(cropFrame.width, Math.max(1, texture.width - cropFrame.x));
+          cropFrame.height = Math.min(cropFrame.height, Math.max(1, texture.height - cropFrame.y));
+          displayTexture = new Texture({
+            source: texture.source,
+            frame: cropFrame,
+            dynamic: true,
+          });
+        }
+      }
+      const sprite = new Sprite(displayTexture);
+      sprite.width = object.width;
+      sprite.height = object.height;
+      root.addChild(sprite);
     }
 
-    let displayTexture = texture;
-    if (object.crop) {
-      const meta = this.textureMeta.get(resolved);
-      if (meta) {
-        const sx = meta.displayWidth / Math.max(1, meta.naturalWidth);
-        const sy = meta.displayHeight / Math.max(1, meta.naturalHeight);
-        const frame = new Rectangle(
-          Math.max(0, object.crop.x * sx),
-          Math.max(0, object.crop.y * sy),
-          Math.max(1, object.crop.width * sx),
-          Math.max(1, object.crop.height * sy),
+    if (frame?.kind === "slice9" && frame.src && frame.slice9) {
+      const sliceTexture = await this.textureFor(frame.src);
+      if (sliceTexture) {
+        const rects = computeSlice9Rects(
+          sliceTexture.width,
+          sliceTexture.height,
+          outer,
+          frame.slice9,
         );
-        // Clamp frame inside texture
-        frame.width = Math.min(frame.width, Math.max(1, texture.width - frame.x));
-        frame.height = Math.min(frame.height, Math.max(1, texture.height - frame.y));
-        displayTexture = new Texture({
-          source: texture.source,
-          frame,
-          dynamic: true,
-        });
+        for (const rect of rects) {
+          const piece = new Texture({
+            source: sliceTexture.source,
+            frame: new Rectangle(rect.sx, rect.sy, rect.sw, rect.sh),
+            dynamic: true,
+          });
+          const sliceSprite = new Sprite(piece);
+          sliceSprite.x = rect.dx;
+          sliceSprite.y = rect.dy;
+          sliceSprite.width = rect.dw;
+          sliceSprite.height = rect.dh;
+          root.addChild(sliceSprite);
+        }
       }
     }
 
-    const sprite = new Sprite(displayTexture);
-    sprite.width = object.width;
-    sprite.height = object.height;
-    root.addChild(sprite);
+    await this.buildPhotoDecorations(root, object);
+  }
+
+  private async buildPhotoDecorations(root: Container, object: WallScenePhoto): Promise<void> {
+    for (const deco of object.decorations ?? []) {
+      const box = getDecorationLocalBox(object, deco);
+      const def = getStickerById(deco.stickerId);
+      if (!box) continue;
+      if (!def) {
+        void ensureStickersForIds([deco.stickerId]);
+        continue;
+      }
+      if (def.kind === "emoji") {
+        const text = new Text({
+          text: def.src,
+          style: {
+            fontSize: Math.min(box.width, box.height),
+            fontFamily: "Apple Color Emoji, Segoe UI Emoji, sans-serif",
+          },
+        });
+        text.x = box.x;
+        text.y = box.y;
+        root.addChild(text);
+        continue;
+      }
+      const texture = await this.textureFor(def.src);
+      if (!texture) continue;
+      const sprite = new Sprite(texture);
+      sprite.x = box.x;
+      sprite.y = box.y;
+      sprite.width = box.width;
+      sprite.height = box.height;
+      root.addChild(sprite);
+    }
   }
 
   private async buildSticker(root: Container, object: WallSceneSticker): Promise<void> {
@@ -1032,6 +1121,25 @@ export class PixiWallEngine {
     this.dragState.offsetY = world.y - entry.root.y;
   }
 
+  private selectionBox(
+    object: WallSceneObject,
+    scaleX: number,
+    scaleY: number,
+  ): { ox: number; oy: number; boxW: number; boxH: number } {
+    if (object.type === "photo") {
+      return getPhotoTransformerBox(object, scaleX, scaleY);
+    }
+    const { width, height } = this.objectSize(object);
+    const boxW = Math.max(1, width * Math.abs(scaleX));
+    const boxH = Math.max(1, height * Math.abs(scaleY));
+    return {
+      ox: scaleX < 0 ? -boxW : 0,
+      oy: scaleY < 0 ? -boxH : 0,
+      boxW,
+      boxH,
+    };
+  }
+
   private objectSize(object: WallSceneObject): { width: number; height: number } {
     switch (object.type) {
       case "photo":
@@ -1127,13 +1235,11 @@ export class PixiWallEngine {
         continue;
       }
       if (!isTransformableObject(object)) continue;
-      const { width, height } = this.objectSize(object);
-      const sx = entry.root.scale.x;
-      const sy = entry.root.scale.y;
-      const boxW = Math.max(1, width * Math.abs(sx));
-      const boxH = Math.max(1, height * Math.abs(sy));
-      const ox = sx < 0 ? -boxW : 0;
-      const oy = sy < 0 ? -boxH : 0;
+      const { ox, oy, boxW, boxH } = this.selectionBox(
+        object,
+        entry.root.scale.x,
+        entry.root.scale.y,
+      );
       const outline = new Graphics()
         .rect(ox, oy, boxW, boxH)
         .stroke({ width: strokeW, color: 0x3b82f6, alpha: 0.75 });
@@ -1156,16 +1262,12 @@ export class PixiWallEngine {
     }
     if (!isTransformableObject(object)) return;
 
+    const { ox, oy, boxW, boxH } = this.selectionBox(
+      object,
+      entry.root.scale.x,
+      entry.root.scale.y,
+    );
     const { width, height } = this.objectSize(object);
-    const sx = entry.root.scale.x;
-    const sy = entry.root.scale.y;
-    // Keep transformer scale at 1 so handles stay screen-sized; bake object
-    // scale into the selection box dimensions instead.
-    const boxW = Math.max(1, width * Math.abs(sx));
-    const boxH = Math.max(1, height * Math.abs(sy));
-    // Negative scale flips content opposite the origin — offset the box.
-    const ox = sx < 0 ? -boxW : 0;
-    const oy = sy < 0 ? -boxH : 0;
     const hs = HANDLE_SCREEN_PX / viewScale;
     const hit = HANDLE_HIT_SCREEN_PX / viewScale;
     const rotR = ROTATE_KNOB_SCREEN_PX / viewScale;

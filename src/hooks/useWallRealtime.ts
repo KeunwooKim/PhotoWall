@@ -58,9 +58,10 @@ function wallMetaFingerprint(meta: {
   wallBounds: { width: number; height: number };
   wallpaperOffset?: { x: number; y: number };
   wallSizeLocked?: boolean;
+  wallShrinkEnabled?: boolean;
 }): string {
   const offset = meta.wallpaperOffset ?? { x: 0, y: 0 };
-  return `${meta.wallBounds.width}x${meta.wallBounds.height}:${offset.x},${offset.y}:L${meta.wallSizeLocked ? 1 : 0}`;
+  return `${meta.wallBounds.width}x${meta.wallBounds.height}:${offset.x},${offset.y}:L${meta.wallSizeLocked ? 1 : 0}:S${meta.wallShrinkEnabled ? 1 : 0}`;
 }
 
 function readLocalMeta(themeId?: string) {
@@ -69,6 +70,7 @@ function readLocalMeta(themeId?: string) {
     wallBounds: meta.wallBounds,
     wallpaperOffset: meta.wallpaperOffset,
     wallSizeLocked: meta.wallSizeLocked,
+    wallShrinkEnabled: meta.wallShrinkEnabled,
     themeId,
   };
 }
@@ -321,6 +323,7 @@ export function useWallRealtime({
             wallBounds: state.document.meta.wallBounds,
             wallpaperOffset: state.document.meta.wallpaperOffset,
             wallSizeLocked: state.document.meta.wallSizeLocked,
+            wallShrinkEnabled: state.document.meta.wallShrinkEnabled,
             themeId: getThemeIdRef.current?.(),
           });
         },

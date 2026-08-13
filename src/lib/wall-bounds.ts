@@ -1,5 +1,6 @@
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 import { estimateTextBlockHeight } from "@/lib/wall-scene/text-content";
+import { getPhotoFrameOuterSize } from "@/lib/photo-frames/layout";
 
 /**
  * Wall AABB in world coordinates.
@@ -24,13 +25,24 @@ export interface ObjectBounds {
   maxY: number;
 }
 
-/** Default home frame centered on world origin. */
+/** Single wallpaper tile / legacy home cell size (px). */
+export const WALL_HOME_TILE_WIDTH = 780;
+export const WALL_HOME_TILE_HEIGHT = 1200;
+
+/** Default / minimum wall layout: 2 columns × 3 rows of home tiles. */
+export const DEFAULT_WALL_TILE_COLS = 2;
+export const DEFAULT_WALL_TILE_ROWS = 3;
+
+/** Default + minimum wall (2×3). New walls start here; shrink cannot go smaller. */
 export const DEFAULT_WALL_BOUNDS: WallBounds = {
-  x: -390,
-  y: -600,
-  width: 780,
-  height: 1200,
+  x: -(WALL_HOME_TILE_WIDTH * DEFAULT_WALL_TILE_COLS) / 2,
+  y: -(WALL_HOME_TILE_HEIGHT * DEFAULT_WALL_TILE_ROWS) / 2,
+  width: WALL_HOME_TILE_WIDTH * DEFAULT_WALL_TILE_COLS,
+  height: WALL_HOME_TILE_HEIGHT * DEFAULT_WALL_TILE_ROWS,
 };
+
+/** Alias — shrink / clamps use the same 2×3 floor as the start size. */
+export const MIN_WALL_BOUNDS: WallBounds = DEFAULT_WALL_BOUNDS;
 
 export const WALL_EXPAND_MARGIN = 96;
 export const WALL_EXPAND_STEP = 160;
@@ -58,6 +70,31 @@ export function wallCenter(b: WallBounds): { x: number; y: number } {
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
 }
 
+/**
+ * Expand a wall AABB so it at least covers the 2×3 home frame.
+ * Existing smaller walls grow; already-larger walls keep their extra area.
+ */
+export function ensureMinWallCoverage(wall: WallBounds): WallBounds {
+  const left = Math.min(wallLeft(wall), wallLeft(MIN_WALL_BOUNDS));
+  const top = Math.min(wallTop(wall), wallTop(MIN_WALL_BOUNDS));
+  const right = Math.max(wallRight(wall), wallRight(MIN_WALL_BOUNDS));
+  const bottom = Math.max(wallBottom(wall), wallBottom(MIN_WALL_BOUNDS));
+  if (
+    left === wall.x &&
+    top === wall.y &&
+    right === wallRight(wall) &&
+    bottom === wallBottom(wall)
+  ) {
+    return wall;
+  }
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
 /** Outward growth budget per side from the home frame (px). */
 export type WallExpandExtents = {
   west: number;
@@ -74,7 +111,7 @@ export type WallExpandExtents = {
 export function wallExpandExtentsFromHome(
   max: Pick<WallBounds, "width" | "height">,
 ): WallExpandExtents {
-  const home = DEFAULT_WALL_BOUNDS;
+  const home = MIN_WALL_BOUNDS;
   return {
     west: Math.max(0, (max.width - home.width) / 2),
     east: Math.max(0, (max.width - home.width) / 2),
@@ -90,7 +127,7 @@ export function wallExpandEdgeLimits(max: Pick<WallBounds, "width" | "height">):
   minTop: number;
   maxBottom: number;
 } {
-  const home = DEFAULT_WALL_BOUNDS;
+  const home = MIN_WALL_BOUNDS;
   const e = wallExpandExtentsFromHome(max);
   return {
     minLeft: home.x - e.west,
@@ -106,8 +143,8 @@ export function clampWallBoundsToExpandLimits(
   max: Pick<WallBounds, "width" | "height">,
 ): WallBounds {
   const limits = wallExpandEdgeLimits(max);
-  const minW = DEFAULT_WALL_BOUNDS.width;
-  const minH = DEFAULT_WALL_BOUNDS.height;
+  const minW = MIN_WALL_BOUNDS.width;
+  const minH = MIN_WALL_BOUNDS.height;
 
   const left = Math.min(Math.max(bounds.x, limits.minLeft), limits.maxRight - minW);
   let right = Math.max(Math.min(wallRight(bounds), limits.maxRight), left + minW);
@@ -158,8 +195,8 @@ export function clampWallBounds(
   },
 ): WallBounds {
   const b = asWallBounds(bounds);
-  const width = Math.min(max.width, Math.max(DEFAULT_WALL_BOUNDS.width, b.width));
-  const height = Math.min(max.height, Math.max(DEFAULT_WALL_BOUNDS.height, b.height));
+  const width = Math.min(max.width, Math.max(MIN_WALL_BOUNDS.width, b.width));
+  const height = Math.min(max.height, Math.max(MIN_WALL_BOUNDS.height, b.height));
   // Preserve center when size is clamped.
   const cx = b.x + b.width / 2;
   const cy = b.y + b.height / 2;
@@ -185,8 +222,8 @@ export function clampWallBoundsAnchored(
   let { x, y, width, height } = bounds;
   const maxW = max.width;
   const maxH = max.height;
-  const minW = DEFAULT_WALL_BOUNDS.width;
-  const minH = DEFAULT_WALL_BOUNDS.height;
+  const minW = MIN_WALL_BOUNDS.width;
+  const minH = MIN_WALL_BOUNDS.height;
 
   if (width > maxW) {
     // Prefer keeping right/bottom (trim west/north overflow).
@@ -243,12 +280,12 @@ export function computeWallBoundsFromContent(
   const spanW = Math.max(0, objectBounds.maxX - objectBounds.minX);
   const spanH = Math.max(0, objectBounds.maxY - objectBounds.minY);
   const width = snapWallDimension(
-    DEFAULT_WALL_BOUNDS.width,
+    MIN_WALL_BOUNDS.width,
     spanW + WALL_EXPAND_MARGIN * 2,
     max.width,
   );
   const height = snapWallDimension(
-    DEFAULT_WALL_BOUNDS.height,
+    MIN_WALL_BOUNDS.height,
     spanH + WALL_EXPAND_MARGIN * 2,
     max.height,
   );
@@ -358,7 +395,18 @@ export function getSceneObjectExtents(obj: WallSceneObject): {
   const scaleX = obj.scaleX ?? 1;
   const scaleY = obj.scaleY ?? 1;
 
-  if (obj.type === "photo" || obj.type === "svg" || obj.type === "tape" || obj.type === "sticker") {
+  if (obj.type === "photo") {
+    const outer = getPhotoFrameOuterSize(obj);
+    return rotatedRectExtents(
+      obj.x + outer.offsetX * scaleX,
+      obj.y + outer.offsetY * scaleY,
+      outer.width * scaleX,
+      outer.height * scaleY,
+      obj.rotation,
+    );
+  }
+
+  if (obj.type === "svg" || obj.type === "tape" || obj.type === "sticker") {
     return rotatedRectExtents(
       obj.x,
       obj.y,
@@ -451,8 +499,9 @@ export function migrateLegacyWallToCenterOrigin(input: {
 
   const raw = input.wallBounds;
   const home = input.homeOrigin ?? { x: 0, y: 0 };
-  const cx = home.x + DEFAULT_WALL_BOUNDS.width / 2;
-  const cy = home.y + DEFAULT_WALL_BOUNDS.height / 2;
+  // Legacy home cell was 1 wallpaper tile (780×1200), even though MIN is now 2×3.
+  const cx = home.x + WALL_HOME_TILE_WIDTH / 2;
+  const cy = home.y + WALL_HOME_TILE_HEIGHT / 2;
   const wallBounds: WallBounds = {
     x: 0 - cx,
     y: 0 - cy,

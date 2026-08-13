@@ -1,18 +1,18 @@
 import {
-  DEFAULT_WALL_BOUNDS,
+  MIN_WALL_BOUNDS,
   getSceneObjectsBounds,
   WALL_EXPAND_MARGIN,
   type WallBounds,
 } from "@/lib/wall-bounds";
 import { memorySafeWallMax } from "@/lib/wall-device";
-import { computeOmniWallFollowFromContent } from "@/lib/wall-scene/wall-omni-expand";
+import { computeOmniWallFollowFromContent, computeOmniWallReclaimEmptySides } from "@/lib/wall-scene/wall-omni-expand";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { broadcastWallLive } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneObject } from "@/types/wall-scene-v2";
 import { throttle } from "@/lib/throttle";
 import { LIVE_PATCH_MS } from "@/lib/wall-scene/realtime/live-object-patch";
-import { allowWallSizeChange } from "@/lib/wall-scene/wall-size-lock";
+import { allowWallSizeChange, isWallShrinkEnabled } from "@/lib/wall-scene/wall-size-lock";
 
 export type LiveWallLayout = {
   bounds: WallBounds;
@@ -56,6 +56,7 @@ const broadcastLiveWall = throttle(
     wallBounds: WallBounds;
     wallpaperOffset: { x: number; y: number };
     wallSizeLocked?: boolean;
+    wallShrinkEnabled?: boolean;
     positions?: Array<{ id: string; x: number; y: number }>;
   }) => {
     broadcastWallLive(payload);
@@ -182,6 +183,7 @@ function pushLiveLayout(bounds: WallBounds): void {
     wallBounds: bounds,
     wallpaperOffset: wallpaper,
     wallSizeLocked: store.document.meta.wallSizeLocked,
+    wallShrinkEnabled: store.document.meta.wallShrinkEnabled,
   });
 }
 
@@ -216,10 +218,8 @@ function syncDragOffsetsAfterWallExpand(evt?: Event): void {
 }
 
 /**
- * Live omni grow/shrink while dragging.
- * Center-origin: only the wall AABB moves — objects keep world coordinates.
- * Same-edge reclaim stays on so pulling back shrinks naturally; expanding the
- * opposite side does not drag the far edge (see computeOmniWallFollowFromContent).
+ * Live omni grow while dragging (never reclaim mid-drag — avoids wall follow).
+ * Empty-side reclaim runs once on drop when wallShrinkEnabled.
  */
 export function applyWallExpandDuringDrag(
   movingIds: Iterable<string>,
@@ -228,8 +228,8 @@ export function applyWallExpandDuringDrag(
   const ids = movingIds instanceof Set ? movingIds : new Set(movingIds);
   if (ids.size === 0) return false;
 
-  // Default on — callers may pass false for grow-only previews.
-  const allowReclaim = options?.allowReclaim !== false;
+  // Grow-only during drag unless a caller explicitly opts into reclaim (tests).
+  const allowReclaim = options?.allowReclaim === true;
   const current = getEffectiveWallBounds();
   const liveObjects = objectsWithLivePositions();
   const objectBounds = getSceneObjectsBounds(liveObjects);
@@ -276,29 +276,53 @@ export function applyWallExpandDuringDrag(
 
 /**
  * On drag end: bake live bounds into the store.
- * No object position patches for stationary nodes (world coords are stable).
- * No pan changes — the viewport stays world-locked through expand/shrink.
+ * If shrink is enabled, reclaim empty sides once (home ∪ content) after drop.
  */
 export function applyOmniWallExpandAfterDrag(movingIds: Iterable<string>): boolean {
   const ids = movingIds instanceof Set ? movingIds : new Set(movingIds);
-  applyWallExpandDuringDrag(ids, { allowReclaim: true });
+  // Grow-only bake — never reclaim while the gesture is finishing.
+  applyWallExpandDuringDrag(ids, { allowReclaim: false });
 
   const store = useWallSceneStore.getState();
-  const hadLive = liveWallBoundsDuringDrag != null;
+  const fromLive = liveWallBoundsDuringDrag != null;
+  let bounds = liveWallBoundsDuringDrag ?? store.document.meta.wallBounds;
 
-  if (!hadLive) return false;
+  if (isWallShrinkEnabled() && !store.document.meta.wallSizeLocked) {
+    const objectBounds = getSceneObjectsBounds(objectsWithLivePositions());
+    const reclaim = computeOmniWallReclaimEmptySides(
+      objectBounds,
+      bounds,
+      memorySafeWallMax(),
+      WALL_EXPAND_MARGIN,
+    );
+    if (reclaim) {
+      bounds = reclaim.bounds;
+    }
+  }
 
-  const bounds = liveWallBoundsDuringDrag ?? store.document.meta.wallBounds;
+  const before = store.document.meta.wallBounds;
+  const changed =
+    fromLive ||
+    bounds.x !== before.x ||
+    bounds.y !== before.y ||
+    bounds.width !== before.width ||
+    bounds.height !== before.height;
+
+  if (!changed) {
+    clearLiveOffsets();
+    restoreLayoutFromStore();
+    return false;
+  }
 
   store.setWallBounds(bounds);
 
   if (
-    bounds.width <= DEFAULT_WALL_BOUNDS.width &&
-    bounds.height <= DEFAULT_WALL_BOUNDS.height &&
-    Math.abs(bounds.x - DEFAULT_WALL_BOUNDS.x) < 1 &&
-    Math.abs(bounds.y - DEFAULT_WALL_BOUNDS.y) < 1
+    bounds.width <= MIN_WALL_BOUNDS.width &&
+    bounds.height <= MIN_WALL_BOUNDS.height &&
+    Math.abs(bounds.x - MIN_WALL_BOUNDS.x) < 1 &&
+    Math.abs(bounds.y - MIN_WALL_BOUNDS.y) < 1
   ) {
-    store.setWallBounds({ ...DEFAULT_WALL_BOUNDS });
+    store.setWallBounds({ ...MIN_WALL_BOUNDS });
   }
 
   clearLiveOffsets();

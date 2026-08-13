@@ -1,5 +1,5 @@
 import {
-  DEFAULT_WALL_BOUNDS,
+  MIN_WALL_BOUNDS,
   WALL_EXPAND_STEP,
   getSceneObjectsBounds,
   type WallBounds,
@@ -14,7 +14,7 @@ import {
 import { broadcastWallPatch } from "@/lib/wall-scene/realtime/wall-realtime-bridge";
 import { getWallNode } from "@/lib/wall-scene/realtime/wall-node-sync";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
-import { allowWallSizeChange } from "@/lib/wall-scene/wall-size-lock";
+import { allowWallSizeChange, isWallShrinkEnabled } from "@/lib/wall-scene/wall-size-lock";
 
 function safeMax(): Pick<WallBounds, "width" | "height"> {
   return memorySafeWallMax();
@@ -49,9 +49,10 @@ export function applyExpandWall(): boolean {
   return true;
 }
 
-/** Shrink wall toward default home frame. */
+/** Shrink wall toward default home frame (requires wallShrinkEnabled). */
 export function applyShrinkWall(): boolean {
   if (!allowWallSizeChange()) return false;
+  if (!isWallShrinkEnabled()) return false;
   const store = useWallSceneStore.getState();
   const current = store.document.meta.wallBounds;
   const objectBounds = getSceneObjectsBounds(store.document.objects);
@@ -70,6 +71,7 @@ export function canExpandWall(): boolean {
 }
 
 export function canShrinkWall(): boolean {
+  if (!isWallShrinkEnabled()) return false;
   const { document } = useWallSceneStore.getState();
   return (
     computeCenteredWallShrink(
@@ -83,7 +85,7 @@ export function canShrinkWall(): boolean {
 
 export function isDefaultWallSize(bounds: WallBounds = useWallSceneStore.getState().document.meta.wallBounds): boolean {
   return (
-    bounds.width <= DEFAULT_WALL_BOUNDS.width &&
-    bounds.height <= DEFAULT_WALL_BOUNDS.height
+    bounds.width <= MIN_WALL_BOUNDS.width &&
+    bounds.height <= MIN_WALL_BOUNDS.height
   );
 }

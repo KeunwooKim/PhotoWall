@@ -1,4 +1,4 @@
-import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
+import { MIN_WALL_BOUNDS } from "@/lib/wall-bounds";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 
 type Point = { x: number; y: number };
@@ -14,15 +14,14 @@ export function setViewportWorldCenterGetter(getter: (() => Point | null) | null
 }
 
 /**
- * Top-left of the stable default-size home frame in world coordinates.
- * Fixed at DEFAULT_WALL_BOUNDS origin under center-origin model.
+ * Top-left of the stable 2×3 home frame in world coordinates.
  */
 export function getWallHomeOrigin(): { x: number; y: number } {
-  return { x: DEFAULT_WALL_BOUNDS.x, y: DEFAULT_WALL_BOUNDS.y };
+  return { x: MIN_WALL_BOUNDS.x, y: MIN_WALL_BOUNDS.y };
 }
 
 /**
- * Placement area for new objects: the original default wall rectangle
+ * Placement area for new objects: the 2×3 home rectangle
  * centered on world origin.
  */
 export function getWallHomePlacementBounds(wallWidth: number, wallHeight: number): {
@@ -34,10 +33,10 @@ export function getWallHomePlacementBounds(wallWidth: number, wallHeight: number
   void wallWidth;
   void wallHeight;
   return {
-    x: DEFAULT_WALL_BOUNDS.x,
-    y: DEFAULT_WALL_BOUNDS.y,
-    width: DEFAULT_WALL_BOUNDS.width,
-    height: DEFAULT_WALL_BOUNDS.height,
+    x: MIN_WALL_BOUNDS.x,
+    y: MIN_WALL_BOUNDS.y,
+    width: MIN_WALL_BOUNDS.width,
+    height: MIN_WALL_BOUNDS.height,
   };
 }
 

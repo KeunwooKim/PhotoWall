@@ -2,6 +2,7 @@ import {
   DEFAULT_WALL_BOUNDS,
   asWallBounds,
   clampWallBoundsAnchored,
+  ensureMinWallCoverage,
   getSceneObjectsBounds,
   migrateLegacyWallToCenterOrigin,
   needsLegacyWallMigration,
@@ -12,6 +13,7 @@ import { hardClampObjectPositionToWall } from "@/lib/wall-scene/clamp-object-to-
 import { computeOmniWallGrowFromContent } from "@/lib/wall-scene/wall-omni-expand";
 import { memorySafeWallMax } from "@/lib/wall-device";
 import { clampWallTextContent } from "@/lib/wall-scene/text-content";
+import { sanitizePhotoDecorFields } from "@/lib/photo-frames/sanitize";
 import type { WallSceneDocument, WallSceneObject } from "@/types/wall-scene-v2";
 
 function finiteOr(value: number, fallback: number): number {
@@ -45,7 +47,7 @@ function sanitizeObjectNumbers(object: WallSceneObject): WallSceneObject {
     next.text = clampWallTextContent(next.text);
   }
 
-  return next;
+  return sanitizePhotoDecorFields(next);
 }
 
 function scaleObjectToWall(
@@ -119,7 +121,8 @@ export function sanitizeWallScene(document: WallSceneDocument): WallSceneDocumen
 
   let objects = migrated.objects.map((object) => sanitizeObjectNumbers(object));
   const sourceWall = asWallBounds(migrated.wallBounds);
-  let wall = clampWallBoundsAnchored(sourceWall, safeMax);
+  // Grow legacy/small walls up to the 2×3 home (keep any already-larger area).
+  let wall = clampWallBoundsAnchored(ensureMinWallCoverage(sourceWall), safeMax);
   const sizeLocked = !!document.meta.wallSizeLocked;
 
   if (sourceWall.width > wall.width || sourceWall.height > wall.height) {
@@ -146,16 +149,7 @@ export function sanitizeWallScene(document: WallSceneDocument): WallSceneDocumen
 
     const reconciled =
       reconcileWallBounds(wall, getSceneObjectsBounds(objects), safeMax) ?? wall;
-    wall = clampWallBoundsAnchored(reconciled, safeMax);
-  }
-
-  // Snap to exact default home when fully reclaimed.
-  if (
-    !sizeLocked &&
-    wall.width <= DEFAULT_WALL_BOUNDS.width &&
-    wall.height <= DEFAULT_WALL_BOUNDS.height
-  ) {
-    wall = { ...DEFAULT_WALL_BOUNDS };
+    wall = clampWallBoundsAnchored(ensureMinWallCoverage(reconciled), safeMax);
   }
 
   const objectsChanged =

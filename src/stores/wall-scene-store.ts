@@ -97,6 +97,7 @@ export interface WallSceneStore {
   normalizeWallHomeOrigin: () => void;
   reconcileWallBoundsFromObjects: () => void;
   setWallSizeLocked: (locked: boolean) => void;
+  setWallShrinkEnabled: (enabled: boolean) => void;
   bumpRevision: () => void;
   /** Merge authoritative remote snapshot without replacing unrelated local state. */
   syncRemoteObjects: (objects: WallSceneObject[]) => void;
@@ -105,6 +106,7 @@ export interface WallSceneStore {
     wallBounds: WallBounds;
     wallpaperOffset?: { x: number; y: number };
     wallSizeLocked?: boolean;
+    wallShrinkEnabled?: boolean;
   }) => void;
 }
 
@@ -430,6 +432,21 @@ export const useWallSceneStore = create<WallSceneStore>()(
         };
       }),
 
+    setWallShrinkEnabled: (enabled) =>
+      set((state) => {
+        if (!!state.document.meta.wallShrinkEnabled === enabled) return state;
+        return {
+          document: {
+            ...state.document,
+            meta: {
+              ...state.document.meta,
+              wallShrinkEnabled: enabled,
+              revision: state.document.meta.revision + 1,
+            },
+          },
+        };
+      }),
+
     bumpRevision: () =>
       set((state) => ({
         document: {
@@ -469,6 +486,9 @@ export const useWallSceneStore = create<WallSceneStore>()(
               : {}),
             ...(meta.wallSizeLocked !== undefined
               ? { wallSizeLocked: meta.wallSizeLocked }
+              : {}),
+            ...(meta.wallShrinkEnabled !== undefined
+              ? { wallShrinkEnabled: meta.wallShrinkEnabled }
               : {}),
           },
         },

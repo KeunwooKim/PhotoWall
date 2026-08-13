@@ -14,6 +14,15 @@ export function setWallSizeLocked(locked: boolean): void {
   useWallSceneStore.getState().setWallSizeLocked(locked);
 }
 
+/** Empty-side reclaim after drop — default off. */
+export function isWallShrinkEnabled(): boolean {
+  return !!useWallSceneStore.getState().document.meta.wallShrinkEnabled;
+}
+
+export function setWallShrinkEnabled(enabled: boolean): void {
+  useWallSceneStore.getState().setWallShrinkEnabled(enabled);
+}
+
 /** Called when expand is blocked by the lock (toast, etc.). */
 export function registerWallSizeLockBlockedHandler(handler: (() => void) | null): void {
   blockedHandler = handler;

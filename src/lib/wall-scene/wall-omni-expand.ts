@@ -1,5 +1,5 @@
 import {
-  DEFAULT_WALL_BOUNDS,
+  MIN_WALL_BOUNDS,
   WALL_EXPAND_MARGIN,
   WALL_EXPAND_STEP,
   clampWallBoundsAnchored,
@@ -74,8 +74,8 @@ export function computeCenteredWallShrink(
   homeOrigin: { x: number; y: number } = { x: 0, y: 0 },
 ): OmniWallGrow | null {
   void homeOrigin;
-  const home = DEFAULT_WALL_BOUNDS;
-  // Pull each edge toward the home frame by up to `step`.
+  const home = MIN_WALL_BOUNDS;
+  // Pull each edge toward the minimum home frame by up to `step`.
   const nextLeft = Math.min(wallLeft(current) + step, home.x);
   const nextTop = Math.min(wallTop(current) + step, home.y);
   const nextRight = Math.max(wallRight(current) - step, wallRight(home));
@@ -113,7 +113,7 @@ export function computeOmniWallFitFromContent(
   margin = WALL_EXPAND_MARGIN,
 ): OmniWallGrow | null {
   if (!objectBounds) {
-    const next = { ...DEFAULT_WALL_BOUNDS };
+    const next = { ...MIN_WALL_BOUNDS };
     if (
       next.x === current.x &&
       next.y === current.y &&
@@ -129,8 +129,8 @@ export function computeOmniWallFitFromContent(
   const spanH = Math.max(0, objectBounds.maxY - objectBounds.minY);
   let width = spanW + margin * 2;
   let height = spanH + margin * 2;
-  width = Math.max(DEFAULT_WALL_BOUNDS.width, width);
-  height = Math.max(DEFAULT_WALL_BOUNDS.height, height);
+  width = Math.max(MIN_WALL_BOUNDS.width, width);
+  height = Math.max(MIN_WALL_BOUNDS.height, height);
 
   let x = objectBounds.minX - margin;
   let y = objectBounds.minY - margin;
@@ -154,13 +154,12 @@ export function computeOmniWallFitFromContent(
 }
 
 /**
- * Live drag follow: grow/shrink wall AABB when content presses edges.
+ * Live drag follow: grow wall AABB when content presses edges.
  * No object shifts — west/north growth moves `bounds.x` / `bounds.y`.
  *
- * Shrink is same-edge only (home ∪ content):
- * - Pull back near the east edge → east shrinks; west stays.
- * - Press west to expand → east stays put (no cross-wall reclaim).
- * `allowReclaim` is kept for callers; when false, grow-only.
+ * Shrink during drag is intentionally off by default (pass allowReclaim only
+ * for tests / legacy). Empty-side reclaim runs once on drop when wallShrinkEnabled.
+ * `allowReclaim` when true enables same-edge reclaim mid-drag (legacy).
  */
 export function computeOmniWallFollowFromContent(
   objectBounds: ObjectBounds | null,
@@ -179,7 +178,7 @@ export function computeOmniWallFollowFromContent(
   const top = wallTop(current);
   const right = wallRight(current);
   const bottom = wallBottom(current);
-  const home = DEFAULT_WALL_BOUNDS;
+  const home = MIN_WALL_BOUNDS;
   const homeLeft = wallLeft(home);
   const homeTop = wallTop(home);
   const homeRight = wallRight(home);
@@ -259,6 +258,97 @@ export function computeOmniWallFollowFromContent(
     if (pressingNorth && !pressingSouth) nextTop = nextBottom - max.height;
     else nextBottom = nextTop + max.height;
   }
+
+  const bounds = clampWallBoundsAnchored(
+    {
+      x: nextLeft,
+      y: nextTop,
+      width: nextRight - nextLeft,
+      height: nextBottom - nextTop,
+    },
+    max,
+  );
+
+  if (
+    bounds.x === current.x &&
+    bounds.y === current.y &&
+    bounds.width === current.width &&
+    bounds.height === current.height
+  ) {
+    return null;
+  }
+
+  return { bounds, shiftX: 0, shiftY: 0 };
+}
+
+/**
+ * After drag-end: reclaim idle edges toward home ∪ content.
+ * No half-gating — empty expanded sides shrink even if content sits on the
+ * opposite half. Safe only when not mid-drag (avoids wall "following" expand).
+ */
+export function computeOmniWallReclaimEmptySides(
+  objectBounds: ObjectBounds | null,
+  current: WallBounds,
+  max: Pick<WallBounds, "width" | "height">,
+  margin = WALL_EXPAND_MARGIN,
+): OmniWallGrow | null {
+  if (!objectBounds) {
+    const next = clampWallBoundsAnchored({ ...MIN_WALL_BOUNDS }, max);
+    if (
+      next.x === current.x &&
+      next.y === current.y &&
+      next.width === current.width &&
+      next.height === current.height
+    ) {
+      return null;
+    }
+    return { bounds: next, shiftX: 0, shiftY: 0 };
+  }
+
+  const left = wallLeft(current);
+  const top = wallTop(current);
+  const right = wallRight(current);
+  const bottom = wallBottom(current);
+  const home = MIN_WALL_BOUNDS;
+  const minW = home.width;
+  const minH = home.height;
+  const limits = wallExpandEdgeLimits(max);
+
+  const pressingEast = objectBounds.maxX > right - margin;
+  const pressingWest = objectBounds.minX < left + margin;
+  const pressingSouth = objectBounds.maxY > bottom - margin;
+  const pressingNorth = objectBounds.minY < top + margin;
+
+  let nextLeft = left;
+  let nextTop = top;
+  let nextRight = right;
+  let nextBottom = bottom;
+
+  const targetLeft = Math.min(wallLeft(home), objectBounds.minX - margin);
+  const targetRight = Math.max(wallRight(home), objectBounds.maxX + margin);
+  const targetTop = Math.min(wallTop(home), objectBounds.minY - margin);
+  const targetBottom = Math.max(wallBottom(home), objectBounds.maxY + margin);
+
+  if (!pressingWest && targetLeft > nextLeft) {
+    nextLeft = Math.min(targetLeft, nextRight - minW);
+  }
+  if (!pressingEast && targetRight < nextRight) {
+    nextRight = Math.max(targetRight, nextLeft + minW);
+  }
+  if (!pressingNorth && targetTop > nextTop) {
+    nextTop = Math.min(targetTop, nextBottom - minH);
+  }
+  if (!pressingSouth && targetBottom < nextBottom) {
+    nextBottom = Math.max(targetBottom, nextTop + minH);
+  }
+
+  nextLeft = Math.max(nextLeft, limits.minLeft);
+  nextRight = Math.min(nextRight, limits.maxRight);
+  nextTop = Math.max(nextTop, limits.minTop);
+  nextBottom = Math.min(nextBottom, limits.maxBottom);
+
+  if (nextRight - nextLeft < minW) nextRight = Math.min(nextLeft + minW, limits.maxRight);
+  if (nextBottom - nextTop < minH) nextBottom = Math.min(nextTop + minH, limits.maxBottom);
 
   const bounds = clampWallBoundsAnchored(
     {

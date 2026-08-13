@@ -1,5 +1,5 @@
 import { loadHtmlImage } from "@/lib/storage/load-html-image";
-import { DEFAULT_WALL_BOUNDS } from "@/lib/wall-bounds";
+import { WALL_HOME_TILE_HEIGHT, WALL_HOME_TILE_WIDTH } from "@/lib/wall-bounds";
 import type { WallExportRect } from "@/lib/wall-scene/instagram-export";
 
 const PREVIEW_MAX_EDGE = 1600;
@@ -40,8 +40,8 @@ function drawImageTiled(
 ) {
   const scaleX = outW / Math.max(1, logicalWallW);
   const scaleY = outH / Math.max(1, logicalWallH);
-  const tileW = Math.max(1, DEFAULT_WALL_BOUNDS.width * scaleX);
-  const tileH = Math.max(1, DEFAULT_WALL_BOUNDS.height * scaleY);
+  const tileW = Math.max(1, WALL_HOME_TILE_WIDTH * scaleX);
+  const tileH = Math.max(1, WALL_HOME_TILE_HEIGHT * scaleY);
   const originX = offsetX * scaleX;
   const originY = offsetY * scaleY;
 

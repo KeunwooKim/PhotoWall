@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { HomeIcon, MenuIcon } from "@/components/wall/EditorToolDock";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
-import { setWallSizeLocked } from "@/lib/wall-scene/wall-size-lock";
+import { setWallSizeLocked, setWallShrinkEnabled } from "@/lib/wall-scene/wall-size-lock";
 
 type Panel = "menu" | "settings" | "share";
 
@@ -50,6 +50,7 @@ export default function EditorMenuDrawer({
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [titleError, setTitleError] = useState<string | null>(null);
   const lockWallSize = useWallSceneStore((s) => !!s.document.meta.wallSizeLocked);
+  const wallShrinkEnabled = useWallSceneStore((s) => !!s.document.meta.wallShrinkEnabled);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -95,6 +96,10 @@ export default function EditorMenuDrawer({
 
   const toggleLockWallSize = () => {
     setWallSizeLocked(!lockWallSize);
+  };
+
+  const toggleWallShrink = () => {
+    setWallShrinkEnabled(!wallShrinkEnabled);
   };
 
   const itemClass =
@@ -289,6 +294,34 @@ export default function EditorMenuDrawer({
               <p className="-mt-2 px-3 text-[11px] leading-relaxed text-muted">
                 켜면 모두가 벽을 키우거나 줄일 수 없어요
               </p>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={wallShrinkEnabled}
+                className={itemClass}
+                disabled={lockWallSize}
+                onClick={toggleWallShrink}
+              >
+                <ShrinkWallIcon />
+                <span className="flex-1">벽 축소</span>
+                <span
+                  className={`relative h-6 w-10 shrink-0 rounded-full transition ${
+                    wallShrinkEnabled && !lockWallSize
+                      ? "bg-foreground"
+                      : "bg-foreground/20"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition ${
+                      wallShrinkEnabled && !lockWallSize ? "left-4" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+              <p className="-mt-2 px-3 text-[11px] leading-relaxed text-muted">
+                끄면(기본) 벽은 커지기만 해요. 켜면 손을 뗀 뒤 빈 쪽만 줄어들어요
+              </p>
             </div>
           )}
         </div>
@@ -380,6 +413,26 @@ function LockWallIcon() {
       <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" />
       <path
         d="M8 10V7a4 4 0 018 0v3"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ShrinkWallIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 9l6 6M15 9l-6 6"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
