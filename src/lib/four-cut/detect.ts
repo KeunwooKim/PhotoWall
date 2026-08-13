@@ -192,11 +192,11 @@ function detectGrid2x2(
     cols.slice(0, borderBand).reduce((s, n) => s + n, 0) / borderBand;
   if (topFrac > FRAME_ROW_MAX || leftFrac > FRAME_ROW_MAX) return null;
 
-  let rowRuns = mergeCloseRuns(
+  const rowRuns = mergeCloseRuns(
     runsAbove(rows, 0.28).filter((run) => run.end - run.start >= Math.round(height * 0.12)),
     Math.max(2, Math.round(height * 0.01)),
   );
-  let colRuns = mergeCloseRuns(
+  const colRuns = mergeCloseRuns(
     runsAbove(cols, 0.28).filter((run) => run.end - run.start >= Math.round(width * 0.12)),
     Math.max(2, Math.round(width * 0.01)),
   );
