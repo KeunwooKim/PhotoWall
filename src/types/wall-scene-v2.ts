@@ -75,6 +75,8 @@ export interface WallSceneFourCut {
   windows: [PhotoCropRect, PhotoCropRect, PhotoCropRect, PhotoCropRect];
   /** Catalog skin. Absent/null keeps the original bitmap chrome. */
   skinId?: string | null;
+  /** Photo box before theme chrome. Restored on 원본. */
+  base?: { x: number; y: number; width: number; height: number };
 }
 
 export interface WallScenePhoto extends WallSceneObjectBase {

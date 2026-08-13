@@ -1,5 +1,5 @@
 import { detectFourCutLayout } from "../src/lib/four-cut/detect";
-import { canonicalFourCutWindows, fourCutHoleFractions } from "../src/lib/four-cut/layout";
+import { canonicalFourCutWindows, containBlitRects, fourCutHoleFractions, fourCutHolesInPhoto } from "../src/lib/four-cut/layout";
 import { getFourCutSkin, getListedFourCutSkins } from "../src/lib/four-cut/catalog";
 import { sanitizeFourCutFields } from "../src/lib/four-cut/sanitize";
 import type { RgbaBuffer } from "../src/lib/four-cut/types";
@@ -134,6 +134,47 @@ function fillRect(
 }
 
 {
+  const src = { x: 10, y: 20, width: 80, height: 40 };
+  const dest = { x: 0, y: 0, width: 80, height: 40 };
+  const fit = containBlitRects(src, dest);
+  assert(fit.sw === 80 && fit.sh === 40, "contain same aspect uses full source");
+  assert(Math.abs(fit.dw - 80) < 1e-6 && Math.abs(fit.dh - 40) < 1e-6, "contain same aspect fills dest");
+
+  const tall = containBlitRects(src, { x: 0, y: 0, width: 40, height: 80 });
+  assert(tall.sw === 80 && tall.sh === 40, "contain mismatched aspect does not crop source");
+  assert(Math.abs(tall.dw - 40) < 1e-6, "contain letterboxes to dest width");
+  assert(tall.dh < 80, "contain letterboxes inside dest height");
+}
+
+{
+  const windows = canonicalFourCutWindows("stack4", 100, 250);
+  const photo: WallScenePhoto = {
+    id: "p",
+    type: "photo",
+    x: 10,
+    y: 20,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    zIndex: 1,
+    src: "x",
+    width: 100,
+    height: 250,
+    fourCut: {
+      layout: "stack4",
+      windows,
+      skinId: "fourcut.stack.white",
+      base: { x: 10, y: 20, width: 100, height: 250 },
+    },
+  };
+  const holes = fourCutHolesInPhoto(photo, 100, 250);
+  assert(holes != null && holes.length === 4, "mapped dest holes");
+  assert(Math.abs(holes![0].width - windows[0].width) < 1e-6, "inner photo width matches 원본");
+  assert(Math.abs(holes![0].x - windows[0].x) < 1e-6, "inner photo x matches 원본");
+  assert(fourCutHolesInPhoto(photo) == null, "holes wait for source size");
+}
+
+{
   const base: WallScenePhoto = {
     id: "p1",
     type: "photo",
@@ -155,10 +196,12 @@ function fillRect(
         { x: 4, y: 145, width: 70, height: 40 },
       ],
       skinId: "fourcut.stack.white",
+      base: { x: 1, y: 2, width: 80, height: 200 },
     },
   };
   const kept = sanitizeFourCutFields(base) as WallScenePhoto;
   assert(kept.fourCut?.skinId === "fourcut.stack.white", "known skin kept");
+  assert(kept.fourCut?.base?.width === 80, "base box kept");
 
   const bad = sanitizeFourCutFields({
     ...base,

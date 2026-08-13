@@ -1,7 +1,7 @@
 import { getCachedHtmlImage, loadHtmlImage } from "@/lib/storage/load-html-image";
 import { getCachedPhotoDisplayUrl } from "@/lib/storage/photo-display-cache";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
-import type { FourCutLayout, WallSceneFourCut, WallScenePhoto } from "@/types/wall-scene-v2";
+import type { WallSceneFourCut, WallScenePhoto } from "@/types/wall-scene-v2";
 import { getFourCutSkin } from "./catalog";
 import { canonicalFourCutWindows } from "./layout";
 import type { ApplyFourCutSkinResult } from "./types";
@@ -17,20 +17,6 @@ function commitPhoto(next: WallScenePhoto): void {
   store.recordHistory();
   store.upsertObject(next);
   store.bumpRevision();
-}
-
-function resizeToAspect(photo: WallScenePhoto, aspect: number): { x: number; y: number; width: number; height: number } {
-  const area = Math.max(1, photo.width * photo.height);
-  const height = Math.sqrt(area / Math.max(0.05, aspect));
-  const width = height * aspect;
-  const cx = photo.x + photo.width / 2;
-  const cy = photo.y + photo.height / 2;
-  return {
-    x: cx - width / 2,
-    y: cy - height / 2,
-    width,
-    height,
-  };
 }
 
 function displaySrcFor(photo: WallScenePhoto): string {
@@ -52,10 +38,19 @@ async function naturalSourceSize(
   }
 }
 
-function windowsMatchLayout(photo: WallScenePhoto, layout: FourCutLayout): boolean {
-  const fourCut = photo.fourCut;
-  if (!fourCut || fourCut.layout !== layout || fourCut.windows.length !== 4) return false;
+function currentBox(photo: WallScenePhoto): { x: number; y: number; width: number; height: number } {
+  return { x: photo.x, y: photo.y, width: photo.width, height: photo.height };
+}
+
+function windowsUsable(fourCut: WallSceneFourCut | undefined): boolean {
+  if (!fourCut || fourCut.windows.length !== 4) return false;
   return fourCut.windows.every((window) => window.width > 1 && window.height > 1);
+}
+
+/** Size before any theme. Never inferred by shrinking a themed box. */
+function originalBox(photo: WallScenePhoto): { x: number; y: number; width: number; height: number } {
+  if (photo.fourCut?.base) return photo.fourCut.base;
+  return currentBox(photo);
 }
 
 export async function applyFourCutSkin(
@@ -67,9 +62,11 @@ export async function applyFourCutSkin(
 
   if (!skinId) {
     if (!photo.fourCut) return "ok";
+    const box = originalBox(photo);
     const next: WallScenePhoto = {
       ...photo,
-      fourCut: { ...photo.fourCut, skinId: null },
+      ...box,
+      fourCut: { layout: photo.fourCut.layout, windows: photo.fourCut.windows },
     };
     commitPhoto(next);
     return "ok";
@@ -78,23 +75,30 @@ export async function applyFourCutSkin(
   const skin = getFourCutSkin(skinId);
   if (!skin) return "unknown-skin";
 
+  const base = originalBox(photo);
+  const size = windowsUsable(photo.fourCut) ? null : await naturalSourceSize(photo);
+
   let fourCut: WallSceneFourCut;
-  if (windowsMatchLayout(photo, skin.layout) && photo.fourCut) {
-    fourCut = { ...photo.fourCut, skinId: skin.id };
+  if (windowsUsable(photo.fourCut) && photo.fourCut) {
+    fourCut = {
+      layout: skin.layout,
+      windows: photo.fourCut.windows,
+      skinId: skin.id,
+      base,
+    };
   } else {
-    const size = await naturalSourceSize(photo);
     if (!size) return "no-source-size";
     fourCut = {
       layout: skin.layout,
       windows: canonicalFourCutWindows(skin.layout, size.width, size.height),
       skinId: skin.id,
+      base,
     };
   }
 
-  const box = resizeToAspect(photo, skin.aspect);
   const next: WallScenePhoto = {
     ...photo,
-    ...box,
+    ...base,
     fourCut,
   };
   delete next.frameId;

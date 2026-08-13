@@ -44,12 +44,24 @@ export function sanitizeFourCutFields(object: WallSceneObject): WallSceneObject 
 
   const nextFourCut: WallSceneFourCut = { layout, windows };
   if (skinId !== undefined) nextFourCut.skinId = skinId;
+  if (raw.base && isCropRect(raw.base)) {
+    nextFourCut.base = {
+      x: raw.base.x,
+      y: raw.base.y,
+      width: raw.base.width,
+      height: raw.base.height,
+    };
+  }
 
   const prev = photo.fourCut;
   if (
     prev.layout === nextFourCut.layout &&
     prev.skinId === nextFourCut.skinId &&
-    prev.windows === nextFourCut.windows
+    prev.windows === nextFourCut.windows &&
+    prev.base?.x === nextFourCut.base?.x &&
+    prev.base?.y === nextFourCut.base?.y &&
+    prev.base?.width === nextFourCut.base?.width &&
+    prev.base?.height === nextFourCut.base?.height
   ) {
     return object;
   }

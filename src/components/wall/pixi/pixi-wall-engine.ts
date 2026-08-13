@@ -45,7 +45,7 @@ import {
   getPhotoFrameOuterSize,
   getPhotoTransformerBox,
 } from "@/lib/photo-frames";
-import { coverBlitRects, fourCutHoleStrokeStyle, fourCutHolesInPhoto, getFourCutSkin, getFourCutThemeCanvas } from "@/lib/four-cut";
+import { containBlitRects, fourCutHoleStrokeStyle, fourCutHolesInPhoto, getFourCutSkin, getFourCutThemeCanvas } from "@/lib/four-cut";
 import { getPenStyle, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import {
   HIGHLIGHTER_OPACITY,
@@ -865,8 +865,7 @@ export class PixiWallEngine {
   ): Promise<boolean> {
     const fourCut = object.fourCut;
     const skin = getFourCutSkin(fourCut?.skinId);
-    const dests = fourCutHolesInPhoto(object);
-    if (!fourCut || !skin || !dests) return false;
+    if (!fourCut || !skin) return false;
 
     if (skin.src) {
       const matte = new Graphics()
@@ -891,6 +890,8 @@ export class PixiWallEngine {
     const resolved = await this.resolveSrc(object.src);
     const texture = await this.textureFor(object.src);
     const meta = this.textureMeta.get(resolved);
+    const dests = fourCutHolesInPhoto(object, meta?.naturalWidth, meta?.naturalHeight);
+    if (!dests) return true;
     const sx = meta ? meta.displayWidth / Math.max(1, meta.naturalWidth) : 1;
     const sy = meta ? meta.displayHeight / Math.max(1, meta.naturalHeight) : 1;
 
@@ -903,7 +904,7 @@ export class PixiWallEngine {
         root.addChild(placeholder);
         continue;
       }
-      const blit = coverBlitRects(fourCut.windows[i], dest);
+      const blit = containBlitRects(fourCut.windows[i], dest);
       const cropFrame = new Rectangle(
         Math.max(0, blit.sx * sx),
         Math.max(0, blit.sy * sy),

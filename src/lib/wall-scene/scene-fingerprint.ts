@@ -29,6 +29,7 @@ export function structuralSceneFingerprint(objects: WallSceneObject[]): string {
                 layout: object.fourCut.layout,
                 skinId: object.fourCut.skinId ?? null,
                 windows: object.fourCut.windows,
+                base: object.fourCut.base ?? null,
               }
             : null,
         };

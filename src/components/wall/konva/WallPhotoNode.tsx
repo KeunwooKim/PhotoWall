@@ -26,7 +26,7 @@ import {
   getPhotoFrameOuterSize,
 } from "@/lib/photo-frames";
 import {
-  coverBlitRects,
+  containBlitRects,
   fourCutHoleStrokeStyle,
   fourCutHolesInPhoto,
   getFourCutSkin,
@@ -194,11 +194,15 @@ export default function WallPhotoNode({
   const sprockets = frame?.id === "frame.film" ? filmSprocketRects(object, inset) : [];
   const patternCanvas = frame?.pattern ? getFramePatternCanvas(frame) : null;
   const fourCutSkin = getFourCutSkin(object.fourCut?.skinId);
-  const fourCutHoles = fourCutHolesInPhoto(object);
+  const fourCutHoles = fourCutHolesInPhoto(
+    object,
+    shownImage?.naturalWidth || shownImage?.width,
+    shownImage?.naturalHeight || shownImage?.height,
+  );
   const fourCutBlits =
     object.fourCut && fourCutHoles
       ? fourCutHoles.map((dest, index) =>
-          coverBlitRects(object.fourCut!.windows[index], dest),
+          containBlitRects(object.fourCut!.windows[index], dest),
         )
       : [];
   const fourCutThemeCanvas =

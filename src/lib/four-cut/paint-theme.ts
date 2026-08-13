@@ -1,5 +1,5 @@
 import { getFramePatternCanvas, type PhotoFrameDefinition } from "@/lib/photo-frames";
-import { fourCutChromeBands, fourCutHoleFractions } from "./layout";
+import { fourCutChromeBands } from "./layout";
 import type { FourCutSkinDefinition } from "./types";
 
 const canvasCache = new Map<string, HTMLCanvasElement>();

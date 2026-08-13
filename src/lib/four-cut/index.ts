@@ -17,6 +17,7 @@ export { applyFourCutSkin, clearFourCutSkin } from "./apply";
 export { detectFourCutFromImage, detectFourCutLayout, rasterizeForDetect } from "./detect";
 export {
   canonicalFourCutWindows,
+  containBlitRects,
   coverBlitRects,
   fourCutChromeBands,
   fourCutHoleFractions,

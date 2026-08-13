@@ -65,15 +65,42 @@ export function fourCutChromeBands(layout: FourCutLayout): {
   return { header: STACK_HEADER, footer: STACK_FOOTER, side: STACK_SIDE };
 }
 
-export function fourCutHolesInPhoto(photo: WallScenePhoto): PhotoCropRect[] | null {
+export function fourCutHolesInPhoto(
+  photo: WallScenePhoto,
+  sourceWidth?: number,
+  sourceHeight?: number,
+): PhotoCropRect[] | null {
   const fourCut = photo.fourCut;
   if (!fourCut?.skinId) return null;
-  return fourCutHoleFractions(fourCut.layout).map((hole) => ({
-    x: hole.x * photo.width,
-    y: hole.y * photo.height,
-    width: hole.width * photo.width,
-    height: hole.height * photo.height,
+  const sw = sourceWidth ?? 0;
+  const sh = sourceHeight ?? 0;
+  if (sw < 8 || sh < 8) return null;
+  return fourCut.windows.map((window) => ({
+    x: (window.x / sw) * photo.width,
+    y: (window.y / sh) * photo.height,
+    width: (window.width / sw) * photo.width,
+    height: (window.height / sh) * photo.height,
   }));
+}
+
+/** Source window → dest hole, contain (letterbox, no crop / no stretch). */
+export function containBlitRects(
+  src: PhotoCropRect,
+  dest: PhotoCropRect,
+): { sx: number; sy: number; sw: number; sh: number; dx: number; dy: number; dw: number; dh: number } {
+  const scale = Math.min(dest.width / Math.max(1, src.width), dest.height / Math.max(1, src.height));
+  const dw = src.width * scale;
+  const dh = src.height * scale;
+  return {
+    sx: src.x,
+    sy: src.y,
+    sw: src.width,
+    sh: src.height,
+    dx: dest.x + (dest.width - dw) / 2,
+    dy: dest.y + (dest.height - dh) / 2,
+    dw,
+    dh,
+  };
 }
 
 /** Source window → dest hole, cover (center-crop). */

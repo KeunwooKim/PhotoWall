@@ -25,7 +25,13 @@ export function applyPhotoFrame(photoId: string, frameId: string | null): ApplyP
   if (frameId) next.frameId = frameId;
   else delete next.frameId;
   if (frameId && next.fourCut?.skinId) {
-    next.fourCut = { ...next.fourCut, skinId: null };
+    if (next.fourCut.base) {
+      next.x = next.fourCut.base.x;
+      next.y = next.fourCut.base.y;
+      next.width = next.fourCut.base.width;
+      next.height = next.fourCut.base.height;
+    }
+    next.fourCut = { layout: next.fourCut.layout, windows: next.fourCut.windows };
   }
   commitPhoto(next);
   return "ok";
