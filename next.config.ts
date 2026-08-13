@@ -18,8 +18,8 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self' https://accounts.google.com",
-      // Next.js hydration needs 'unsafe-inline'. Prefer no 'unsafe-eval'.
-      // Sentry/onnx may break if eval is required — watch production console.
+      // Next.js hydration needs 'unsafe-inline'. Prefer no 'unsafe-eval'
+      // (Pixi uses pixi.js/unsafe-eval polyfill — see src/components/wall/pixi/pixi-csp.ts).
       // AdSense hosts for site verification / Auto ads.
       "script-src 'self' 'unsafe-inline' https://browser.sentry-cdn.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
       "style-src 'self' 'unsafe-inline'",

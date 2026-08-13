@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import PhotoWallLogo from "@/components/brand/PhotoWallLogo";
 import AppDesktopSidebar from "@/components/layout/AppDesktopSidebar";
 
 const NAV_ITEMS = [
@@ -48,9 +49,7 @@ export default function AppShell({
             className="mx-auto flex h-14 max-w-lg items-center justify-between px-5"
             style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
-            <Link href="/" className="text-base font-bold tracking-tight">
-              PhotoWall
-            </Link>
+            <PhotoWallLogo variant="lockup" height={28} />
             <span className="text-xs text-muted">디지털 포토월</span>
           </div>
         </header>

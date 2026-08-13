@@ -51,14 +51,9 @@
 }
 
 .ss-logo {
-  font-family: var(--ss-font-d);
-  font-size: 20px;
-  color: var(--ss-charcoal);
-  text-decoration: none;
   flex-shrink: 0;
-}
-.ss-logo span {
-  color: inherit;
+  display: inline-flex;
+  align-items: center;
 }
 
 .ss-crumb {

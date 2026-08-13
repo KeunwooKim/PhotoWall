@@ -49,6 +49,7 @@ import { objectsInMarquee } from "@/lib/wall-scene/selection-utils";
 import { ensureStickersForIds } from "@/lib/stickers";
 import { wallpaperDisplayOffset } from "@/lib/wall-bounds";
 import { setViewportWorldCenterGetter } from "@/lib/wall-scene/wall-home-placement";
+import "./pixi-csp";
 import { Texture, TilingSprite, Graphics } from "pixi.js";
 import { PixiWallEngine, type PixiStageExport } from "./pixi-wall-engine";
 import PixiPresenceOverlay from "./PixiPresenceOverlay";

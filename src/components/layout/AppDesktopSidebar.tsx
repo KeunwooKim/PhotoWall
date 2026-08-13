@@ -3,16 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Jua } from "next/font/google";
+import PhotoWallLogo from "@/components/brand/PhotoWallLogo";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/auth/api-fetch";
 import { useStickerStoreGate } from "@/hooks/useStickerStoreGate";
 import type { Profile } from "@/types/profile";
-
-const displayFont = Jua({
-  subsets: ["latin"],
-  weight: "400",
-});
 
 const SIDE_NAV = [
   { href: "/", label: "홈", icon: "home" as const },
@@ -57,14 +52,8 @@ export default function AppDesktopSidebar({ wallsBadge }: AppDesktopSidebarProps
   return (
     <aside className="flex h-[100dvh] flex-col overflow-y-auto border-r border-foreground/10 bg-surface py-7 text-foreground">
       <div className="border-b border-foreground/8 px-[22px] pb-8">
-        <div className="mb-1.5 flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-accent-dark">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/stickers/basic/sparkle.svg" alt="" className="h-5 w-5 brightness-0 invert" />
-          </div>
-          <span className={`${displayFont.className} text-xl tracking-tight`}>PhotoWall</span>
-        </div>
-        <p className="ml-0.5 text-[11px] text-muted">나만의 감성 사진 아카이브</p>
+        <PhotoWallLogo variant="lockup" height={36} />
+        <p className="mt-2 ml-0.5 text-[11px] text-muted">나만의 감성 사진 아카이브</p>
       </div>
 
       <nav className="flex-1 px-3 py-5">

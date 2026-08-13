@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import PhotoWallLogo from "@/components/brand/PhotoWallLogo";
 import { authFetch } from "@/lib/auth/api-fetch";
 
 const NAV = [
@@ -37,8 +38,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     <div className="min-h-[100dvh] bg-background">
       <header className="border-b border-foreground/10 bg-surface">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">PhotoWall</p>
+          <div className="flex items-center gap-3">
+            <PhotoWallLogo variant="lockup" height={28} />
             <h1 className="text-lg font-bold">관리자</h1>
           </div>
           <Link

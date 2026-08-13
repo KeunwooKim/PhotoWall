@@ -1,3 +1,4 @@
+import "./pixi-csp";
 import {
   Application,
   Container,
