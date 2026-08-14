@@ -77,13 +77,7 @@ export default function HomeDesktop({
 
       {/* ── MAIN ── */}
       <main className="flex h-[100dvh] flex-col gap-6 overflow-y-auto px-7 pb-14 pt-7 [scrollbar-width:none]">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className={`${displayFont.className} text-[26px] tracking-tight`}>
-              {user ? `안녕하세요, ${displayName}` : "안녕하세요"}
-            </h1>
-            <p className="mt-1 text-[13px] text-muted">오늘도 좋은 추억을 기록해봐요</p>
-          </div>
+        <div className="flex items-center justify-end">
           <div className="flex items-center gap-2.5">
             <button
               type="button"

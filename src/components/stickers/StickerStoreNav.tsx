@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import PhotoWallLogo from "@/components/brand/PhotoWallLogo";
 
 type Props = {
   crumb: string;
@@ -22,13 +21,6 @@ export default function StickerStoreNav({
 }: Props) {
   return (
     <nav className="ss-nav">
-      <span className="ss-logo">
-        <PhotoWallLogo
-          variant="lockup"
-          height={32}
-          tone="light"
-        />
-      </span>
       <div className="ss-crumb">
         <span>›</span>
         <Link href="/stickers" className="ss-crumb-cur" style={{ textDecoration: "none" }}>

@@ -1,20 +1,19 @@
-/** Brand assets — V5 lockup cropped from design/logo-concepts header PNGs. */
+/** Live brand files in /public/brand. */
 export const BRAND = {
-  /** Full mark + wordmark for light surfaces (transparent bg, dark text). */
-  lockupLight: "/brand/logo-lockup-light.webp",
-  lockupLight2x: "/brand/logo-lockup-light@2x.webp",
-  /** Full mark + wordmark for dark surfaces (transparent bg, light text). */
-  lockupDark: "/brand/logo-lockup-dark.webp",
-  lockupDark2x: "/brand/logo-lockup-dark@2x.webp",
-  mark: "/brand/logo-mark.webp",
-  mark2x: "/brand/logo-mark@2x.webp",
-  markSvg: "/brand/logo-mark.svg",
+  /** Mark + wordmark, dark text, for light UI. */
+  lockupLight: "/brand/logo-light.webp",
+  lockupLight2x: "/brand/logo-light@2x.webp",
+  /** Mark + wordmark, white text, for dark UI. */
+  lockupDark: "/brand/logo-dark.webp",
+  lockupDark2x: "/brand/logo-dark@2x.webp",
+  mark: "/brand/mark.webp",
+  mark2x: "/brand/mark@2x.webp",
+  markSvg: "/brand/mark.svg",
   favicon: "/brand/favicon.png",
   appleTouchIcon: "/brand/apple-touch-icon.png",
-  ogDefault: "/brand/og-default.png",
+  ogDefault: "/brand/og.png",
 } as const;
 
-/** Default lockup height in UI chrome. */
 export const BRAND_LOCKUP = {
   height: 36,
 } as const;

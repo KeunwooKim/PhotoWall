@@ -342,7 +342,6 @@ function StickerStoreTeaser() {
             공식·커뮤니티 팩을 설치해 벽에 붙여 보세요
           </p>
         </div>
-        <PhotoWallLogo variant="mark" height={32} href="" />
       </Link>
     </>
   );

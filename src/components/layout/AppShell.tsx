@@ -46,11 +46,10 @@ export default function AppShell({
           }`}
         >
           <div
-            className="mx-auto flex h-14 max-w-lg items-center justify-between px-5"
+            className="mx-auto flex h-14 max-w-lg items-center px-5"
             style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
             <PhotoWallLogo variant="lockup" height={28} />
-            <span className="text-xs text-muted">디지털 포토월</span>
           </div>
         </header>
       )}

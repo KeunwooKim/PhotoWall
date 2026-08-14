@@ -50,14 +50,8 @@
   z-index: 300;
 }
 
-.ss-logo {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-}
-
 .ss-crumb {
-  display: none;
+  display: flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
@@ -695,10 +689,6 @@
     padding: 0 32px;
     height: var(--ss-nav-h);
     padding-top: 0;
-  }
-
-  .ss-crumb {
-    display: flex;
   }
   .ss-nav-spacer {
     display: block;

@@ -174,3 +174,9 @@ export function useTheme() {
   if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
   return ctx;
 }
+
+/** Light/dark as currently applied on <html>. Safe outside ThemeProvider. */
+export function useResolvedColorScheme(): "light" | "dark" {
+  const ctx = useContext(ThemeContext);
+  return ctx?.resolved ?? "light";
+}
