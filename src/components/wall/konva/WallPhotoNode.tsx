@@ -26,9 +26,10 @@ import {
   getPhotoFrameOuterSize,
 } from "@/lib/photo-frames";
 import {
-  containBlitRects,
+  coverBlitRects,
   fourCutHoleStrokeStyle,
   fourCutHolesInPhoto,
+  fourCutIsNativePrint,
   getFourCutSkin,
   getFourCutThemeCanvas,
 } from "@/lib/four-cut";
@@ -188,7 +189,7 @@ export default function WallPhotoNode({
     };
   }, [object.crop, shownImage]);
 
-  const frame = getPhotoFrame(object.frameId);
+  const frame = object.fourCut ? undefined : getPhotoFrame(object.frameId);
   const inset = getPhotoFrameInset(object);
   const outer = getPhotoFrameOuterSize(object);
   const sprockets = frame?.id === "frame.film" ? filmSprocketRects(object, inset) : [];
@@ -202,7 +203,7 @@ export default function WallPhotoNode({
   const fourCutBlits =
     object.fourCut && fourCutHoles
       ? fourCutHoles.map((dest, index) =>
-          containBlitRects(object.fourCut!.windows[index], dest),
+          coverBlitRects(object.fourCut!.windows[index], dest),
         )
       : [];
   const fourCutThemeCanvas =
@@ -294,7 +295,18 @@ export default function WallPhotoNode({
           listening={false}
         />
       ))}
-      {fourCutSkin && shownImage
+      {shownImage && (!fourCutHoles || fourCutIsNativePrint(object)) ? (
+        <KonvaImage
+          image={shownImage}
+          width={object.width}
+          height={object.height}
+          crop={konvaCrop}
+          imageSmoothingEnabled
+          perfectDrawEnabled={false}
+          shadowForStrokeEnabled={false}
+        />
+      ) : null}
+      {fourCutHoles && shownImage
         ? fourCutBlits.map((blit, index) => (
             <KonvaImage
               key={`fourcut-${index}`}
@@ -309,17 +321,7 @@ export default function WallPhotoNode({
               shadowForStrokeEnabled={false}
             />
           ))
-        : shownImage && !fourCutSkin ? (
-        <KonvaImage
-          image={shownImage}
-          width={object.width}
-          height={object.height}
-          crop={konvaCrop}
-          imageSmoothingEnabled
-          perfectDrawEnabled={false}
-          shadowForStrokeEnabled={false}
-        />
-      ) : null}
+        : null}
       {fourCutSkin?.src ? (
         <PhotoOverlayImage
           src={fourCutSkin.src}

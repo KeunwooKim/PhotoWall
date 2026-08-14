@@ -5,7 +5,7 @@ const DETECT_MAX_EDGE = 320;
 const STACK_ASPECT_MIN = 2.0;
 const STACK_ASPECT_MAX = 4.2;
 const GRID_ASPECT_MIN = 0.85;
-const GRID_ASPECT_MAX = 1.35;
+const GRID_ASPECT_MAX = 1.7;
 const CONTENT_DIST = 72;
 const FRAME_ROW_MAX = 0.22;
 const MIN_BORDER_FRAC = 0.035;
@@ -170,9 +170,11 @@ function detectStack4(
   if (coeffVar(widths) > CELL_HEIGHT_CV_MAX) return null;
   if (windows[0].width < width * 0.45) return null;
 
+  const cells = windows as WallSceneFourCut["windows"];
   return {
     layout: "stack4",
-    windows: windows as WallSceneFourCut["windows"],
+    windows: cells,
+    baseWindows: cells.map((window) => ({ ...window })) as WallSceneFourCut["windows"],
   };
 }
 
@@ -226,9 +228,11 @@ function detectGrid2x2(
   const areas = cells.map((c) => c.width * c.height);
   if (coeffVar(areas) > GRID_CELL_CV_MAX) return null;
 
+  const grid = cells as WallSceneFourCut["windows"];
   return {
     layout: "grid2x2",
-    windows: cells as WallSceneFourCut["windows"],
+    windows: grid,
+    baseWindows: grid.map((window) => ({ ...window })) as WallSceneFourCut["windows"],
   };
 }
 
@@ -286,10 +290,16 @@ export function detectFourCutFromImage(image: HTMLImageElement): WallSceneFourCu
   if (!buf) return null;
   const hit = detectFourCutLayout(buf);
   if (!hit) return null;
+  const windows = scaleWindows(
+    hit.windows,
+    naturalWidth / buf.width,
+    naturalHeight / buf.height,
+  );
   return {
     layout: hit.layout,
-    windows: scaleWindows(
-      hit.windows,
+    windows,
+    baseWindows: scaleWindows(
+      hit.baseWindows ?? hit.windows,
       naturalWidth / buf.width,
       naturalHeight / buf.height,
     ),

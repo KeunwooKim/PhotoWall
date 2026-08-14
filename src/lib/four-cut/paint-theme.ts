@@ -51,6 +51,8 @@ function paintHeaderFooter(
   ctx.fillStyle = theme.footerFill;
   ctx.fillRect(0, footerY, width, footerH);
 
+  if (theme.headerFill === theme.fill && theme.footerFill === theme.fill) return;
+
   ctx.strokeStyle = theme.ink;
   ctx.globalAlpha = theme.kind === "film" ? 0.45 : 0.28;
   ctx.lineWidth = Math.max(1, height * 0.004);

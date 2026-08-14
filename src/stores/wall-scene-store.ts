@@ -84,6 +84,8 @@ export interface WallSceneStore {
   canUndo: () => boolean;
   canRedo: () => boolean;
   upsertObject: (object: WallSceneObject) => void;
+  /** Replace the object list without recording history (caller records). */
+  replaceObjects: (objects: WallSceneObject[], selectedIds?: string[]) => void;
   patchObject: (id: string, patch: WallObjectPatch) => void;
   clearObjectField: (id: string, field: "groupId") => void;
   removeObject: (id: string) => void;
@@ -321,6 +323,15 @@ export const useWallSceneStore = create<WallSceneStore>()(
           }),
         };
       }),
+
+    replaceObjects: (objects, selectedIds) =>
+      set((state) => ({
+        document: withReconciledWallBounds({
+          ...state.document,
+          objects: sortByZIndex(objects),
+        }),
+        ...(selectedIds ? { selectedIds } : {}),
+      })),
 
     patchObject: (id, patch) =>
       set((state) => ({

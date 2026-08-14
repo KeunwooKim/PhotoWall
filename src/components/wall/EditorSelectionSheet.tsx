@@ -36,6 +36,7 @@ interface EditorSelectionSheetProps {
   onStartCrop?: (id: string) => void;
   onStartColorEdit?: (id: string) => void;
   onUpscalePhoto?: (id: string) => void;
+  onExplodeFourCut?: () => void;
   upscaleBusy?: boolean;
   onToast?: (message: string) => void;
   onBringOntoWall?: () => void;
@@ -71,6 +72,7 @@ export default function EditorSelectionSheet({
   onStartCrop,
   onStartColorEdit,
   onUpscalePhoto,
+  onExplodeFourCut,
   upscaleBusy = false,
   onToast,
   onBringOntoWall,
@@ -282,6 +284,21 @@ export default function EditorSelectionSheet({
         {/* Horizontal property bar */}
         <div className="flex items-center gap-1 rounded-2xl bg-surface py-1.5 pl-1.5 pr-1.5 shadow-lg ring-1 ring-foreground/10">
           <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {isPhoto && object?.type === "photo" && object.fourCut && onExplodeFourCut && (
+              <PropChip
+                label="분리"
+                onClick={onExplodeFourCut}
+                icon={
+                  <path
+                    d="M4 4h6v6H4V4zm8 8h6v6h-6v-6zM14 4h4v4M4 14h4v4"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                }
+              />
+            )}
             {isPhoto && onStartCrop && (
               <PropChip
                 label="자르기"

@@ -48,7 +48,7 @@ type CollageSlot = {
   wrap: string;
   tape: { color: string; rotate: number; className: string };
   frame: string;
-  img: string;
+  maxHeight: string;
 };
 
 const MOBILE_SLOTS: CollageSlot[] = [
@@ -57,24 +57,24 @@ const MOBILE_SLOTS: CollageSlot[] = [
     float: "home-float",
     wrap: "left-[30px] top-[30px] z-[5]",
     tape: { color: "#e5e5e5", rotate: 6, className: "-top-2.5 left-2 z-10" },
-    frame: "w-[90px] p-[5px] pb-3.5",
-    img: "h-[190px]",
+    frame: "max-w-[90px] p-[5px] pb-3.5",
+    maxHeight: "230px",
   },
   {
     rotate: 5,
     float: "home-float-slow",
     wrap: "left-[148px] top-[50px] z-[4]",
     tape: { color: "#d4d4d4", rotate: -4, className: "-top-2.5 left-3 z-10" },
-    frame: "w-[90px] p-[5px] pb-3.5",
-    img: "h-[190px]",
+    frame: "max-w-[90px] p-[5px] pb-3.5",
+    maxHeight: "230px",
   },
   {
     rotate: -7,
     float: "home-float",
     wrap: "bottom-5 right-[18px] z-[6]",
     tape: { color: "#a3a3a3", rotate: 7, className: "-top-2.5 left-[22px] z-10" },
-    frame: "w-[108px] p-[5px] pb-6",
-    img: "h-20",
+    frame: "max-w-[108px] p-[5px] pb-6",
+    maxHeight: "120px",
   },
 ];
 
@@ -84,31 +84,31 @@ const DESKTOP_SLOTS: CollageSlot[] = [
     float: "home-float",
     wrap: "left-12 top-10 z-[5]",
     tape: { color: "#e5e5e5", rotate: 6, className: "-top-2.5 left-2 z-10" },
-    frame: "w-[128px] p-1.5 pb-4",
-    img: "h-[280px]",
+    frame: "max-w-[128px] p-1.5 pb-4",
+    maxHeight: "320px",
   },
   {
     rotate: 5,
     float: "home-float-slow",
     wrap: "left-56 top-16 z-[4]",
     tape: { color: "#d4d4d4", rotate: -4, className: "-top-2.5 left-3 z-10" },
-    frame: "w-[128px] p-1.5 pb-4",
-    img: "h-[280px]",
+    frame: "max-w-[128px] p-1.5 pb-4",
+    maxHeight: "320px",
   },
   {
     rotate: -7,
     float: "home-float",
     wrap: "bottom-8 right-10 z-[6]",
     tape: { color: "#a3a3a3", rotate: 7, className: "-top-2.5 left-[22px] z-10" },
-    frame: "w-40 p-1.5 pb-8",
-    img: "h-[110px]",
+    frame: "max-w-40 p-1.5 pb-8",
+    maxHeight: "140px",
   },
   {
     rotate: 3,
     wrap: "right-14 top-28 z-[7]",
     tape: { color: "#d4d4d4", rotate: -3, className: "-top-2.5 left-4 z-10 w-[50px]" },
-    frame: "w-[112px] p-1.5 pb-5",
-    img: "h-[140px]",
+    frame: "max-w-[112px] p-1.5 pb-5",
+    maxHeight: "180px",
   },
 ];
 
@@ -175,7 +175,8 @@ export default function CorkWallPreview({
                   <img
                     src={src}
                     alt=""
-                    className={`w-full object-cover ${slot.img}`}
+                    className="block h-auto w-auto max-w-full object-contain"
+                    style={{ maxHeight: slot.maxHeight }}
                     draggable={false}
                   />
                 </div>

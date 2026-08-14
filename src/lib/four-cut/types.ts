@@ -36,6 +36,10 @@ export type ApplyFourCutSkinResult =
   | "unknown-skin"
   | "no-source-size";
 
+export type RelayoutFourCutResult = "ok" | "not-photo" | "not-four-cut";
+
+export type ExplodeFourCutResult = "ok" | "not-photo" | "not-four-cut" | "quota";
+
 export type RgbaBuffer = {
   width: number;
   height: number;

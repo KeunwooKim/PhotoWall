@@ -55,12 +55,13 @@ import { isTransformableObject } from "@/lib/wall-scene/selectable-objects";
 import { objectsInMarquee, primarySelectedId } from "@/lib/wall-scene/selection-utils";
 import {
   WallSceneObject,
+  type PhotoCropRect,
+  type WallSceneFourCut,
 } from "@/types/wall-scene-v2";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import PhotoCropLayer from "./PhotoCropLayer";
 import WallPhotoNode from "./WallPhotoNode";
 import type { CropAspectPresetId } from "@/lib/wall-scene/photo-crop";
-import type { PhotoCropRect } from "@/types/wall-scene-v2";
 import WallStickerNode from "./WallStickerNode";
 import WallEmojiNode from "./WallEmojiNode";
 import WallTextNode from "./WallTextNode";
@@ -134,6 +135,9 @@ export interface KonvaWallStageProps {
   /** When set, disables transformer (e.g. color edit session). */
   interactionLockId?: string | null;
   cropAspectPreset?: CropAspectPresetId;
+  cropSlotIndex?: number;
+  cropSlotWindows?: WallSceneFourCut["windows"] | null;
+  onCropSlotWindowChange?: (index: number, window: PhotoCropRect) => void;
   onCropDraftChange?: (
     crop: PhotoCropRect,
     display: { x: number; y: number; width: number; height: number },
@@ -177,6 +181,9 @@ function KonvaWallStage({
   cropPhotoId = null,
   interactionLockId = null,
   cropAspectPreset = "free",
+  cropSlotIndex = 0,
+  cropSlotWindows = null,
+  onCropSlotWindowChange,
   onCropDraftChange,
   onCropNaturalSize,
   instagramExportActive = false,
@@ -1388,6 +1395,9 @@ function KonvaWallStage({
                 photo={cropPhoto}
                 aspectPreset={cropAspectPreset}
                 resolvePhotoSrc={resolvePhotoSrc}
+                cropSlotIndex={cropSlotIndex}
+                cropSlotWindows={cropSlotWindows}
+                onCropSlotWindowChange={onCropSlotWindowChange}
                 onDraftChange={onCropDraftChange}
                 onNaturalSize={onCropNaturalSize}
               />

@@ -54,12 +54,13 @@ import { Texture, TilingSprite, Graphics } from "pixi.js";
 import { PixiWallEngine, type PixiStageExport } from "./pixi-wall-engine";
 import PixiPresenceOverlay from "./PixiPresenceOverlay";
 import PixiPhotoCropOverlay from "./PixiPhotoCropOverlay";
+import PixiFourCutSlotCropOverlay from "./PixiFourCutSlotCropOverlay";
 import { usePixiSnapGuides } from "./usePixiSnapGuides";
 import { usePixiPeerHighlights } from "./usePixiPeerHighlights";
 import { usePixiWallGrid } from "./usePixiWallGrid";
 import type { CropAspectPresetId } from "@/lib/wall-scene/photo-crop";
 import { stashWallPreviewFromStage } from "@/hooks/useWallPreviewFlush";
-import type { PhotoCropRect, WallScenePhoto } from "@/types/wall-scene-v2";
+import type { PhotoCropRect, WallSceneFourCut, WallScenePhoto } from "@/types/wall-scene-v2";
 import type { WallContextMenuRequestFn } from "@/components/wall/konva/wall-context-menu-context";
 
 export type WallStageExportHandle = PixiStageExport;
@@ -99,6 +100,9 @@ export interface PixiWallStageProps {
   cropPhotoId?: string | null;
   interactionLockId?: string | null;
   cropAspectPreset?: CropAspectPresetId;
+  cropSlotIndex?: number;
+  cropSlotWindows?: WallSceneFourCut["windows"] | null;
+  onCropSlotWindowChange?: (index: number, window: PhotoCropRect) => void;
   onCropDraftChange?: (
     crop: PhotoCropRect,
     display: { x: number; y: number; width: number; height: number },
@@ -141,6 +145,9 @@ function PixiWallStage({
   onStartPhotoCrop,
   cropPhotoId = null,
   cropAspectPreset = "free",
+  cropSlotIndex = 0,
+  cropSlotWindows = null,
+  onCropSlotWindowChange,
   onCropDraftChange,
   onCropNaturalSize,
   onEngineReady,
@@ -895,14 +902,27 @@ function PixiWallStage({
         style={{ background: "#d4d4d4" }}
       />
       {engineRef.current && cropPhoto && onCropDraftChange && onCropNaturalSize ? (
-        <PixiPhotoCropOverlay
-          engine={engineRef.current}
-          photo={cropPhoto}
-          aspectPreset={cropAspectPreset}
-          resolvePhotoSrc={resolvePhotoSrc}
-          onDraftChange={onCropDraftChange}
-          onNaturalSize={onCropNaturalSize}
-        />
+        cropPhoto.fourCut && onCropSlotWindowChange ? (
+          <PixiFourCutSlotCropOverlay
+            engine={engineRef.current}
+            photo={cropPhoto}
+            slotIndex={cropSlotIndex}
+            slotWindows={cropSlotWindows ?? cropPhoto.fourCut.windows}
+            resolvePhotoSrc={resolvePhotoSrc}
+            onSlotWindowChange={onCropSlotWindowChange}
+            onDraftChange={onCropDraftChange}
+            onNaturalSize={onCropNaturalSize}
+          />
+        ) : (
+          <PixiPhotoCropOverlay
+            engine={engineRef.current}
+            photo={cropPhoto}
+            aspectPreset={cropAspectPreset}
+            resolvePhotoSrc={resolvePhotoSrc}
+            onDraftChange={onCropDraftChange}
+            onNaturalSize={onCropNaturalSize}
+          />
+        )
       ) : null}
       {stageOverlay}
       {currentSessionId ? (

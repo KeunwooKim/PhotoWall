@@ -20,6 +20,10 @@ interface EditorAssetsPanelProps {
   onApplyFrame?: (frameId: string) => void;
   activeFourCutSkinId?: string | null;
   onApplyFourCutSkin?: (skinId: string | null) => void;
+  hasFourCut?: boolean;
+  fourCutLayout?: "stack4" | "grid2x2" | null;
+  onRelayoutFourCut?: (layout: "stack4" | "grid2x2") => void;
+  onExplodeFourCut?: () => void;
   /** Where QR / scan should return (personal edit or shared editor). */
   returnTo?: string;
   /** docked = desktop column beside tool rail; drawer = mobile slide-over */
@@ -39,6 +43,10 @@ export default function EditorAssetsPanel({
   onApplyFrame,
   activeFourCutSkinId = null,
   onApplyFourCutSkin,
+  hasFourCut = false,
+  fourCutLayout = null,
+  onRelayoutFourCut,
+  onExplodeFourCut,
   returnTo = "/wall/edit",
   variant = "docked",
 }: EditorAssetsPanelProps) {
@@ -123,6 +131,10 @@ export default function EditorAssetsPanel({
             activeFrameId={selectedPhotoId ? activeFrameId : null}
             activeSkinId={selectedPhotoId ? (activeFourCutSkinId ?? null) : undefined}
             onApplyFourCutSkin={onApplyFourCutSkin}
+            hasFourCut={Boolean(selectedPhotoId && hasFourCut)}
+            fourCutLayout={selectedPhotoId ? fourCutLayout : null}
+            onRelayoutFourCut={onRelayoutFourCut}
+            onExplodeFourCut={onExplodeFourCut}
           />
         )}
 

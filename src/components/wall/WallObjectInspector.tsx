@@ -15,6 +15,7 @@ interface WallObjectInspectorProps {
   onStartCrop?: (id: string) => void;
   onStartColorEdit?: (id: string) => void;
   onUpscalePhoto?: (id: string) => void;
+  onExplodeFourCut?: () => void;
   upscaleBusy?: boolean;
   onClose?: () => void;
   /** sidebar = always expanded in properties column; floating = chip then expand */
@@ -57,6 +58,7 @@ export default function WallObjectInspector({
   onStartCrop,
   onStartColorEdit,
   onUpscalePhoto,
+  onExplodeFourCut,
   upscaleBusy = false,
   onClose,
   variant = "floating",
@@ -205,14 +207,24 @@ export default function WallObjectInspector({
         (onStartCrop ||
           onStartColorEdit ||
           onUpscalePhoto ||
+          onExplodeFourCut ||
           object.frameId ||
           object.fourCut?.skinId) && (
           <div className="flex flex-col gap-1.5">
+            {object.fourCut && onExplodeFourCut ? (
+              <button
+                type="button"
+                onClick={onExplodeFourCut}
+                className="w-full rounded-xl bg-foreground px-3 py-2 text-xs font-medium text-background transition active:scale-[0.98]"
+              >
+                사진 분리하기
+              </button>
+            ) : null}
             {onStartCrop && (
               <button
                 type="button"
                 onClick={() => onStartCrop(object.id)}
-                className="w-full rounded-xl bg-foreground px-3 py-2 text-xs font-medium text-background transition active:scale-[0.98]"
+                className="w-full rounded-xl border border-foreground/10 bg-foreground/[0.04] px-3 py-2 text-xs font-medium text-foreground transition hover:bg-foreground/5 active:scale-[0.98]"
               >
                 자르기
               </button>

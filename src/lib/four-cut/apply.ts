@@ -1,10 +1,25 @@
 import { getCachedHtmlImage, loadHtmlImage } from "@/lib/storage/load-html-image";
 import { getCachedPhotoDisplayUrl } from "@/lib/storage/photo-display-cache";
+import { countQuotaObjects } from "@/lib/wall-quotas";
 import { useWallSceneStore } from "@/stores/wall-scene-store";
 import type { WallSceneFourCut, WallScenePhoto } from "@/types/wall-scene-v2";
 import { getFourCutSkin } from "./catalog";
-import { canonicalFourCutWindows } from "./layout";
-import type { ApplyFourCutSkinResult } from "./types";
+import {
+  aspectForFourCutBox,
+  boxKeepCenter,
+  canonicalFourCutWindows,
+  explodeFourCutPlacement,
+  fourCutBoxAspectClose,
+  ensureFourCutBaseWindows,
+  layoutFromAspect,
+  resizeBoxKeepCenterArea,
+} from "./layout";
+import type {
+  ApplyFourCutSkinResult,
+  ExplodeFourCutResult,
+  FourCutLayout,
+  RelayoutFourCutResult,
+} from "./types";
 
 function photoById(photoId: string): WallScenePhoto | null {
   const object = useWallSceneStore.getState().document.objects.find((item) => item.id === photoId);
@@ -62,11 +77,20 @@ export async function applyFourCutSkin(
 
   if (!skinId) {
     if (!photo.fourCut) return "ok";
-    const box = originalBox(photo);
+    const current = currentBox(photo);
+    const base = photo.fourCut.base;
+    const layout = base
+      ? layoutFromAspect(base.width / Math.max(1, base.height))
+      : photo.fourCut.layout;
+    const box = base ? boxKeepCenter(current, base) : current;
     const next: WallScenePhoto = {
       ...photo,
       ...box,
-      fourCut: { layout: photo.fourCut.layout, windows: photo.fourCut.windows },
+      fourCut: ensureFourCutBaseWindows({
+        layout,
+        windows: photo.fourCut.windows,
+        baseWindows: photo.fourCut.baseWindows,
+      }),
     };
     commitPhoto(next);
     return "ok";
@@ -76,21 +100,35 @@ export async function applyFourCutSkin(
   if (!skin) return "unknown-skin";
 
   const base = originalBox(photo);
+  const current = currentBox(photo);
+  const currentAspect = current.width / Math.max(1, current.height);
+  const targetAspect = aspectForFourCutBox(
+    skin.layout,
+    windowsUsable(photo.fourCut) ? photo.fourCut?.windows : undefined,
+  );
+  const needsRelayout =
+    !photo.fourCut ||
+    photo.fourCut.layout !== skin.layout ||
+    !fourCutBoxAspectClose(currentAspect, targetAspect);
+  const box = needsRelayout ? resizeBoxKeepCenterArea(current, targetAspect) : current;
   const size = windowsUsable(photo.fourCut) ? null : await naturalSourceSize(photo);
 
   let fourCut: WallSceneFourCut;
   if (windowsUsable(photo.fourCut) && photo.fourCut) {
-    fourCut = {
+    fourCut = ensureFourCutBaseWindows({
       layout: skin.layout,
       windows: photo.fourCut.windows,
+      baseWindows: photo.fourCut.baseWindows,
       skinId: skin.id,
       base,
-    };
+    });
   } else {
     if (!size) return "no-source-size";
+    const windows = canonicalFourCutWindows(skin.layout, size.width, size.height);
     fourCut = {
       layout: skin.layout,
-      windows: canonicalFourCutWindows(skin.layout, size.width, size.height),
+      windows,
+      baseWindows: windows.map((window) => ({ ...window })) as WallSceneFourCut["windows"],
       skinId: skin.id,
       base,
     };
@@ -98,11 +136,92 @@ export async function applyFourCutSkin(
 
   const next: WallScenePhoto = {
     ...photo,
-    ...base,
+    ...box,
     fourCut,
   };
   delete next.frameId;
   commitPhoto(next);
+  return "ok";
+}
+
+export function relayoutFourCut(photoId: string, layout: FourCutLayout): RelayoutFourCutResult {
+  const photo = photoById(photoId);
+  if (!photo) return "not-photo";
+  if (!windowsUsable(photo.fourCut) || !photo.fourCut) return "not-four-cut";
+
+  const current = currentBox(photo);
+  const targetAspect = aspectForFourCutBox(layout, photo.fourCut.windows);
+  const currentAspect = current.width / Math.max(1, current.height);
+  if (photo.fourCut.layout === layout && fourCutBoxAspectClose(currentAspect, targetAspect)) {
+    return "ok";
+  }
+
+  const box = resizeBoxKeepCenterArea(current, targetAspect);
+  const base = photo.fourCut.base ?? current;
+  let skinId = photo.fourCut.skinId ?? null;
+  if (skinId) {
+    const skin = getFourCutSkin(skinId);
+    if (!skin || skin.layout !== layout) skinId = null;
+  }
+
+  const fourCut: WallSceneFourCut = ensureFourCutBaseWindows({
+    layout,
+    windows: photo.fourCut.windows,
+    baseWindows: photo.fourCut.baseWindows,
+    base,
+    skinId,
+  });
+  commitPhoto({ ...photo, ...box, fourCut });
+  return "ok";
+}
+
+export async function explodeFourCut(
+  photoId: string,
+  options: { maxSceneObjects: number },
+): Promise<ExplodeFourCutResult> {
+  const photo = photoById(photoId);
+  if (!photo) return "not-photo";
+  if (!windowsUsable(photo.fourCut) || !photo.fourCut) return "not-four-cut";
+
+  const store = useWallSceneStore.getState();
+  const objects = store.document.objects;
+  if (countQuotaObjects(objects) + 3 > options.maxSceneObjects) return "quota";
+
+  const source = await naturalSourceSize(photo);
+  const scaleFrom = photo.fourCut.base ?? currentBox(photo);
+  const placements = explodeFourCutPlacement(
+    currentBox(photo),
+    photo.fourCut.windows,
+    source ?? undefined,
+    scaleFrom,
+  );
+  const maxZ = objects.reduce((max, item) => Math.max(max, item.zIndex), 0);
+  const cells: WallScenePhoto[] = placements.map((place, index) => {
+    const cell: WallScenePhoto = {
+      id: crypto.randomUUID(),
+      type: "photo",
+      x: place.x,
+      y: place.y,
+      rotation: place.rotation,
+      scaleX: 1,
+      scaleY: 1,
+      zIndex: maxZ + 1 + index,
+      src: photo.src,
+      width: place.width,
+      height: place.height,
+      crop: { ...photo.fourCut!.windows[index] },
+    };
+    if (photo.opacity != null) cell.opacity = photo.opacity;
+    if (photo.source) cell.source = photo.source;
+    return cell;
+  });
+
+  store.recordHistory();
+  store.replaceObjects(
+    [...objects.filter((item) => item.id !== photoId), ...cells],
+    cells.map((cell) => cell.id),
+  );
+  store.bumpRevision();
   return "ok";
 }
 

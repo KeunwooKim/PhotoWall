@@ -21,18 +21,10 @@ export function applyPhotoFrame(photoId: string, frameId: string | null): ApplyP
   const photo = photoById(photoId);
   if (!photo) return "not-photo";
   if (frameId && !getPhotoFrame(frameId)) return "unknown-frame";
+  if (photo.fourCut && frameId) return "ok";
   const next: WallScenePhoto = { ...photo };
   if (frameId) next.frameId = frameId;
   else delete next.frameId;
-  if (frameId && next.fourCut?.skinId) {
-    if (next.fourCut.base) {
-      next.x = next.fourCut.base.x;
-      next.y = next.fourCut.base.y;
-      next.width = next.fourCut.base.width;
-      next.height = next.fourCut.base.height;
-    }
-    next.fourCut = { layout: next.fourCut.layout, windows: next.fourCut.windows };
-  }
   commitPhoto(next);
   return "ok";
 }

@@ -31,7 +31,7 @@ import { addStickerToWallScene } from "@/lib/wall-scene/add-sticker";
 import {
   applyPhotoFrame,
 } from "@/lib/photo-frames";
-import { applyFourCutSkin } from "@/lib/four-cut";
+import { applyFourCutSkin, explodeFourCut, relayoutFourCut } from "@/lib/four-cut";
 import { consumePendingImports } from "@/lib/booth-import/import-session";
 import { consumePendingScanFiles } from "@/lib/photo-scan/scan-session";
 import {
@@ -182,6 +182,9 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     cropPhotoId,
     cropAspectPreset,
     setCropAspectPreset,
+    cropSlotIndex,
+    setCropSlotIndex,
+    isFourCutSlotCrop,
     handleStartCrop: startCrop,
     handleCropApply,
     handleCropCancel,
@@ -1008,6 +1011,51 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
     [selectedPhoto, showToast],
   );
 
+  const handleRelayoutFourCut = useCallback(
+    (layout: "stack4" | "grid2x2") => {
+      if (!selectedPhoto) {
+        showToast("사진을 먼저 선택해 주세요");
+        return;
+      }
+      const result = relayoutFourCut(selectedPhoto.id, layout);
+      if (result === "ok") return;
+      if (result === "not-four-cut") {
+        showToast("네컷 사진만 배치를 바꿀 수 있어요");
+        return;
+      }
+      showToast("배치를 바꾸지 못했어요");
+    },
+    [selectedPhoto, showToast],
+  );
+
+  const handleExplodeFourCut = useCallback(() => {
+    if (!selectedPhoto) {
+      showToast("사진을 먼저 선택해 주세요");
+      return;
+    }
+    if (!guardAdd(3)) {
+      showToast(limitMessage);
+      return;
+    }
+    void explodeFourCut(selectedPhoto.id, { maxSceneObjects: sceneUsage.maxObjects }).then(
+      (result) => {
+        if (result === "ok") {
+          showToast("4장으로 나눴어요. 각 사진을 선택해 자를 수 있어요");
+          return;
+        }
+        if (result === "quota") {
+          showToast(limitMessage);
+          return;
+        }
+        if (result === "not-four-cut") {
+          showToast("네컷 사진만 나눌 수 있어요");
+          return;
+        }
+        showToast("네컷을 나누지 못했어요");
+      },
+    );
+  }, [selectedPhoto, showToast, guardAdd, limitMessage, sceneUsage.maxObjects]);
+
   const handleThemeChange = useCallback(
     (next: WallThemeId) => {
       setThemeId(next);
@@ -1399,6 +1447,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onApplyFrame={handleApplyFrame}
             activeFourCutSkinId={selectedPhoto?.fourCut?.skinId ?? null}
             onApplyFourCutSkin={handleApplyFourCutSkin}
+            hasFourCut={Boolean(selectedPhoto?.fourCut)}
+            fourCutLayout={selectedPhoto?.fourCut?.layout ?? null}
+            onRelayoutFourCut={handleRelayoutFourCut}
+            onExplodeFourCut={handleExplodeFourCut}
             returnTo={`/shared/${sharedId}`}
           />
         </div>
@@ -1513,6 +1565,11 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
                     ? (id) => void handleUpscalePhoto(id)
                     : undefined
                 }
+                onExplodeFourCut={
+                  inspectorObject?.type === "photo" && inspectorObject.fourCut
+                    ? handleExplodeFourCut
+                    : undefined
+                }
                 upscaleBusy={upscaleBusy}
                 onToast={showToast}
                 onBringOntoWall={handleBringOntoWall}
@@ -1527,7 +1584,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
               onCancel={handleCropCancel}
               onReset={handleCropReset}
               canReset={canResetCrop}
-              showRecoveryHint={canResetCrop}
+              showRecoveryHint={canResetCrop && !isFourCutSlotCrop}
+              slotMode={isFourCutSlotCrop}
+              slotIndex={cropSlotIndex}
+              onSlotIndexChange={setCropSlotIndex}
             />
           )}
 
@@ -1603,6 +1663,7 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
             onStartCrop={handleStartCrop}
             onStartColorEdit={handleStartColorEdit}
             onUpscalePhoto={(id) => void handleUpscalePhoto(id)}
+            onExplodeFourCut={handleExplodeFourCut}
             upscaleBusy={upscaleBusy}
             onCloseSelection={() => useWallSceneStore.getState().clearSelection()}
             onCloseTextEdit={() => setEditingTextId(null)}
@@ -1674,6 +1735,10 @@ export default function SharedWallKonvaEditor({ sharedId }: SharedWallKonvaEdito
         onApplyFrame={handleApplyFrame}
         activeFourCutSkinId={selectedPhoto?.fourCut?.skinId ?? null}
         onApplyFourCutSkin={handleApplyFourCutSkin}
+        hasFourCut={Boolean(selectedPhoto?.fourCut)}
+        fourCutLayout={selectedPhoto?.fourCut?.layout ?? null}
+        onRelayoutFourCut={handleRelayoutFourCut}
+        onExplodeFourCut={handleExplodeFourCut}
         returnTo={`/shared/${sharedId}`}
       />
     </div>

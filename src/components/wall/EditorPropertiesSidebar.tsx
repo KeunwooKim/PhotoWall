@@ -37,6 +37,7 @@ interface EditorPropertiesSidebarProps {
   onStartCrop?: (id: string) => void;
   onStartColorEdit?: (id: string) => void;
   onUpscalePhoto?: (id: string) => void;
+  onExplodeFourCut?: () => void;
   upscaleBusy?: boolean;
   onCloseSelection?: () => void;
   onCloseTextEdit?: () => void;
@@ -100,6 +101,7 @@ export default function EditorPropertiesSidebar({
   onStartCrop,
   onStartColorEdit,
   onUpscalePhoto,
+  onExplodeFourCut,
   upscaleBusy,
   onCloseSelection,
   onCloseTextEdit,
@@ -366,6 +368,11 @@ export default function EditorPropertiesSidebar({
               onStartCrop={inspectorObject.type === "photo" ? onStartCrop : undefined}
               onStartColorEdit={inspectorObject.type === "photo" ? onStartColorEdit : undefined}
               onUpscalePhoto={inspectorObject.type === "photo" ? onUpscalePhoto : undefined}
+              onExplodeFourCut={
+                inspectorObject.type === "photo" && inspectorObject.fourCut
+                  ? onExplodeFourCut
+                  : undefined
+              }
               upscaleBusy={upscaleBusy}
               onClose={onCloseSelection}
             />

@@ -2,9 +2,10 @@ import { patternSwatchCss, type PhotoFrameDefinition } from "@/lib/photo-frames"
 import type { FourCutLayout } from "@/types/wall-scene-v2";
 import type { FourCutSkinDefinition } from "./types";
 
-/** Width / height of the on-wall box after a skin is applied. */
-export const STACK4_ASPECT = 0.38;
-export const GRID2X2_ASPECT = 0.88;
+/** Width / height. 인생네컷 기본 프레임 51×152mm (2×6). */
+export const STACK4_ASPECT = 2 / 6;
+/** Width / height. 인생네컷 멀티 프레임 102×152mm (4×6). */
+export const GRID2X2_ASPECT = 4 / 6;
 
 type ThemePalette = Pick<
   FourCutSkinDefinition,
@@ -13,62 +14,28 @@ type ThemePalette = Pick<
 
 const THEMES: Record<string, { name: string; palette: ThemePalette }> = {
   white: {
-    name: "부스",
+    name: "흰색",
     palette: {
       kind: "booth",
-      fill: "#f7f4ee",
-      headerFill: "#efe8dc",
-      footerFill: "#ebe4d6",
-      ink: "#5c5348",
+      fill: "#ffffff",
+      headerFill: "#ffffff",
+      footerFill: "#ffffff",
+      ink: "#d4d4d4",
     },
   },
   black: {
-    name: "필름",
+    name: "검정",
     palette: {
-      kind: "film",
-      fill: "#1a1a1a",
-      headerFill: "#141414",
-      footerFill: "#f3efe6",
-      ink: "#d8d2c6",
-    },
-  },
-  cream: {
-    name: "빈티지",
-    palette: {
-      kind: "paper",
-      fill: "#f3e6c8",
-      headerFill: "#ead9b0",
-      footerFill: "#e6d4a8",
-      ink: "#6b542e",
-    },
-  },
-  pink: {
-    name: "체크",
-    palette: {
-      kind: "gingham",
-      fill: "#fff5f7",
-      headerFill: "#f4c6d4",
-      footerFill: "#f4c6d4",
-      ink: "#9a4458",
-      pattern: "gingham",
-      patternColor: "#e58aa4",
-    },
-  },
-  sky: {
-    name: "도트",
-    palette: {
-      kind: "dots",
-      fill: "#eef7fc",
-      headerFill: "#c8def0",
-      footerFill: "#c8def0",
-      ink: "#3d6a88",
-      pattern: "dots",
-      patternColor: "#6eb3d9",
+      kind: "booth",
+      fill: "#111111",
+      headerFill: "#111111",
+      footerFill: "#111111",
+      ink: "#2a2a2a",
     },
   },
 };
 
-const THEME_KEYS = ["white", "black", "cream", "pink", "sky"] as const;
+const THEME_KEYS = ["white", "black"] as const;
 
 function stackSkin(key: (typeof THEME_KEYS)[number]): FourCutSkinDefinition {
   const theme = THEMES[key];
@@ -107,9 +74,11 @@ export function getFourCutSkin(id: string | undefined | null): FourCutSkinDefini
 }
 
 export function getListedFourCutSkins(layout?: FourCutLayout): FourCutSkinDefinition[] {
-  return FOUR_CUT_SKINS.filter(
-    (skin) => skin.listed !== false && (layout == null || skin.layout === layout),
-  );
+  return FOUR_CUT_SKINS.filter((skin) => {
+    if (skin.listed === false) return false;
+    if (layout == null) return true;
+    return skin.layout === layout;
+  });
 }
 
 export function fourCutThemeSwatchCss(theme: FourCutSkinDefinition): string {

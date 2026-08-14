@@ -13,9 +13,10 @@ function sanitizeFrameId(value: string | undefined): { next?: string; changed: b
 export function sanitizePhotoDecorFields(object: WallSceneObject): WallSceneObject {
   if (object.type !== "photo") return object;
   const photo = object as WallScenePhoto & { decoId?: unknown; decorations?: unknown };
-  const frame = sanitizeFrameId(photo.frameId);
+  const frame = sanitizeFrameId(photo.fourCut ? undefined : photo.frameId);
   const dropLegacy = photo.decoId != null || photo.decorations != null;
-  if (!frame.changed && !dropLegacy) return object;
+  const dropFourCutFrame = Boolean(photo.fourCut && photo.frameId);
+  if (!frame.changed && !dropLegacy && !dropFourCutFrame) return object;
   const next: WallScenePhoto = { ...photo };
   if (frame.next) next.frameId = frame.next;
   else delete next.frameId;

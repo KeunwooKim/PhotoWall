@@ -44,6 +44,8 @@ export function sanitizeFourCutFields(object: WallSceneObject): WallSceneObject 
 
   const nextFourCut: WallSceneFourCut = { layout, windows };
   if (skinId !== undefined) nextFourCut.skinId = skinId;
+  const baseWindows = sanitizeWindows(raw.baseWindows);
+  if (baseWindows) nextFourCut.baseWindows = baseWindows;
   if (raw.base && isCropRect(raw.base)) {
     nextFourCut.base = {
       x: raw.base.x,
@@ -58,6 +60,7 @@ export function sanitizeFourCutFields(object: WallSceneObject): WallSceneObject 
     prev.layout === nextFourCut.layout &&
     prev.skinId === nextFourCut.skinId &&
     prev.windows === nextFourCut.windows &&
+    prev.baseWindows === nextFourCut.baseWindows &&
     prev.base?.x === nextFourCut.base?.x &&
     prev.base?.y === nextFourCut.base?.y &&
     prev.base?.width === nextFourCut.base?.width &&

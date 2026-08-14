@@ -45,7 +45,7 @@ import {
   getPhotoFrameOuterSize,
   getPhotoTransformerBox,
 } from "@/lib/photo-frames";
-import { containBlitRects, fourCutHoleStrokeStyle, fourCutHolesInPhoto, getFourCutSkin, getFourCutThemeCanvas } from "@/lib/four-cut";
+import { coverBlitRects, fourCutHoleStrokeStyle, fourCutHolesInPhoto, fourCutIsNativePrint, getFourCutSkin, getFourCutThemeCanvas } from "@/lib/four-cut";
 import { getPenStyle, resolvePenShadowBlur } from "@/lib/wall-scene/pen";
 import {
   HIGHLIGHTER_OPACITY,
@@ -757,7 +757,7 @@ export class PixiWallEngine {
   private async buildPhoto(root: Container, object: WallScenePhoto): Promise<void> {
     if (await this.buildFourCutSkinnedPhoto(root, object)) return;
 
-    const frame = getPhotoFrame(object.frameId);
+    const frame = object.fourCut ? undefined : getPhotoFrame(object.frameId);
     const inset = getPhotoFrameInset(object);
     const outer = getPhotoFrameOuterSize(object);
 
@@ -864,15 +864,28 @@ export class PixiWallEngine {
     object: WallScenePhoto,
   ): Promise<boolean> {
     const fourCut = object.fourCut;
-    const skin = getFourCutSkin(fourCut?.skinId);
-    if (!fourCut || !skin) return false;
+    if (!fourCut) return false;
 
-    if (skin.src) {
+    const resolved = await this.resolveSrc(object.src);
+    const texture = await this.textureFor(object.src);
+    const meta = this.textureMeta.get(resolved);
+    const dests = fourCutHolesInPhoto(object, meta?.naturalWidth, meta?.naturalHeight);
+    if (!dests) return false;
+    const skin = getFourCutSkin(fourCut.skinId);
+
+    if (!skin && fourCutIsNativePrint(object)) {
+      if (texture) {
+        const backdrop = new Sprite(texture);
+        backdrop.width = object.width;
+        backdrop.height = object.height;
+        root.addChild(backdrop);
+      }
+    } else if (skin?.src) {
       const matte = new Graphics()
         .rect(0, 0, object.width, object.height)
         .fill({ color: cssHexToNumber(skin.fill) });
       root.addChild(matte);
-    } else {
+    } else if (skin) {
       const chrome = getFourCutThemeCanvas(skin, object.width, object.height);
       if (chrome) {
         const sprite = new Sprite(Texture.from(chrome));
@@ -887,11 +900,6 @@ export class PixiWallEngine {
       }
     }
 
-    const resolved = await this.resolveSrc(object.src);
-    const texture = await this.textureFor(object.src);
-    const meta = this.textureMeta.get(resolved);
-    const dests = fourCutHolesInPhoto(object, meta?.naturalWidth, meta?.naturalHeight);
-    if (!dests) return true;
     const sx = meta ? meta.displayWidth / Math.max(1, meta.naturalWidth) : 1;
     const sy = meta ? meta.displayHeight / Math.max(1, meta.naturalHeight) : 1;
 
@@ -904,7 +912,7 @@ export class PixiWallEngine {
         root.addChild(placeholder);
         continue;
       }
-      const blit = containBlitRects(fourCut.windows[i], dest);
+      const blit = coverBlitRects(fourCut.windows[i], dest);
       const cropFrame = new Rectangle(
         Math.max(0, blit.sx * sx),
         Math.max(0, blit.sy * sy),
@@ -926,7 +934,7 @@ export class PixiWallEngine {
       root.addChild(sprite);
     }
 
-    if (skin.src) {
+    if (skin?.src) {
       const overlay = await this.textureFor(skin.src);
       if (overlay) {
         const sprite = new Sprite(overlay);
@@ -934,7 +942,7 @@ export class PixiWallEngine {
         sprite.height = object.height;
         root.addChild(sprite);
       }
-    } else {
+    } else if (skin) {
       const stroke = fourCutHoleStrokeStyle(skin, Math.min(object.width, object.height));
       const g = new Graphics();
       for (const dest of dests) {

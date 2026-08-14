@@ -73,9 +73,11 @@ export interface WallSceneFourCut {
   layout: FourCutLayout;
   /** Source-pixel windows. stack4: top→bottom. grid2x2: TL→TR→BL→BR. */
   windows: [PhotoCropRect, PhotoCropRect, PhotoCropRect, PhotoCropRect];
+  /** Detected windows; slot crop clamps and 원본 restore against these. */
+  baseWindows?: [PhotoCropRect, PhotoCropRect, PhotoCropRect, PhotoCropRect];
   /** Catalog skin. Absent/null keeps the original bitmap chrome. */
   skinId?: string | null;
-  /** Photo box before theme chrome. Restored on 원본. */
+  /** Photo size before theme chrome. 원본 restores size at the current center. */
   base?: { x: number; y: number; width: number; height: number };
 }
 

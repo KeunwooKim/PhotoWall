@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react";
 import { getCachedHtmlImage, loadHtmlImage } from "@/lib/storage/load-html-image";
 import type { CropAspectPresetId } from "@/lib/wall-scene/photo-crop";
-import type { PhotoCropRect, WallScenePhoto } from "@/types/wall-scene-v2";
+import type { PhotoCropRect, WallSceneFourCut, WallScenePhoto } from "@/types/wall-scene-v2";
 import { useResolvedImageSrc } from "./useResolvedImageSrc";
+import FourCutSlotCropOverlay from "./FourCutSlotCropOverlay";
 import PhotoCropOverlay from "./PhotoCropOverlay";
 
 interface PhotoCropLayerProps {
   photo: WallScenePhoto;
   aspectPreset: CropAspectPresetId;
   resolvePhotoSrc?: (src: string) => Promise<string>;
+  cropSlotIndex?: number;
+  cropSlotWindows?: WallSceneFourCut["windows"] | null;
+  onCropSlotWindowChange?: (index: number, window: PhotoCropRect) => void;
   onDraftChange: (crop: PhotoCropRect, display: { x: number; y: number; width: number; height: number }) => void;
   onNaturalSize: (width: number, height: number) => void;
 }
@@ -19,6 +23,9 @@ export default function PhotoCropLayer({
   photo,
   aspectPreset,
   resolvePhotoSrc,
+  cropSlotIndex = 0,
+  cropSlotWindows = null,
+  onCropSlotWindowChange,
   onDraftChange,
   onNaturalSize,
 }: PhotoCropLayerProps) {
@@ -75,6 +82,22 @@ export default function PhotoCropLayer({
   }, [displaySrc, onNaturalSize]);
 
   if (!naturalSize || !image) return null;
+
+  if (photo.fourCut && onCropSlotWindowChange) {
+    return (
+      <FourCutSlotCropOverlay
+        key={`${photo.id}-slot`}
+        photo={photo}
+        image={image}
+        naturalWidth={naturalSize.width}
+        naturalHeight={naturalSize.height}
+        slotIndex={cropSlotIndex}
+        slotWindows={cropSlotWindows ?? photo.fourCut.windows}
+        onSlotWindowChange={onCropSlotWindowChange}
+        onDraftChange={onDraftChange}
+      />
+    );
+  }
 
   return (
     <PhotoCropOverlay

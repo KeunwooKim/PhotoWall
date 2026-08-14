@@ -43,7 +43,7 @@ function FourCutSwatch({ skin }: { skin: FourCutSkinDefinition }) {
   return (
     <span
       className={`relative block overflow-hidden rounded-sm ring-1 ring-foreground/10 ${
-        tall ? "h-10 w-4" : "h-8 w-8"
+        tall ? "h-12 w-4" : "h-9 w-6"
       }`}
       style={{ background: fourCutThemeSwatchCss(skin) }}
       aria-hidden
@@ -104,6 +104,10 @@ interface PhotoDecorPickersProps {
   /** undefined = no photo selected (원본 not highlighted) */
   activeSkinId?: string | null;
   onApplyFourCutSkin?: (skinId: string | null) => void;
+  hasFourCut?: boolean;
+  fourCutLayout?: "stack4" | "grid2x2" | null;
+  onRelayoutFourCut?: (layout: "stack4" | "grid2x2") => void;
+  onExplodeFourCut?: () => void;
 }
 
 export default function PhotoDecorPickers({
@@ -111,6 +115,10 @@ export default function PhotoDecorPickers({
   activeFrameId,
   activeSkinId,
   onApplyFourCutSkin,
+  hasFourCut = false,
+  fourCutLayout = null,
+  onRelayoutFourCut,
+  onExplodeFourCut,
 }: PhotoDecorPickersProps) {
   const frames = useMemo(() => getListedPhotoFrames(), []);
   const stackSkins = useMemo(() => getListedFourCutSkins("stack4"), []);
@@ -122,6 +130,47 @@ export default function PhotoDecorPickers({
         <section className="space-y-2">
           <h3 className="text-[11px] font-medium text-muted">네컷 테마</h3>
           <p className="text-[10px] text-muted">안쪽 4장은 두고 출력 테마를 바꿔요. 사진을 선택한 뒤 골라 주세요</p>
+          {hasFourCut && onRelayoutFourCut ? (
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-muted">배치</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onRelayoutFourCut("stack4")}
+                  className={`rounded-xl px-2 py-2 text-[10px] transition active:scale-95 ${
+                    fourCutLayout === "stack4"
+                      ? "bg-foreground/10 font-medium text-foreground"
+                      : "bg-foreground/4 text-foreground/80 hover:bg-foreground/8"
+                  }`}
+                >
+                  세로
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRelayoutFourCut("grid2x2")}
+                  className={`rounded-xl px-2 py-2 text-[10px] transition active:scale-95 ${
+                    fourCutLayout === "grid2x2"
+                      ? "bg-foreground/10 font-medium text-foreground"
+                      : "bg-foreground/4 text-foreground/80 hover:bg-foreground/8"
+                  }`}
+                >
+                  2×2
+                </button>
+              </div>
+              {onExplodeFourCut ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={onExplodeFourCut}
+                    className="w-full rounded-xl bg-foreground/4 px-2 py-2.5 text-[10px] font-medium text-foreground transition hover:bg-foreground/8 active:scale-95"
+                  >
+                    사진 분리하기
+                  </button>
+                  <p className="text-[10px] text-muted">4장으로 나눈 뒤 각각 자를 수 있어요</p>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="button"
             title="원본"
@@ -138,7 +187,7 @@ export default function PhotoDecorPickers({
             원본
           </button>
           <p className="text-[10px] text-muted">세로 4컷</p>
-          <div className="grid grid-cols-5 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {stackSkins.map((skin) => (
               <SkinButton
                 key={skin.id}
@@ -149,7 +198,7 @@ export default function PhotoDecorPickers({
             ))}
           </div>
           <p className="text-[10px] text-muted">2×2</p>
-          <div className="grid grid-cols-5 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {gridSkins.map((skin) => (
               <SkinButton
                 key={skin.id}
@@ -162,6 +211,7 @@ export default function PhotoDecorPickers({
         </section>
       ) : null}
 
+      {hasFourCut ? null : (
       <section className="space-y-2">
         <h3 className="text-[11px] font-medium text-muted">프레임</h3>
         <p className="text-[10px] text-muted">폴라로이드 · 패턴. 사진을 선택한 뒤 골라 주세요</p>
@@ -187,6 +237,7 @@ export default function PhotoDecorPickers({
           })}
         </div>
       </section>
+      )}
     </>
   );
 }
