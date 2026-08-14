@@ -17,6 +17,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/",
+    "/home",
     "/wall/edit",
     "/wall/share",
     "/shared/:path*",

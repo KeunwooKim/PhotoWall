@@ -5,8 +5,6 @@ import Link from "next/link";
 import { Gaegu } from "next/font/google";
 import AuthButton from "@/components/auth/AuthButton";
 import PhotoWallLogo from "@/components/brand/PhotoWallLogo";
-import AdSenseSlot from "@/components/ads/AdSenseSlot";
-import { getAdSenseSlotLanding } from "@/lib/ads/adsense";
 import PromoCollabDemo from "@/components/promo/PromoCollabDemo";
 import PromoCollabInviteMock from "@/components/promo/PromoCollabInviteMock";
 import PromoWallShowcase from "@/components/promo/PromoWallShowcase";
@@ -110,6 +108,12 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
       >
         <PhotoWallLogo variant="lockup" height={36} tone="light" />
         <div className="flex items-center gap-3 sm:gap-5">
+          <Link
+            href="/home"
+            className="rounded-full border border-[rgba(28,25,23,0.15)] px-3 py-1.5 text-[13px] font-medium text-[#1c1917] transition hover:bg-[rgba(28,25,23,0.06)]"
+          >
+            홈 화면
+          </Link>
           {displayName ? (
             <span className="hidden text-[13px] text-[#9b8e82] sm:inline">{displayName}</span>
           ) : null}
@@ -191,10 +195,6 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
           </div>
         </div>
       </section>
-
-      <div className="mx-auto max-w-[720px] px-6 py-8 sm:px-16">
-        <AdSenseSlot slot={getAdSenseSlotLanding()} plan={null} className="promo-reveal" />
-      </div>
 
       {/* Wall showcase tabs */}
       <PromoWallShowcase />
@@ -336,8 +336,8 @@ export default function PromoLanding({ showHomeLink = false }: PromoLandingProps
         <PhotoWallLogo variant="lockup" height={32} tone="dark" />
         <nav className="flex flex-wrap gap-5">
           {showHomeLink ? (
-            <Link href="/" className="text-[12px] text-[rgba(250,247,242,0.3)] hover:text-[rgba(250,247,242,0.7)]">
-              홈으로
+            <Link href="/home" className="text-[12px] text-[rgba(250,247,242,0.3)] hover:text-[rgba(250,247,242,0.7)]">
+              홈 화면
             </Link>
           ) : null}
           <Link href="/legal/terms" className="text-[12px] text-[rgba(250,247,242,0.3)] hover:text-[rgba(250,247,242,0.7)]">

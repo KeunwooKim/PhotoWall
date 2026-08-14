@@ -282,8 +282,9 @@ export default function AdminBannersPage() {
           </ul>
         )}
         <p className="text-[11px] text-muted">
-          AdSense는 <code className="rounded bg-foreground/5 px-1">NEXT_PUBLIC_ADSENSE_CLIENT_ID</code>
-          와 슬롯 ID가 서버 환경 변수에 있어야 표시됩니다.
+          AdSense는 client ID가 있으면 표시됩니다. 슬롯 ID(
+          <code className="rounded bg-foreground/5 px-1">NEXT_PUBLIC_ADSENSE_SLOT_HOME</code>
+          )는 선택입니다.
         </p>
       </section>
 

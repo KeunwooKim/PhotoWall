@@ -6,6 +6,7 @@ export function getAdSenseClientId(): string {
   return process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID?.trim() || ADSENSE_CLIENT_ID;
 }
 
+/** Display ad unit from AdSense console (`data-ad-slot`). */
 export function getAdSenseSlotHome(): string | null {
   const slot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_HOME?.trim();
   return slot || null;

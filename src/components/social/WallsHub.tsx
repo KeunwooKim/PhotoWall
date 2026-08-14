@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import AuthButton from "@/components/auth/AuthButton";
 import HouseAdBanner from "@/components/HouseAdBanner";
+import AdSenseSlot from "@/components/ads/AdSenseSlot";
+import { getAdSenseSlotHome } from "@/lib/ads/adsense";
 import { getWallQuota } from "@/lib/wall-quotas";
 import type { AdPlan } from "@/lib/ads/resolve-ad-plan";
 
@@ -273,6 +275,7 @@ export default function WallsHub() {
         <p className="text-sm text-muted">꾸밀 벽을 고르세요</p>
       </header>
 
+      <AdSenseSlot slot={getAdSenseSlotHome()} plan={plan} />
       <HouseAdBanner placement="walls" plan={plan} />
 
       <div className="lg:grid lg:grid-cols-[minmax(280px,360px)_1fr] lg:gap-8 lg:items-start">

@@ -37,7 +37,7 @@ export const FEATURE_FLAG_LABELS: Record<FeatureFlagKey, { label: string; descri
   },
   adsense: {
     label: "Google AdSense",
-    description: "AdSense 슬롯 노출 (환경 변수에 client ID·슬롯 ID 필요)",
+    description: "홈·랜딩에 Google 광고 표시 (플러스 요금제는 숨김)",
   },
 };
 

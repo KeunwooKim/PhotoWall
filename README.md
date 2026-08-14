@@ -84,7 +84,6 @@ pm2 restart photowall
 | Admin | `ADMIN_USER_IDS` (+ `app_admins` SQL) |
 | Rate limit | **필수** `UPSTASH_REDIS_REST_URL` / `TOKEN` (`/api/health` → `rateLimit`) |
 | Discord | `DISCORD_WEBHOOK_URL` |
-| Sentry | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` |
 | Cron | `CRON_SECRET` + 주간 Storage sweeper |
 | SQL | `supabase/ops-hardening-migration.sql` 포함 순서 실행 |
 | Health | `GET https://photowall.kr/api/health` |

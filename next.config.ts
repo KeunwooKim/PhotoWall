@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -21,13 +20,13 @@ const nextConfig: NextConfig = {
       // Next.js hydration needs 'unsafe-inline'. Prefer no 'unsafe-eval'
       // (Pixi uses pixi.js/unsafe-eval polyfill — see src/components/wall/pixi/pixi-csp.ts).
       // AdSense hosts for site verification / Auto ads.
-      "script-src 'self' 'unsafe-inline' https://browser.sentry-cdn.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
+      "script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
       "style-src 'self' 'unsafe-inline'",
       "script-src-attr 'none'",
       // Google OAuth avatars + AdSense creatives
       `img-src 'self' data: blob: ${api} https://*.googleusercontent.com https://*.googlesyndication.com https://pagead2.googlesyndication.com https://www.google.com https://googleads.g.doubleclick.net`,
       "font-src 'self' data:",
-      `connect-src 'self' ${api} ${apiWs} https://*.ingest.us.sentry.io https://accounts.google.com https://www.googleapis.com https://*.googlesyndication.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://partner.googleadservices.com`,
+      `connect-src 'self' ${api} ${apiWs} https://accounts.google.com https://www.googleapis.com https://*.googlesyndication.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://partner.googleadservices.com`,
       "frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://pagead2.googlesyndication.com https://www.googletagmanager.com",
       "worker-src 'self' blob:",
       "media-src 'self' blob:",
@@ -56,23 +55,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-const hasSentryAuth = Boolean(process.env.SENTRY_AUTH_TOKEN);
-
-export default withSentryConfig(nextConfig, {
-  // Also readable from SENTRY_ORG / SENTRY_PROJECT env
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  silent: !process.env.CI,
-  widenClientFileUpload: true,
-  // Bypass ad-blockers for event ingest
-  tunnelRoute: "/monitoring",
-  webpack: {
-    treeshake: {
-      removeDebugLogging: true,
-    },
-  },
-  sourcemaps: {
-    disable: !hasSentryAuth,
-  },
-});
+export default nextConfig;

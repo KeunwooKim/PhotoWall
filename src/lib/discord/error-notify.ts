@@ -135,7 +135,7 @@ function playbookFor(message: string, name: string, extras?: Record<string, unkn
       title: "벽 API 오류",
       summary: "벽 생성·저장·조회 중 서버에서 오류가 났어요.",
       actions: [
-        "해당 route 로그와 Sentry 이벤트 확인",
+        "해당 route 서버 로그 확인",
         "Supabase walls 테이블/권한 점검",
         "유저가 저장을 여러 번 눌렀는지 확인",
       ],
@@ -150,7 +150,7 @@ function playbookFor(message: string, name: string, extras?: Record<string, unkn
       actions: [
         "해당 유저 ID로 DB 상태 확인",
         "관련 storage 파일 삭제 중 실패했는지 확인",
-        "Sentry에서 스택 확인",
+        "서버 로그에서 스택 확인",
       ],
       color: 0xef4444,
     };
@@ -161,7 +161,7 @@ function playbookFor(message: string, name: string, extras?: Record<string, unkn
     summary: "PhotoWall에서 처리하지 못한 오류가 발생했어요.",
     actions: [
       "아래 원문·스택을 보고 위치 파악",
-      "Sentry에 같은 이벤트가 있는지 확인",
+      "같은 오류가 반복되는지 서버 로그 확인",
       "반복되면 재현 경로를 남기기",
     ],
     color: 0xef4444,
