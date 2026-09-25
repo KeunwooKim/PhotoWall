@@ -34,8 +34,11 @@ yarn-error.log*
 .env*
 !.env.example
 
-# Keep supabase SQL migrations in git for audit/repro.
 # Secrets stay in .env* (already ignored).
+# Backend schema stays local — not for the public portfolio repo.
+/supabase/
+/scripts/verify-supabase-migrations.mjs
+/scripts/event-posts-migration.sql
 
 # source archives for sticker packs (extracted copies live in public/)
 /stickers-src/
@@ -51,6 +54,14 @@ yarn-error.log*
 /에셋유아이.png
 /에셋유아이2.png
 /미리캔버스_모바일화면.png
+
+# local ops / internal notes (not for the public repo)
+/ops/
+.github/workflows/deploy-pm2.yml
+AUDIT_REPORT.md
+AUDIT_AI_CODE.md
+ISSUES.md
+docs/security-checklist.md
 
 # typescript
 *.tsbuildinfo

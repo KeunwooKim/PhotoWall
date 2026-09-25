@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "photowall",
-      cwd: "/home/kim/PhotoWall",
+      cwd: __dirname,
       script: "scripts/pm2-run-next.cjs",
       env: {
         NODE_ENV: "production",

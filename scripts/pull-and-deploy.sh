@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Pull latest main (or REF) and run the safe PM2 production deploy.
-# Run on the photowall.kr Ubuntu host (not from Cursor Cloud — no SSH from there).
+# Pull latest main (or REF) and run the production deploy.
 #
 #   cd /path/to/PhotoWall
 #   bash scripts/pull-and-deploy.sh

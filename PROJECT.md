@@ -1,6 +1,9 @@
-# 📸 네컷사진 디지털 포토월 서비스 (가칭)
+# 📸 PhotoWall — 네컷사진 디지털 포토월
 
 > **한 줄 요약:** 오프라인 매장 벽면이나 내 방 벽에 네컷사진을 찢고 붙이던 아날로그 감성을 디지털 공간으로 옮겨온, **'Z세대 취향 저격 가상 벽 꾸미기(Wall-꾸) 소셜 플랫폼'**
+>
+> **라이브:** [https://photowall.kr](https://photowall.kr)  
+> **점검일:** 2026-08-21 — 라이브 기능·네컷 감지/칸 자르기·저장 가드·SEO를 코드와 동기화. 네컷 시행착오(초기): [`docs/four-cut-trial.md`](docs/four-cut-trial.md)
 
 ---
 
@@ -11,7 +14,7 @@
 3. [추가 기능](#3-추가-기능)
 4. [관리자 페이지 (Admin)](#4-관리자-페이지-admin)
 5. [기술 검토](#5-기술-검토)
-6. [데이터베이스 (ERD)](#6-데이터베이스-erd)
+6. [데이터](#6-데이터)
 7. [진행 현황](#7-진행-현황)
 8. [Figma 대비 점검](#8-figma-대비-점검)
 9. [다음 할 일](#9-다음-할-일)
@@ -36,6 +39,20 @@
 
 자유도 높은 **캔버스 UI 기술** + **한국의 네컷사진 아카이빙 문화**를 결합하여, 유저가 자신의 취향과 추억을 전시하는 **'디지털 쇼룸'** 시장 개척.
 
+### 현재 서비스 스냅샷 (2026-08-21)
+
+개인 벽·공동 벽·공개 뷰어가 **Pixi**로 동작한다. 게스트는 로그인 없이 `/wall/edit`에서 꾸미고, 로그인하면 클라우드로 붙는다. 수익은 **플러스(수동 부여)** + **하우스 배너**. AdSense는 배관이 있고 플래그 기본값은 **꺼짐**. UGC 스티커 스토어는 코드만 있고 공개 게이트는 꺼져 있다.
+
+| 구분 | 라이브 |
+|---|---|
+| 앱 홈 | `/` 로그인 시 홈, 비로그인 시 마케팅 랜딩. `/home` · `/about` · `/news` · `/support` |
+| 벽 | `/wall/edit` 개인, `/shared/[id]` 공동, `/wall/[id]` 열람, `/walls` 허브, `/invite/[code]` |
+| 사진 | `/capture` 스캔, `/import` 부스 QR, 에디터 자르기·프레임·색보정·업스케일·네컷 |
+| 계정 | `/profile` · `/settings` · `/upgrade` · `/legal/terms` · `/legal/privacy` |
+| 검색 | `/robots.txt` · `/sitemap.xml`. 로그인 영역(`/home` · `/walls` · `/admin` 등) noindex |
+| 관리자 | `/admin` — 문의·벽·유저·플랜·공지·이벤트·광고·스티커팩 심사·기능 플래그 |
+| 미공개 | `/stickers/*` — `STICKER_STORE_ENABLED=false` → `/` 리다이렉트 |
+
 ---
 
 ## 2. 핵심 기능 및 로드맵
@@ -49,20 +66,39 @@
 | 이미지 업로드 및 자유 배치 | 파일 선택 업로드 + 캔버스 내 드래그 이동 | ✅ 완료 |
 | 이미지 변형 | 크기 조절, 회전(각도), 레이어 순서(z-index) 변경 | ✅ 완료 |
 | PPT형 선택·정렬 | 다중 선택, 전체 선택, 정렬 6종, 벽 가운데, 복제, 화살표 미세 이동, 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드, 그룹, 격자, 컨텍스트 메뉴 | ✅ Phase A–D (레이어 패널 UI는 제거, z-order는 메뉴로) |
-| 벽지 테마 선택 | 이미지 벽지 7종 (린넨·스튜디오 핑크·세이지·별밤·카페 칠판/코르크/벽돌) | ✅ |
-| 기본 꾸미기 에셋 | 마스킹 테이프 4종, 이모지·SVG 스티커 (basic 팩), 무한도전 스티커 팩, 펜(색상 6·굵기 3), 텍스트 | ✅ 완료 |
-| 사진 편집 | 자르기(크롭), 색 보정, 화질 업스케일 | ✅ 완료 |
+| 벽지 테마 선택 | 이미지 벽지 **5종** (매직파티션·린넨 크림·하얀 벽돌·적 벽돌·코르크보드). 구 theme ID는 자동 매핑 | ✅ |
+| 기본 꾸미기 에셋 | 테이프(끝 3·패턴 5·솔리드/패턴 프리셋), 펜(볼펜/만년필/마카/붓펜, 색 10), 텍스트 폰트 10종, 스티커 팩 6 (basic·cute·season·life·party·mudo) | ✅ |
+| 사진 프레임 | 폴라로이드·흰여백·검정·필름 + 체크/레오파드/타이거 등 listed **17종**. 네컷과는 겹치지 않음 | ✅ |
+| 사진 편집 | 자르기(크롭), 색 보정, 화질 업스케일. **네컷**은 칸별 팬/줌 + 흰색·검정 테마 + 사진 분리하기 | ✅ |
 | AI 사진 스캔 | `/capture` — 카메라/갤러리 → ONNX DocAligner 코너 → warp·보정 → 벽에 붙이기 | ✅ 1차 완료 |
 | 게스트 체험 | 로그인 없이 `/wall/edit` 진입 → 작업 후 로그인 시 클라우드 마이그레이션 | ✅ 완료 |
-| 로딩 UI | `WallLoadingOverlay` — 데이터 fetch·Konva hydrate 통합 | ✅ 완료 |
+| 로딩 UI | `WallLoadingOverlay` — 데이터 fetch·렌더러 hydrate 통합 | ✅ 완료 |
 | 줌·패닝 | 핀치/Ctrl+휠 줌 (0.5×–4×), 두 손가락 패닝, 줌 리셋 버튼 | ✅ 완료 |
 | 에디터 UI | 데스크톱: 툴 레일 + 에셋 + 속성 사이드바 / 모바일: 하단 독 + 선택 가로 바 + 햄버거 메뉴 | ✅ 완료 |
-| 벽 저장/불러오기 | localStorage + 자동 저장 (1.5초 debounce) + 클라우드 | ✅ 완료 |
+| 벽 저장/불러오기 | localStorage + 자동 저장 (1.5초 debounce) + 클라우드. 빈 덮어쓰기·없는 사진 저장 거절 | ✅ 완료 |
 | 실행 취소/다시하기 | Undo/Redo (최대 50단계) + ⌘Z / ⌘⇧Z 단축키 | ✅ 완료 |
 | 드래그 앤 드롭 업로드 | 캔버스에 이미지 끌어놓기 (다중 파일) | ✅ 완료 |
 | QR 네컷 가져오기 | 인생네컷·포토이즘 QR 스캔 → 벽에 자동 붙이기 (`/import`) | 🔄 1차 완료 — 실제 부스 QR 검증 필요 |
 | 모바일 최적화 | 100dvh, safe-area, 터치 핸들 확대, touch-none | ✅ 완료 |
 | 벽 밖 복구 | 드래그/변형 클램프 + 「벽으로 가져오기」 | ✅ 완료 |
+| 네컷 스트립 | 업로드 감지(세로 4칸·2×2) → 테마(흰색/검정, 2×6·4×6) → 칸 1–4 자르기 → 4장 분리 | ✅ 감지 재작성 2026-08-18, 칸 팬/줌 2026-08-21 |
+
+### 네컷 스트립 — 동작 계약 (2026-08-21)
+
+한 장짜리 부스 인화를 벽에 붙인 뒤의 편집. **새 크롭 필드 없음** — 칸 내용은 `photo.fourCut.windows[i]`.
+
+| 동작 | 결과 |
+|---|---|
+| 업로드 감지 | 모서리 프레임 색 + 거터(칸 사이 띠) + 균등 간격. `layout` + `windows` + `baseWindows`. 박스 비율은 세로 **2×6**, 2×2 **4×6**. 브랜드 헤더·검정 프레임 실인화도 이 경로 |
+| 테마 흰색/검정 | **그 사진에서 칸을 다시 감지**한 뒤 크롬 구멍에 `cover` blit. 못 찾으면 4등분하지 않고 `not-detected`. 네컷은 폴라로이드 `frameId`와 겹치지 않음 |
+| 자르기 / 더블탭 | 네컷이면 **칸 자르기** (1–4). 구멍 고정, 칸 안에서만 팬·줌(모서리 핸들·휠·핀치). 칸이 구멍을 가득 채우면 편집 시작 시 조금 확대해 가운데 드래그가 됨. 적용 시 박스 `x/y/width/height` 불변 |
+| 원본 (칸) | 그 칸만 `baseWindows[i]`로 복구 |
+| 사진 분리하기 | 벽에 4장으로 떼어 붙임. 이후 각 장은 일반 자르기 |
+| 원본 (테마 크기) | 테마 적용 전 크기를 **현재 중심**에 복구 (`boxKeepCenter`) |
+
+하지 않음: 분리된 4장을 다시 한 장으로 합치기, 구멍 크기/위치 편집, 네컷 전체 스트립 크롭.
+
+초기 시행착오(전체 자르기·기하 분할 등)는 [`docs/four-cut-trial.md`](docs/four-cut-trial.md). 감지기는 2026-08-18에 거터 기반으로 다시 작성했다.
 
 ### 🤝 2단계: 너의 벽을 보여줘 (소셜 네트워크 확장)
 
@@ -72,7 +108,7 @@
 |---|---|---|
 | 나만의 벽 고유 링크(URL) | Supabase 저장 또는 URL 인코딩 fallback (`/wall/[id]`, `/wall/share`) | ✅ 완료 |
 | 방명록 사진 | 친구 벽에 네컷사진 슬쩍 붙이기 (Supabase 벽 전용) | ✅ 1차 완료 |
-| 인스타 스토리 공유 | html2canvas 이미지 저장 + Web Share API | ✅ 완료 |
+| 인스타 스토리 공유 | 뷰어 「인스타로 저장」 — 비율 맞춤 캡처 + html2canvas fallback + Web Share | ✅ 완료 |
 | 응원 댓글 & 좋아요 | 공개 벽 뷰어 하단 패널 (Supabase 벽 전용) | ✅ 1차 완료 |
 | 친구 초대 | 초대 코드 링크 (`/invite/[code]`) | ✅ 1차 완료 |
 | 구글 로그인 | Supabase Auth + Google OAuth — 벽 소유권·기기 간 동기화 | ✅ 완료 |
@@ -82,15 +118,20 @@
 | 다크 모드 | 라이트/다크/시스템 테마 + 시맨틱 UI 토큰 | ✅ 완료 |
 | Presence (세션 단위) | 같은 계정·다른 기기에서도 선택 테두리·소프트락 표시 | ✅ 완료 |
 
-### 💰 3단계: 아이템 숍 오픈 (비즈니스 모델 구축)
+### 💰 3단계: 수익화
 
-**목표:** 트래픽을 기반으로 한 본격적인 수익화.
+**목표:** 트래픽을 광고·구독으로 받고, 이후 아이템 숍·IP로 확장.
 
 | 기능 | 설명 | 상태 |
 |---|---|---|
-| 프리미엄 꾸미기 아이템 | 움직이는 네온사인 스티커, 특별 콘셉트 가상 방 배경화면 등 | ⬜ 미착수 |
-| IP 콜라보레이션 | 잔망루피, 산리오 등 인기 캐릭터·일러스트레이터 한정판 스티커/프레임 | ⬜ 미착수 |
-| 굿즈 연계 | 디지털 포토월 디자인 그대로 실제 액자·롤스크린 포스터 인화 배송 | ⬜ 미착수 |
+| **플러스 요금제** | UI명 「플러스」(`premium`). 월 ₩3,900 / 연 ₩39,000. 결제는 미연동 — `/upgrade`에서 문의(`business`) → `/admin/plans` 수동 부여 (7/30/90/365일·무기한) | ✅ |
+| **쿼터** | 기본: 객체 80 · 씬 2.5MB · 사진 8MB · 스토리지 150MB · 공동 벽 1. 플러스: 500 · 16MB · 30MB · 5GB · 공동 벽 5. 펜/테이프/이모지는 개수 제외 | ✅ `wall-quotas.ts` |
+| **Google AdSense** | `ads.txt`·클라이언트·디스플레이 유닛 코드. 플래그 `adsense` **기본 OFF**. 켜면 홈/랜딩, 플러스는 숨김 | 🔄 배관 ✅ · 노출은 플래그 |
+| **하우스 배너** | `/admin/banners` CRUD, 배치 home/settings/walls, 플래그 `house_banners` | ✅ |
+| **스티커 스토어 (UGC)** | 생성·설치·심사 API·UI 있음. `STICKER_STORE_ENABLED=false`라 `/stickers/*`는 비공개 | 🔄 코드만 |
+| 프리미엄 꾸미기 아이템 | 네온 스티커, 유료 벽지 등 숍 카탈로그 | ⬜ 미착수 |
+| IP 콜라보레이션 | 캐릭터·일러스트레이터 한정판 | ⬜ 미착수 |
+| 굿즈 연계 | 벽 디자인 실물 인화 배송 | ⬜ 미착수 |
 
 ---
 
@@ -101,170 +142,96 @@
 ### 친구 초대 기능
 
 - 초대 링크 또는 코드로 친구를 서비스에 유입 — **1차 구현 완료** (`/invite/[code]`)
-- 친구 목록 관리 및 상호 방문 연결 — ✅ 1차 완료 (친구 코드, 목록, 벽 방문)
+- 친구 목록 관리 및 상호 방문 연결 — ✅ 1차 완료 (친구 코드, 목록, 벽 방문). 전용 `/friends` 페이지는 없고 `/profile`·홈에서 처리
 - **로드맵 배치:** 2단계 (소셜 확장)와 함께 검토
 
 ### 함께 모으는 인생네컷 (셋로그 스타일)
 
-- 친구와 **공동 벽** 또는 **공동 앨범**을 만들어 네컷사진을 함께 수집·꾸미기
+- 친구와 **공동 벽**을 만들어 네컷사진을 함께 수집·꾸미기 (`/walls` 허브, `/shared/[id]`)
 - 각자 업로드한 사진이 한 벽면에 자연스럽게 쌓이는 경험
 - 오프라인에서 함께 찍은 네컷 → 디지털 공간에서 함께 아카이빙하는 흐름
-- **로드맵 배치:** 2.5단계 — ✅ Konva 실시간 공동 벽 (`/shared/[id]`)
+- **로드맵 배치:** 2.5단계 — ✅ Pixi 실시간 공동 벽 (Broadcast + Presence)
+
+### 공개 페이지 (부가)
+
+| 경로 | 용도 | 상태 |
+|---|---|---|
+| `/news` | 공지 + 이벤트 피드 | ✅ |
+| `/support` | FAQ·문의 | ✅ |
+| `/upgrade` | 기본 vs 플러스 한도 비교, 신청 | ✅ |
+| `/legal/terms` · `/legal/privacy` | 약관·개인정보 (`LEGAL_VERSION=2026-07-25`). 로그인 후 미동의 시 차단 | ✅ |
 
 ---
 
 ## 4. 관리자 페이지 (Admin)
 
-> **상태:** ✅ 1단계 MVP 코드 완료 (SQL 마이그레이션 실행·프로덕션 env 확인 필요)
-> **목표:** 특정 운영자 계정만 접근해 **문의·신고 처리**, **콘텐츠 관리**, **서비스 현황**을 한곳에서 수행
+> **상태:** ✅ 라이브 (`/admin`). 1·2단계 + 플랜·광고·이벤트·스티커팩 심사까지 코드 반영.
+> **목표:** 운영자만 **문의·신고**, **콘텐츠**, **플랜**, **광고**, **기능 플래그**를 한곳에서 처리.
 
 ### 접근 제어
 
 | 레이어 | 방식 |
 |---|---|
-| **UI** | 로그인 + allowlist 일치 시에만 설정(`/settings`) 하단에 「관리자」 버튼 노출 |
-| **서버** | `/admin/*`, `/api/admin/*` — 세션 검증 + allowlist **이중 확인** (URL 직접 입력 차단) |
-| **초기 allowlist** | 서버 env: `ADMIN_USER_IDS`(Supabase UUID) 또는 `ADMIN_EMAILS` (쉼표 구분) |
-| **확장 (추후)** | `profiles.is_admin` 컬럼 또는 Supabase `app_metadata.role = 'admin'` |
+| **UI** | 로그인 + allowlist 일치 시에만 설정(`/settings`) 하단에 「관리자」 버튼 |
+| **서버** | `/admin/*`, `/api/admin/*` — 세션 + allowlist 이중 확인 |
+| **allowlist** | `ADMIN_USER_IDS` 또는 `ADMIN_EMAILS`. 삭제·wipe 등은 service role 또는 `app_admins` |
 
 ```env
-# .env (서버 전용 — Vercel Production)
+# 서버 전용 — 클라이언트 노출 금지
 ADMIN_USER_IDS=uuid1,uuid2
-SUPABASE_SERVICE_ROLE_KEY=...   # admin API 전용, 클라이언트 노출 금지
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-### 화면 구성 (`/admin`)
+### 화면 구성 (`AdminShell`)
 
 ```
 /admin
-├── 대시보드          ← KPI + 최근 미처리 문의
-├── 문의·신고         ← 인박스 (핵심)
-├── 벽 관리           ← 검색·숨김·삭제
-├── 유저              ← 검색·상세
-├── 공지              ← (2단계) 홈/에디터 배너
-└── 설정              ← allowlist 확인 (env 또는 DB)
+├── 대시보드          ← KPI·동의율·Discord·미처리 문의
+├── 문의·신고         ← 인박스·상태·회신·제휴 파이프라인
+├── 벽 관리           ← 검색·숨김·삭제·방명록 스크럽
+├── 유저              ← 검색·제재·wipe·동의/플랜
+├── 플랜              ← 플러스 부여 (7/30/90/365일·무기한)
+├── 공지              ← 홈/에디터 타깃 배너
+├── 이벤트            ← 카드(이미지·기간·CTA)
+├── 광고              ← 하우스 배너 + adsense/house_banners 토글
+├── 스티커팩          ← UGC 심사 (approve/reject/take_down)
+└── 기능 설정         ← 피처 플래그 + Storage orphan / pending-delete GC
 ```
 
-모바일에서는 **문의 확인·상태 변경** 정도만 지원, 나머지는 PC 위주.
+모바일은 **문의 확인·상태 변경** 위주, 나머지는 PC.
 
-### 기능 로드맵
-
-#### 1단계 — MVP (우선 구현)
+### 구현된 기능
 
 | 기능 | 설명 | 상태 |
 |---|---|---|
-| **접근 가드** | allowlist + `/admin` 레이아웃 + 설정 페이지 진입 버튼 | ✅ |
-| **대시보드** | 가입자·벽(개인/공동/owner 없음)·좋아요·댓글·방명록·미처리 문의 | ✅ |
-| **문의·신고 인박스** | 유저 문의 접수 + 관리자 목록·상세·상태 변경·내부 메모 | ✅ |
-| **유저용 문의 폼** | 설정 → 「문의하기」; 카테고리·제목·본문 | ✅ |
-| **콘텐츠 모더레이션** | 벽 검색·숨김·삭제·댓글·방명록 삭제 | ✅ |
-| **신고 연동** | 벽 뷰어 「신고하기」→ `inquiries` (`category=abuse`) | ✅ |
-| **유저 관리 (경량)** | 닉네임/친구코드 검색, 레거시 벽 목록 | ✅ |
+| 접근 가드 | allowlist + `/admin` 레이아웃 + 설정 진입 | ✅ |
+| 대시보드 | 가입·벽·소셜·미처리 문의·법적 동의율 | ✅ |
+| 문의·신고 | 유저 폼 + 인박스 + 상태 + 내부 메모 + 앱 내 회신 | ✅ |
+| 모더레이션 | 벽 검색·숨김·삭제, 댓글·방명록 삭제 | ✅ |
+| 신고 | 뷰어 「신고하기」→ `inquiries.category=abuse` | ✅ |
+| 유저 | 닉네임/친구코드, 정지, wipe | ✅ |
+| 공지·이벤트 | `announcements` + `/admin/events` | ✅ |
+| 기능 플래그 | `shared_walls` · `guestbook` · `likes` · `qr_import` · `house_banners` · `adsense`(기본 OFF) | ✅ |
+| 플러스 부여 | `/admin/plans` | ✅ |
+| 광고 | `/admin/banners` | ✅ |
+| 스티커팩 심사 | `/admin/sticker-packs` (스토어 공개는 OFF) | ✅ |
+| Storage GC | orphan + `storage_pending_delete` cron · `/admin/operations` | ✅ |
+| Discord | 오류·가입·문의 웹훅, `/api/admin/discord-test` | ✅ |
+| 제휴 파이프라인 | `business_stage` | ✅ |
+| 분석 | Plausible 옵션 (`NEXT_PUBLIC_PLAUSIBLE_DOMAIN`) | 🔄 |
+| 숍 에셋 UI | 벽지·유료 스티커 등록 | ⬜ |
+| QR 도메인 UI | 부스 도메인 allowlist를 admin에서 편집 | ⬜ |
 
-**문의 카테고리**
+**문의 카테고리:** `general` · `bug` · `feature` · `abuse` · `business`  
+**유저 진입:** 설정 「문의하기」 · `/support` · 뷰어 「신고하기」 · `/upgrade` 플러스 신청(`business`)
 
-| category | 용도 |
-|---|---|
-| `general` | 일반 문의·사용법 |
-| `bug` | 버그 제보 (QR, 저장 실패 등) |
-| `feature` | 기능 제안 |
-| `abuse` | 부적절한 벽·댓글·방명록 신고 |
-| `business` | 제휴·매장 연동·IP 콜라보 (3단계 로드맵 연계) |
+### 운영 우선순위
 
-**유저 진입점**
-
-- 설정 → 「문의하기」
-- 홈 푸터 → 「문의 · 제휴」 (2단계)
-- 공개 벽 뷰어 → 「신고하기」
-
-#### 2단계 — 운영 편의
-
-| 기능 | 설명 | 상태 |
-|---|---|---|
-| **공지·점검 배너** | 홈/에디터 상단 공지 (`announcements` 테이블 또는 env) | ✅ |
-| **QR import 모니터링** | rate limit 초과·파서 실패 로그 집계 (`import_events`) | ✅ |
-| **기능 플래그** | QR import·공동벽·방명록 등 on/off (장애 시 부분 차단) | ✅ |
-| **문의 회신** | 관리자 메모 + 앱 내 inbox 알림 (`admin_reply`) | ✅ |
-| **계정 정지** | 로그인 유지, 벽 공유·댓글·방명록만 차단 | ✅ |
-
-#### 3단계 — 성장·비즈니스 (3단계 로드맵과 연계)
-
-| 기능 | 설명 | 상태 |
-|---|---|---|
-| **제휴 문의 파이프라인** | business 문의 상태: 리드 → 미팅 → 계약 | ✅ (`business_stage`) |
-| **분석** | MAU, 공유→가입 퍼널, 리텐션 | 🔄 Plausible 옵션 (`NEXT_PUBLIC_PLAUSIBLE_DOMAIN`) |
-| **에셋 관리** | 벽지·스티커 신규 등록/비활성 (숍 대비) | ⬜ |
-| **부스 도메인 관리** | QR 허용 도메인 allowlist를 admin UI에서 편집 | ⬜ |
-| **헬스체크 / Storage sweeper** | `/api/health`, orphan purge + cron | ✅ |
-
-### API·라우트 (예정)
-
-```
-src/app/admin/                    # 관리자 UI (서버 컴포넌트 + allowlist)
-src/app/api/admin/
-├── stats/route.ts                # 대시보드 집계
-├── inquiries/route.ts            # 문의 목록·생성(유저)
-├── inquiries/[id]/route.ts       # 문의 상세·상태 변경
-├── walls/route.ts                # 벽 검색
-├── walls/[id]/route.ts           # 벽 숨김·삭제
-├── users/route.ts                # 유저 검색
-└── comments|guestbook/...        # 소셜 삭제
-
-src/app/api/inquiries/route.ts    # 유저용 문의 POST (admin과 분리 가능)
-src/lib/admin/
-├── auth.ts                       # isAdmin(session), requireAdmin()
-└── service-client.ts             # service role Supabase (서버 전용)
-```
-
-### DB 추가 예정 (`admin-inquiries-migration.sql`)
-
-```sql
--- inquiries: 문의·신고 통합
-create table inquiries (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id) on delete set null,
-  email text,
-  category text not null,          -- general|bug|feature|abuse|business
-  subject text not null,
-  body text not null,
-  related_wall_id uuid references walls(id) on delete set null,
-  status text not null default 'open',  -- open|in_progress|resolved
-  admin_note text,
-  created_at timestamptz default now(),
-  resolved_at timestamptz
-);
-
--- announcements (2단계)
-create table announcements (
-  id uuid primary key default gen_random_uuid(),
-  message text not null,
-  active boolean default true,
-  starts_at timestamptz,
-  ends_at timestamptz,
-  created_at timestamptz default now()
-);
-```
-
-- **RLS:** `inquiries` insert — 로그인 유저 + rate limit; select/update — **admin API(service role)만** (일반 RLS policy 미노출)
-- **walls:** `hidden_at timestamptz` 또는 `is_hidden boolean` — 모더레이션용 soft delete (1단계)
-
-### 구현 순서 (예상)
-
-| 순서 | 작업 | 예상 |
-|---|---|---|
-| 1 | `ADMIN_USER_IDS` + `requireAdmin()` + `/admin` 빈 셸 + 설정 버튼 | 0.5일 |
-| 2 | `inquiries` SQL + 유저 문의 폼 + admin 인박스 | 1~2일 |
-| 3 | 대시보드 집계 API | 0.5일 |
-| 4 | 벽 검색·숨김·댓글/방명록 삭제 | 1일 |
-| 5 | 공지 배너·import 로그·기능 플래그 | 이후 |
-
-### PhotoWall 운영 우선순위 TOP 5
-
-1. **문의·신고 인박스** — CS·버그·제휴를 한곳에서 처리
-2. **벽/댓글 모더레이션** — 공개 URL 서비스 필수
-3. **대시보드** — 혼자 운영할 때 일일 현황 파악
-4. **레거시 벽 정리** — `owner_id null` 벽 귀속·정리 (`auth-migration` 잔여)
-5. **QR import 모니터링** — 핵심 기능 실패율 추적
+1. **문의·신고 인박스** — CS·버그·제휴
+2. **벽/댓글 모더레이션**
+3. **대시보드 + Discord** — 혼자 운영할 때 현황·장애
+4. **레거시 벽** — `owner_id` null 귀속·정리
+5. **플러스 수동 부여** — 결제 연동 전까지 `/admin/plans`
 
 ---
 
@@ -274,9 +241,9 @@ create table announcements (
 
 | 항목 | 선택 | 비고 |
 |---|---|---|
-| 벽 에디터·뷰어 | **React-Konva + Zustand** | `/wall/edit`, `/shared/[id]`, `/wall/[id]` — 통합 Konva 엔진 |
+| 벽 에디터·뷰어 | **PixiJS + Zustand** | `/wall/edit`, `/shared/[id]`, `/wall/[id]` |
 | 실시간 transport | **Supabase Realtime** | Broadcast (`wall-sync`: hello/full/patch/clear) + Presence (커서) |
-| 소셜 공유 캡처 | **html2canvas** | Konva wall stage DOM → PNG 저장·Web Share |
+| 소셜 공유 캡처 | **인스타 저장** + html2canvas fallback | 뷰어 비율 맞춤 JPEG · Web Share |
 | 레거시 import | `fabric-import.ts` | v1 Fabric JSON → v2 `photowallScene` 자동 변환 (npm `fabric` 제거됨) |
 
 ### 인증 (Auth)
@@ -294,7 +261,7 @@ create table announcements (
 2. **승인된 리디렉션 URI** — Supabase 콜백 URL 등록 (`https://<project>.supabase.co/auth/v1/callback`) ✅
 3. **Supabase Dashboard** — Authentication → Providers → Google 활성화 (Client ID / Secret 입력) ✅
 4. **앱 연동** — 로그인·로그아웃 UI, `auth.users` ↔ `walls.owner_id` 매핑, RLS 소유자 기준 ✅
-5. **배포 환경** — Vercel 프로덕션 URL을 Supabase Site URL·Redirect URLs에 등록 ✅
+5. **배포 환경** — 프로덕션 `https://photowall.kr`을 Supabase Site URL·Redirect URLs에 등록 ✅
 6. **콜백 라우트** — `get-site-origin` + middleware `?code=` → `/auth/callback` 리다이렉트 ✅
 
 **로그인 후 기대 효과**
@@ -308,297 +275,112 @@ create table announcements (
 | 영역 | 선택 | 상태 |
 |---|---|---|
 | 프론트엔드 | **Next.js 15 + React 19 + TypeScript** | ✅ 적용 |
-| 벽 캔버스 (통합) | **react-konva + zustand** | ✅ 개인·공동·뷰어 전부 Konva |
+| 벽 캔버스 (통합) | **Pixi** | ✅ 개인·공동·뷰어 |
 | 스타일링 | Tailwind CSS v4 | ✅ 적용 |
 | MVP 저장소 | localStorage (브라우저 로컬) | ✅ 적용 |
-| 인증 | Supabase Auth + **Google OAuth** | ✅ 적용 |
-| 백엔드 | Supabase (walls + 소셜 테이블) | ✅ 적용 |
-| 스토리지 | Supabase Storage (`wall-photos`, private) | 🔄 코드 완료 — SQL·프로덕션 검증 |
-| DB | PostgreSQL / Supabase | ✅ 스키마 작성 |
-| 배포 | Vercel | ✅ 프로덕션 (`photowall-one.vercel.app`) |
+| 인증 | Google OAuth | ✅ 적용 |
+| 백엔드 | 클라우드 DB | ✅ 적용 |
+| 스토리지 | private object storage | ✅ signed URL |
+| DB | PostgreSQL | ✅ |
+| 배포 | `npm run build` / `npm start` | ✅ |
+| Rate limit | Upstash Redis | ✅ `/api/health` → `rateLimit` |
+| 모니터링 | Discord 웹훅 | ✅ 오류·가입·문의 |
+| 시크릿 가드 | Gitleaks + `verify:public-env` | ✅ CI |
 
 ### 프로젝트 구조
 
 ```
 src/
 ├── app/
-│   ├── page.tsx                      # 홈 랜딩
-│   ├── wall/edit/                    # 내 벽 편집 (Konva)
-│   ├── shared/[id]/                  # 공동 벽 편집 (Konva + Realtime)
-│   ├── import/                       # QR 네컷 가져오기
-│   ├── capture/                      # AI 사진 스캔 (ONNX)
-│   ├── profile/ · settings/          # 내정보·설정
-│   ├── admin/                        # 관리자 UI (allowlist)
-│   ├── api/admin/                    # 관리자 API (service role)
-│   ├── api/walls/[id]/signed-photos/ # Storage signed URL 발급
-│   ├── api/shared-walls/             # 공동 벽 + 초대 API
-│   └── wall/[id]/ · wall/share/      # 공개 벽 뷰어 (Konva read-only)
+│   ├── page.tsx · home/ · about/     # 랜딩 / 앱 홈 / 소개
+│   ├── wall/edit/                    # 개인 벽 (Pixi 기본)
+│   ├── shared/[id]/                  # 공동 벽 (Realtime)
+│   ├── walls/                        # 벽 허브 (개인·공동·초대)
+│   ├── import/ · capture/            # QR 네컷 · AI 스캔
+│   ├── upgrade/ · news/ · support/   # 플러스 · 공지 · 문의
+│   ├── legal/                        # 약관·개인정보
+│   ├── stickers/                     # UGC 스토어 (게이트 OFF)
+│   ├── admin/                        # 관리자 UI
+│   ├── api/health · cron/            # 헬스 · Storage GC
+│   └── wall/[id]/ · wall/share/      # 공개 뷰어
 ├── components/wall/
 │   ├── PersonalWallKonvaEditor.tsx   # 개인 벽 진입점
-│   ├── SharedWallKonvaEditor.tsx     # 공동 벽 진입점
-│   ├── WallViewer.tsx                # 공개 벽 뷰어
-│   ├── EditorToolRail / Dock / MenuDrawer / SelectionSheet
-│   ├── StickerPicker.tsx             # 스티커 카탈로그 UI
-│   └── konva/                        # Konva Stage·노드·Presence
-├── lib/stickers/                     # 스티커 팩 카탈로그 (basic·mudo)
-├── lib/photo-scan/ · photo-edit/     # AI 스캔 · 색보정·업스케일
-├── stores/wall-scene-store.ts        # Zustand 씬 상태 + Undo/Redo
-├── hooks/useWallRealtime.ts          # Supabase Broadcast ↔ store
-├── lib/wall-scene/                   # v2 씬 모델·legacy import·realtime
-├── lib/storage/                      # wall-photo:// · signed URL
-└── types/wall-scene-v2.ts            # photowallScene 스키마
+│   ├── SharedWallKonvaEditor.tsx
+│   ├── WallViewer.tsx
+│   └── pixi/                         # Pixi Stage·엔진
+├── lib/stickers/                     # 팩 카탈로그 6 + UGC 게이트
+├── lib/four-cut/                     # 네컷 거터 감지·테마·칸 자르기
+├── lib/photo-frames/                 # 폴라로이드 등 프레임
+├── lib/wall-quotas.ts                # 기본/플러스 한도
+├── lib/wall-scene/empty-overwrite.ts # 빈 씬으로 클라우드 덮어쓰기 거절
+├── lib/wall-scene/local-cloud-sync.ts
+└── types/wall-scene-v2.ts
 ```
 
-> **단일 Konva 아키텍처:** 개인·공동·뷰어 모두 `react-konva` + v2 `photowallScene`. DB의 v1 Fabric JSON은 로드 시 자동 import. npm `fabric`·`yjs` 의존성 제거됨.
+> **렌더러:** Pixi. 씬 모델은 v2 `photowallScene`. DB의 v1 Fabric JSON은 로드 시 자동 import.
 
-### 현재 UI (2026-07-30)
+### 현재 UI (2026-08-21)
 
-- **Figma형 확장 벽** — 780×1200 시작, 콘텐츠에 따라 자동 확장·축소 (최대 2217×1700), 격자 워크스페이스 + 핀치 줌 + 두 손가락 패닝
+- **확장 벽** — 기본 **2×3 타일 (1560×3600, 타일 780×1200)**. Omni 확장(좌/상/우/하). 천장 **8000×8000**
 - **데스크톱 크롬** — 상단 액션 + 왼쪽 툴 레일/에셋 + 오른쪽 속성 패널
 - **모바일 크롬** — 햄버거 메뉴, 하단 독, 한 번 탭 시 가로 선택 바 (길게 누르기 = 컨텍스트 메뉴)
-- **개인 벽 (`/wall/edit`)** — Konva: 사진·스티커·테이프·펜·텍스트·크롭·색보정·업스케일·Undo·export·게스트
+- **개인 벽 (`/wall/edit`)** — 사진·프레임·스티커·테이프·펜·텍스트·크롭·**네컷 칸 자르기**·색보정·업스케일·Undo·export·게스트
+- **저장 가드** — 빈 씬으로 기존 벽 덮어쓰기 거절, `wall-photo://` 없는 파일 저장 412, 같은 revision 로컬 드리프트로 클라우드 덮지 않음
+- **검색** — 공개 페이지만 sitemap. `/home`·`/walls`·`/admin` 등 noindex
 - **공동 벽 (`/shared/[id]`)** — 위 + 실시간 Presence(session)·접속자 아바타·초대
 - **AI 스캔 (`/capture`)** — 기기 카메라/갤러리 → ONNX 코너 검출 → 벽에 붙이기
-- **공개 벽 (`/wall/[id]`)** — Konva read-only + 소셜 패널 (좋아요·댓글·방명록)
-- **홈 CTA** — 「지금 꾸며보기」→ `/wall/edit` 직행
+- **공개 벽 (`/wall/[id]`)** — Pixi read-only + 소셜 패널 (좋아요·댓글·방명록) + 인스타 저장
+- **홈** — 벽 진입, 알림, AdSense/하우스 배너 (플러스는 광고 숨김)
 - **설정** — 다크모드·프라이버시·문의하기·관리자 진입 (allowlist)
 
 ---
 
-## 6. 데이터베이스 (ERD)
+## 6. 데이터
 
-### SQL 마이그레이션 순서
-
-> **참고:** `supabase/*.sql`은 **로컬 전용** (`.gitignore`). Supabase Dashboard SQL Editor에서 순서대로 실행. 파일 목록은 `.env.example` 주석 참고.
-
-```
-schema.sql → auth → storage → social → shared-walls → privacy-invites
-→ security-hardening → admin-inquiries → admin-rls (+ app_admins insert)
-→ storage-private → walls-select-rls
-```
-
-| 파일 | 내용 | 상태 |
-|---|---|---|
-| `schema.sql` ~ `security-hardening-migration.sql` | 기본 스키마·RLS | ✅ 실행 가정 |
-| `admin-inquiries-migration.sql` | `inquiries` + walls `is_hidden` | 🔄 Dashboard 실행 확인 필요 |
-| `admin-rls-migration.sql` + `app_admins` | 관리자 RLS | 🔄 Dashboard 실행 확인 필요 |
-| `storage-private-migration.sql` | Storage private 전환 | 🔄 로컬 검증됨 / 프로덕션 확인 |
-| `walls-select-rls-migration.sql` | walls SELECT RLS 강화 | 🔄 실행 확인 필요 |
-
-### As-Is ERD (현재)
-
-```mermaid
-erDiagram
-    auth_users ||--o{ walls : "owner_id"
-    walls ||--o{ wall_likes : has
-    walls ||--o{ wall_comments : has
-    walls ||--o{ wall_guestbook : has
-    walls ||--o{ wall_invites : has
-    auth_users ||--o{ storage_objects : uploads
-
-    auth_users {
-        uuid id PK
-        text email
-        jsonb raw_user_meta_data
-    }
-
-    walls {
-        uuid id PK
-        uuid owner_id FK "nullable"
-        text theme_id
-        jsonb canvas_json "photowallScene v2 (legacy v1 Fabric import)"
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    wall_likes {
-        uuid id PK
-        uuid wall_id FK
-        text visitor_id "익명 fingerprint"
-        uuid user_id FK "social-migration 후"
-    }
-
-    wall_comments {
-        uuid id PK
-        uuid wall_id FK
-        text author_name
-        text body
-        uuid user_id FK "social-migration 후"
-    }
-
-    wall_guestbook {
-        uuid id PK
-        uuid wall_id FK
-        text author_name
-    }
-
-    wall_invites {
-        uuid id PK
-        uuid wall_id FK
-        text code UK
-    }
-
-    storage_objects {
-        text bucket_id "wall-photos"
-        text name "user_id/uuid.ext"
-    }
-```
-
-### canvas_json 내부
-
-**v2 (Konva·현재)** — `photowallScene` envelope:
-
-```
-{ photowallScene: { meta: { version: 2, wallBounds, revision }, objects[] } }
-objects[] → photo | sticker | emoji | tape | path | text | svg(타입만)
-사진 src → wall-photo://userId/uuid.ext (Storage path ref, signed URL로 표시)
-스티커 → stickerId (public/stickers/ 카탈로그 참조)
-```
-
-**v1 (레거시·Fabric)** — 로드 시 v2로 자동 import:
-
-```
-{ objects[], photowall: { version: 1, wallBounds } }
-objects[] → Image | Rect | Text | Path
-```
-
-`fabric-import.ts`가 v1 JSON을 파싱해 v2로 변환. DB persist는 v2 envelope 형태.
-
-### 기능 ↔ 테이블 매핑
-
-| 기능 | 저장 위치 |
-|---|---|
-| 벽 꾸미기 | `walls.canvas_json` + `walls.theme_id` |
-| Google 로그인 / 내 벽 | `walls.owner_id` → `auth.users` |
-| 사진 업로드 (로그인) | `storage.objects` + `wall-photo://` ref + signed URL API |
-| 링크 공유 | `walls.id` |
-| URL 인코딩 공유 | DB 없음 (`/wall/share?d=...`) |
-| 좋아요 / 댓글 | `wall_likes` / `wall_comments` |
-| 방명록 | `wall_guestbook` + canvas_json 수정 |
-| 친구 초대 | `wall_invites` |
-| 프로필 / 친구 | `profiles` / `friendships` |
-| 공동 벽 실시간 | Supabase Broadcast (ephemeral) + `canvas_json` persist |
-| 문의·신고 | `inquiries` |
-| 공지 배너 | `announcements` ✅ |
-
-### 구조적 이슈 (서비스 영향)
-
-| 이슈 | 현재 | 추후 영향 |
-|---|---|---|
-| canvas_json blob | v2 photowallScene JSON | 대형 벽·동시성 최적화는 추후 |
-| owner_id nullable | 레거시 벽 존재 | 소유권 불명 벽 정리 필요 |
-| 소셜 ↔ auth 분리 | visitor_id / author_name | 프로필·친구 기능 시 user_id FK 필요 |
-| Storage FK 없음 | URL 문자열만 연결 | 벽 삭제 시 고아 파일 |
-| RLS | security-hardening + walls-select (선택) | 🔄 Storage private·SELECT RLS 잔여 확인 |
-
-### To-Be ERD (추가 예정)
-
-```mermaid
-erDiagram
-    auth_users ||--o{ inquiries : submits
-    walls ||--o{ inquiries : "related_wall_id"
-    auth_users ||--|| profiles : has
-    auth_users ||--o{ friendships : connects
-    auth_users ||--o{ wall_members : joins
-    walls ||--o{ wall_members : shared
-    shop_items ||--o{ user_purchases : sold
-    auth_users ||--o{ orders : places
-
-    profiles {
-        uuid id PK
-        text display_name
-        text avatar_url
-        text friend_code UK
-    }
-
-    friendships {
-        uuid id PK
-        uuid user_a FK
-        uuid user_b FK
-    }
-
-    wall_members {
-        uuid wall_id FK
-        uuid user_id FK
-        text role "owner|editor|viewer"
-    }
-
-    shop_items {
-        uuid id PK
-        text type "theme|sticker|frame"
-        int price_krw
-    }
-
-    orders {
-        uuid id PK
-        uuid wall_id FK
-        text status
-    }
-
-    inquiries {
-        uuid id PK
-        uuid user_id FK "nullable"
-        text category "general|bug|feature|abuse|business"
-        text subject
-        text body
-        uuid related_wall_id FK "nullable"
-        text status "open|in_progress|resolved"
-        text admin_note
-        timestamptz created_at
-        timestamptz resolved_at
-    }
-
-    announcements {
-        uuid id PK
-        text message
-        boolean active
-        timestamptz starts_at
-        timestamptz ends_at
-    }
-```
-
-### 마이그레이션 로드맵
-
-```
-현재 → ① profiles + friendships (2단계) → ② wall_members (2.5) → ③ admin inquiries (운영) → ④ shop + orders (3단계)
-```
+클라우드 DB·스토리지 스키마는 비공개입니다. 마이그레이션 SQL은 이 저장소에 올리지 않습니다.
 
 ---
 
 ## 7. 진행 현황
 
-> **마지막 정리:** 2026-07-30 — 에디터 크롬·사진 편집·스캔·Presence session·벽 밖 복구·미사용 코드 정리
+> **마지막 정리:** 2026-08-21 — 라이브 photowall.kr. 네컷 감지 재작성·칸 팬/줌, 클라우드 저장 가드, SEO. AdSense 플래그 기본 OFF.
 
 ### 한눈에 보기
 
 | 영역 | 상태 | 비고 |
 |---|---|---|
-| 개인·공동·뷰어 (Konva) | ✅ 완료 | `/wall/edit`, `/shared/[id]`, `/wall/[id]` |
-| 스티커 카탈로그 | ✅ 1차 | basic·무한도전(mudo) 팩 + 출처 표기 |
-| 소셜·친구·프라이버시 | ✅ 1차 완료 | 좋아요·댓글·방명록·초대 |
+| 개인·공동·뷰어 | ✅ 완료 | Pixi. `/wall/edit`, `/shared/[id]`, `/wall/[id]` |
+| 스티커 카탈로그 | ✅ | 에디터 팩 6 (basic·cute·season·life·party·mudo). UGC 스토어는 비공개 |
+| 소셜·친구·프라이버시 | ✅ 1차 | 좋아요·댓글·방명록·초대 · `/walls` 허브 |
 | 공동 벽 실시간 | ✅ 1차 | Broadcast + Presence — **sessionId** 기준 테두리·live patch |
-| PPT형 에디터 도구 | ✅ Phase A–D | 다중 선택·정렬·그룹·격자·컨텍스트 메뉴 (레이어 패널 UI 제거) |
+| PPT형 에디터 도구 | ✅ Phase A–D | 다중 선택·정렬·그룹·격자·컨텍스트 메뉴 (레이어 패널 UI는 제거) |
 | 에디터 크롬 | ✅ 완료 | 데스크톱 레일/속성, 모바일 독·선택 바·햄버거 |
-| 사진 편집 | ✅ 완료 | 크롭·색 보정·업스케일 |
+| 사진 편집 | ✅ 완료 | 크롭·프레임 17·색 보정·업스케일 + **네컷 칸 자르기** |
+| 네컷 스트립 | ✅ | 거터 감지, 테마 시 재감지, 칸 팬/줌, 분리하기. `verify:four-cut` |
+| 클라우드 저장 | ✅ | 빈 덮어쓰기 거절, 없는 사진 412, 로컬 same-rev 덮지 않음. `verify:wall-save` |
 | AI 스캔 | ✅ 1차 | `/capture` ONNX DocAligner |
 | 줌·패닝 | ✅ 완료 | 핀치/Ctrl+휠 줌, 두 손가락 패닝, % 리셋 |
 | 게스트 체험 | ✅ 완료 | 로그인 전 편집 → 로그인 후 클라우드 연결 |
-| 보안 2차 (Storage) | ✅ 완료 | private + signed URL — SQL·프로덕션 검증 완료 |
-| 관리자 | ✅ 코드 완료 | SQL·`SUPABASE_SERVICE_ROLE_KEY` 확인 |
-| QR 네컷 | 🔄 1차 | 실부스 QR E2E 검증 남음 |
-| 펜·레이어 순서 | ✅ 완료 | draw mode + zIndex reorder + 맨 앞/뒤 |
-| 벽 밖 복구 | ✅ 완료 | 클램프 + 「벽으로 가져오기」 |
-| 수익화 (3단계) | ⬜ 미착수 | — |
+| 보안 (Storage) | ✅ 완료 | private + signed URL + pending-delete 큐 |
+| 관리자 | ✅ | 문의·벽·유저·플랜·공지·이벤트·광고·스티커팩·플래그 |
+| SEO | ✅ 1차 | robots/sitemap, 로그인 영역 noindex, 네이버 소유확인 |
+| QR 네컷 | 🔄 1차 | `/import` 코드 완료 — 실부스 QR E2E 남음 |
+| 펜·테이프·텍스트 | ✅ | 펜 4스타일, 테이프 끝/패턴, 폰트 10 |
+| 벽 밖 복구 · Omni 확장 | ✅ | 클램프 + 좌/상/우/하 grow·shrink |
+| 수익화 | 🔄 | 플러스 수동 부여 + 하우스 배너. AdSense 플래그 OFF. 결제·숍 미연동 |
+| 약관 | ✅ | `/legal/*`, `LEGAL_VERSION=2026-07-25` |
 
 ### 전체 진행률
 
 ```
 [기획]   ██████████ 100%
 [디자인] ███████░░░  70%
-[개발]   ██████████  98%  ← PPT Phase C 완료
-[배포]   ████████░░  85%  ← Vercel·OAuth (photowall-one.vercel.app)
-[보안]   █████████░  90%  ← Storage private·walls SELECT RLS 적용
-[운영]   ████████░░  80%  ← Admin MVP 코드 완료
+[개발]   █████████░  93%  ← 에디터·소셜·admin·네컷. 스토어 공개·결제 남음
+[배포]   █████████░  95%
+[보안]   █████████░  92%  ← Storage private · RLS · 약관 · 저장 가드
+[운영]   ████████░░  85%  ← Admin 2차 · Discord · Storage cron
+[수익]   ███░░░░░░░  35%  ← 플러스·하우스 배너. AdSense 꺼짐. 자동결제·숍 없음
+[검색]   ████░░░░░░  40%  ← robots/sitemap. 유입 측정은 운영 과제
 ```
 
 ### 단계별 상태
@@ -607,12 +389,12 @@ erDiagram
 |---|---|---|
 | 1단계 MVP | 내 방 벽꾸미기 + QR | 🔄 QR 실부스 검증 남음 |
 | 2단계 소셜 | 공유·방문·소통·프라이버시 | ✅ 1차 완료 |
-| 2.5 공동 벽 | 공동 인생네컷 + **실시간** | ✅ Konva 1차 — 2-browser QA 남음 |
-| 보안 | RLS 1차 ✅ / Storage private ✅ | SQL·signed-photos 프로덕션 검증 완료 |
-| Admin | 문의·모더레이션·대시보드 | ✅ 코드 완료 |
-| 3단계 수익화 | 아이템 숍 | ⬜ 미착수 |
+| 2.5 공동 벽 | 공동 인생네컷 + 실시간 | ✅ Pixi 1차 — `verify:wall-realtime` |
+| 보안 | RLS + Storage private + 약관 + 저장 가드 | ✅ |
+| Admin | 문의·모더레이션·플랜·광고·플래그 | ✅ |
+| 3단계 수익화 | 플러스·배너 ✅ / AdSense 플래그 · 결제·숍 ⬜ | 🔄 |
 
-### Konva 벽 — 구현 현황
+### 벽 에디터 — 구현 현황 (Pixi 기본)
 
 | 기능 | 개인 | 공동 | 뷰어 |
 |---|---|---|---|
@@ -621,7 +403,7 @@ erDiagram
 | 스티커 카탈로그 | ✅ | ✅ | ✅ |
 | 마스킹 테이프 | ✅ | ✅ | ✅ |
 | Undo/Redo (50단계) | ✅ | ✅ | — |
-| 이미지 export | ✅ | ✅ | ✅ |
+| 이미지 export / 인스타 저장 | ✅ | ✅ | ✅ |
 | 벽 비우기 (clear) | ✅ | ✅ (+ realtime) | — |
 | Supabase Broadcast 동기화 | — | ✅ | — |
 | Presence 커서·이름·선택 테두리 | — | ✅ (다중 선택, **session 단위**) | — |
@@ -636,7 +418,8 @@ erDiagram
 | 전체 선택 (⌘A)·Esc 해제 | ✅ | ✅ | — |
 | 정렬 6종·벽 가운데·복제 | ✅ | ✅ (+ patch) | — |
 | 화살표 미세 이동 (Shift=10px) | ✅ | ✅ (+ patch) | — |
-| 사진 자르기·색 보정·업스케일 | ✅ | ✅ | — |
+| 사진 자르기·프레임·색 보정·업스케일 | ✅ | ✅ | — |
+| 네컷 칸 자르기·테마·분리 | ✅ | ✅ | — |
 | 벽 밖 클램프·가져오기 | ✅ | ✅ | — |
 | 햄버거 메뉴·모바일 선택 바 | ✅ | ✅ | — |
 | 접속자 아바타 스택 | — | ✅ | — |
@@ -650,33 +433,29 @@ erDiagram
 | **C** | 가로·세로 균등 배치, 뒤집기, 복사/붙여넣기, 스냅 가이드 | ✅ |
 | **D** | 그룹/해제, 격자, 컨텍스트 메뉴 (레이어 패널 UI는 제거) | ✅ |
 
-### 최근 완료 (2026-06-16 기준)
+### 최근 완료 (2026-08-21)
 
-- [x] **Phase A 선택** — `selectedIds[]`, Shift+클릭, 마퀴, 다중 Transformer, ⌘A/Esc
-- [x] **Phase B 정렬·복제** — `align-objects.ts`, 정렬 UI, 벽 가운데, ⌘D, 화살표 nudge
-- [x] **실시간 Presence 다중 선택** — `selectedObjectIds[]` 브로드캐스트, 피어 테두리 전체 표시
-- [x] **드래그·로딩 성능** — 이미지 캐시·preload, live patch (드래그 중 Zustand 지연)
-- [x] **Konva 펜** — `WallScenePath` draw mode + 레이어 zIndex reorder
-- [x] **Konva 통합** — 개인·공동·공개 뷰어 단일 엔진
-- [x] **실시간 양방향 sync** — Broadcast hello/full/patch/clear + auto-reconnect
-- [x] **Fabric 제거** — npm `fabric`·`yjs` 제거
-- [x] Storage **private** + `wall-photo://` ref + `/signed-photos` API
-- [x] 관리자 MVP (`/admin`, 문의·벽·유저·신고)
-- [x] Admin 2단계 — 공지 배너·기능 플래그 (`/admin/announcements`, `/admin/operations`)
+- [x] **네컷 감지 재작성** — 모서리 프레임 색 + 거터 + 균등 간격. 브랜드 헤더·검정 프레임 실인화. 테마는 그 사진에서 다시 감지 (`src/lib/four-cut/detect.ts`)
+- [x] **칸 팬/줌** — 편집 시작 시 여유, 모서리 핸들, 휠·핀치. Pixi 오버레이
+- [x] **클라우드 저장 가드** — 빈 씬 덮어쓰기 거절, 없는 `wall-photo://` 412, same-rev 로컬로 클라우드를 덮지 않음. GC는 다음 캔버스에 없는 파일만
+- [x] **SEO 1차** — `robots.ts` · `sitemap.ts`, 로그인 영역 noindex, 네이버 서치어드바이저 소유확인
+- [x] **AdSense 배관** — ads.txt·슬롯·플러스 숨김. 플래그 기본 OFF (트래픽 안정 후 켤 것)
+
+2026-08-14 이전(네컷 1차·칸 자르기 초안·쿼터·admin 2차)은 [§10 변경 이력](#10-변경-이력).
 
 ### 이전까지 완료 (요약)
 
-- [x] Fabric MVP (테마·테이프·스티커·펜·Undo·공유) → **Konva로 대체 완료**
-- [x] Google OAuth + 클라우드 저장 + Storage 업로드
-- [x] 소셜 (좋아요·댓글·방명록·친구·프라이버시·공동벽 초대)
-- [x] QR import 1차, Vercel 배포, 보안 강화 1차 (RLS)
-- [x] Figma형 확장 벽, 앱 셸·다크모드
+- [x] Pixi 단일 엔진, Fabric/`yjs` 제거, v2 `photowallScene`
+- [x] Google OAuth + 클라우드 저장 + Storage private + signed URL
+- [x] 소셜 (좋아요·댓글·방명록·친구·프라이버시·공동벽 실시간)
+- [x] QR import 1차, admin 2차, 플러스 수동 부여, 하우스 배너
+- [x] PPT Phase A–D, 게스트 체험, AI 스캔, 프레임 17, 스티커 팩 6
 
 ---
 
 ## 8. Figma 대비 점검
 
-> **점검일:** 2026-07-29  
+> **점검일:** 2026-08-21 (최초 2026-07-29, 벽 크기·네컷·쿼터·저장 가드 갱신)  
 > **목적:** Figma와 1:1 비교가 아니라, **「벽 꾸미기 소셜 앱」** 관점에서 에디터 성숙도와 부족한 점을 정리한다.  
 > PhotoWall은 벡터 디자인 툴이 아니라 **네컷·스티커·테이프 콜라주**에 최적화된 캔버스다.
 
@@ -696,13 +475,13 @@ erDiagram
 | **선택·변형** | 단일/다중 선택, Shift+클릭, 마퀴, Transformer(크기·회전) | PPT형 Phase A·B |
 | **정렬·배치** | 6종 정렬, 벽 가운데, 균등 배치, 화살표 nudge | `align-objects.ts` |
 | **그룹** | `groupId` 논리 그룹, ⌘G/⌘⇧G, 그룹 드래그 | 중첩 그룹 없음 |
-| **레이어** | zIndex, 앞/뒤/맨 앞/맨 뒤, 레이어 패널 | Phase D |
+| **레이어** | zIndex, 앞/뒤/맨 앞/맨 뒤 (메뉴). 레이어 패널 UI는 제거 | Phase D |
 | **스냅** | 객체·벽 가장자리/중심 스냅 가이드, 격자 스냅 | Phase C·D |
 | **클립보드** | 복사/잘라내기/붙여넣기/복제 (⌘C/X/V/D) | |
 | **실행 취소** | Undo/Redo 50단계 | 로컬만 (공동 벽도 상대에게 미전파 — 의도) |
 | **실시간 협업** | 공동 벽: Broadcast + Presence + 피어 선택 테두리 | 개인 벽은 미지원 |
 | **줌·이동** | 0.5×–4× 줌, 두 손가락 패닝, % 리셋 | Space+드래그 패닝·줌-to-selection 없음 |
-| **확장 캔버스** | 780×1200 시작 → 콘텐츠 기반 자동 확장 (최대 2217×1700) | 소스: `src/lib/wall-bounds.ts` |
+| **확장 캔버스** | 기본 2×3 타일 1560×3600, Omni 확장, Pixi 천장 8000×8000 | `wall-bounds.ts` · `wall-device.ts` |
 | **플랜 쿼터** | free: 객체 80·씬 2.5MB·사진 8MB·스토리지 150MB·공유벽 1 / Plus: 500·16MB·30MB·5GB·공유벽 5 | Plus 전환을 위해 free 상한 축소 (2026-08-12). 소스: `src/lib/wall-quotas.ts` |
 
 ### 8.3 부족한 점 — Figma 대비 갭
@@ -731,7 +510,7 @@ erDiagram
 
 | 기능 | Figma | PhotoWall | 우선순위 |
 |---|---|---|---|
-| 이미지 크롭·마스크 | ✅ | ❌ | **P1** — 네컷 프레임 |
+| 이미지 크롭·마스크 | ✅ | ✅ 일반 크롭 + **네컷 칸 자르기** + 흰색/검정 테마 | — |
 | 블렌드 모드·그림자·블러 | ✅ | ❌ (펜 brush shadow만) | P3 |
 | SVG 오브젝트 | ✅ | ⚠️ 스키마만 (`WallSceneSvg` 미렌더) | P2 |
 | 도형 도구 (사각·원·선) | ✅ | ❌ | P3 |
@@ -776,7 +555,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | **2** | ~~Space / 빈 공간 드래그 패닝~~ | ✅ 2026-07-29 |
 | **3** | ~~속성 패널 (위치·크기·회전 숫자 입력)~~ | ✅ 2026-07-29 |
 | **4** | **텍스트 스타일 확장** (행간) | 방꾸 캡션 품질 — 굵게·정렬 ✅ |
-| **5** | ~~이미지 크롭·프레임~~ | ✅ 2026-07 — 자르기 + 색 보정 + 업스케일 |
+| **5** | ~~이미지 크롭·프레임~~ | ✅ 일반 자르기·색보정·업스케일·프레임 17. ✅ 네컷 칸 팬/줌 |
 
 ### 8.5 의도적으로 하지 않을 것 (Figma ≠ 목표)
 
@@ -789,7 +568,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 
 | 항목 | 상태 | 조치 |
 |---|---|---|
-| `WallSceneSvg` | 타입만 존재, Konva 렌더 없음 | 렌더 추가 또는 타입 제거 |
+| `WallSceneSvg` | 타입만 존재, 렌더 없음 | 렌더 추가 또는 타입 제거 |
 | `WallSceneEmoji` | 레거시 import만 | sticker catalog로 통합 완료 |
 | `CanvasHistory` | ~~미사용~~ | ✅ 2026-07-30 삭제 |
 | `setupWorkspacePinchZoom` / `canvas-viewport` | ~~미사용~~ | ✅ 2026-07-30 삭제 |
@@ -801,47 +580,43 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 
 ## 9. 다음 할 일
 
-### 현재 포커스 (2026-07-30)
+### 현재 포커스 (2026-08-21)
+
+1·2·2.5단계 + admin + 플러스/배너까지 올라가 있다. 네컷 감지·칸 자르기·저장 가드는 코드에 반영됨. 남은 것은 **실기기 QA·유입·게이트 오픈·결제**.
 
 ```
-① 2-browser 실시간 QA  →  ② QR 실부스 E2E  →  ③ 텍스트 행간 (선택)
+① iPhone Safari Pixi 부하 QA (docs/pixi-wall-go-nogo.md)
+② 네컷 실인화 추가 샘플 QA (브랜드 헤더·검정 프레임은 통과)
+③ 스티커 스토어 공개 여부 (STICKER_STORE_ENABLED)
+④ 플러스 결제 연동 (지금은 수동 부여)
+⑤ QR 실부스 E2E (보류 가능)
+⑥ AdSense — 트래픽 안정 후 플래그 켜기
 ```
 
 | 우선순위 | 작업 | 상태 |
 |---|---|---|
-| **P0** | Konva 펜 + 레이어 앞/뒤 | ✅ |
-| **P0** | PPT Phase A–D | ✅ |
-| **P0** | 줌·두 손가락 패닝 | ✅ |
-| **P0** | 게스트 체험 + 로딩 UI | ✅ |
-| **P0** | 벽 크기·쿼터 2배 (780×1200) | ✅ |
-| **P1** | **핀치 중점 기준 줌** | ✅ |
-| **P1** | **Space / 빈 공간 패닝** | ✅ |
-| **P1** | **속성 패널 (x/y/w/h/rotation)** | ✅ |
-| **P1** | 모바일 auth 로딩 hang fix | ✅ |
-| **P1** | 이미지 크롭·색 보정·업스케일 | ✅ |
-| **P1** | 에디터 크롬 (레일·햄버거·선택 바) | ✅ |
-| **P1** | Presence session + 벽 밖 복구 | ✅ |
+| **P0–P1** | 에디터·줌·게스트·크롬·사진편집·네컷 감지/칸 자르기 | ✅ |
+| **P1** | 클라우드 저장 가드 (빈 덮어쓰기·없는 사진) | ✅ |
 | **P2** | 텍스트 행간 | ⬜ |
-| **P2** | 2-browser 실시간 QA | ✅ `verify:wall-realtime` — Presence unit + live 2-session patch/full/clear |
+| **P2** | 2-browser 실시간 QA | ✅ `verify:wall-realtime` |
+| **P2** | 스티커 스토어 공개 | ⬜ 게이트 OFF |
+| **P2** | iPhone Safari Pixi 부하 | ⬜ |
 | **P3** | QR 실부스 E2E + 홈 CTA | ⬜ *(보류)* |
-| **P3** | 3단계 수익화 | ⬜ |
+| **P3** | 플러스 자동 결제 | ⬜ |
+| **P3** | AdSense 플래그 켜기 | ⬜ 기본 OFF |
+| **P3** | 아이템 숍·IP·굿즈 | ⬜ |
 
-### Konva 벽 — 남은 작업
+### 벽 에디터 — 남은 작업
 
-- [x] `/wall/edit` → `PersonalWallKonvaEditor`
-- [x] `/shared/[id]` → `SharedWallKonvaEditor`
-- [x] `/wall/[id]` → `WallViewer` (Konva read-only)
+- [x] 개인·공동·뷰어 단일 엔진 (Pixi)
 - [x] Supabase Broadcast + Presence (hello/full/patch/clear)
 - [x] signed URL + `wall-photo://` ref
 - [x] 스티커 카탈로그·테이프·Undo·export·clear
 - [x] Fabric 코드·의존성 제거
-- [x] 펜 (draw mode) + 레이어 zIndex reorder
-- [x] Phase A·B — 다중 선택·정렬·복제·화살표 이동
-- [x] Presence `selectedObjectIds[]` — 피어 다중 선택 테두리
-- [x] Phase C — 균등 배치·뒤집기·클립보드·스냅 가이드
-- [x] Phase D — 그룹/해제·레이어 패널·격자·컨텍스트 메뉴·형광펜 이동
-- [x] 2-browser 실시간 QA 체크리스트 통과 (아래 §9.1) — `npm run verify:wall-realtime` (Presence unit + live 2-session)
-- [x] `path` 타입 피어 선택 테두리 (형광펜)
+- [x] 펜 + 레이어 zIndex · PPT Phase A–D
+- [x] `npm run verify:wall-realtime`
+- [x] `npm run verify:four-cut` · `verify:wall-save`
+- [ ] iPhone Safari에서 Pixi 장시간 부하 (go-nogo 체크리스트)
 
 ### PPT Phase C 체크리스트
 
@@ -858,12 +633,12 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 - [x] `storage-private-migration.sql` 프로덕션 적용 확인
 - [x] `walls-select-rls-migration.sql` 적용 확인
 - [x] 공개 Storage URL 차단 + signed-photos API 200
-
-### 관리자 — 코드 ✅
+- [x] Gitleaks CI + `verify:public-env` ([`docs/security-checklist.md`](docs/security-checklist.md))
+### 관리자 — ✅ 라이브
 
 - [x] `/admin` 가드·대시보드·문의·벽·유저
-- [x] `admin-inquiries-migration.sql` · `admin-rls-migration.sql` Dashboard 실행
-- [x] `app_admins` · `ADMIN_USER_IDS` 프로덕션 등록
+- [x] 공지·이벤트·플랜·광고·스티커팩 심사·기능 플래그
+- [x] `admin-inquiries` · `admin-rls` · `app_admins` · `ADMIN_USER_IDS`
 
 ### QR — 남은 작업
 
@@ -894,15 +669,6 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 
 **Presence:** 커서·이름·선택 테두리가 보이면 ✅  
 **Undo:** 로컬만 (상대에게 전파 안 됨 — 의도된 동작)
-
-### Vercel env (Production)
-
-| 변수 | 용도 |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 클라이언트 |
-| `ADMIN_USER_IDS` | 관리자 allowlist |
-| `SUPABASE_SERVICE_ROLE_KEY` | signed URL·admin API |
 
 ---
 
@@ -962,7 +728,7 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | 2026-07-30 | **벽 밖 복구** — 드래그 클램프, 「벽으로 가져오기」 |
 | 2026-07-30 | **정리** — `CanvasHistory`·`canvas-viewport`·Fabric `getObjectsBounds`·`notion-ui` 제거, `PROJECT.md` 동기화 |
 | 2026-08-06 | **전체 점검** — 감사 규칙 6종, ESLint `.next` ignore, `npm run audit:gate` / CI, README 보강 |
-| 2026-08-06 | **SQL 버전관리** — `supabase/*.sql` gitignore 해제 후 repo 추적 |
+| 2026-08-06 | **문서** — 기획·로드맵 정리 |
 | 2026-08-06 | **하우스 배너** — admin 광고 CRUD, `HouseAdBanner`, placement별 노출 |
 | 2026-08-06 | **Discord 오류알림** — `error-notify` + admin discord-test |
 | 2026-08-06 | **스토리지 쿼터** — `/api/storage/usage`, plan별 용량 게이트 |
@@ -970,7 +736,16 @@ Figma 전체를 따라가기보다 **「벽 꾸미기」 UX**에 직결되는 �
 | 2026-08-06 | **Realtime QA** — `verify:wall-realtime` live 2-session (patch/full/clear/Presence) |
 | 2026-08-06 | **npm overrides** — postcss 8.5.26 + sharp 0.35.3 → audit 0 (Next 16 없이) |
 | 2026-08-12 | **Free 쿼터 축소** — 객체 80·씬 2.5MB·사진 8MB·스토리지 150MB, warn 50%, `/upgrade` 비로그인 비교 |
-| 2026-08-12 | **문서** — 벽 최대 크기 PROJECT.md를 `2217×1700`으로 코드와 동기화; PM2 Actions 배포 워크플로 추가 |
+| 2026-08-12 | **문서** — 벽 최대 크기 PROJECT.md를 `2217×1700`으로 코드와 동기화 |
+| 2026-08-14 | **문서** — 전체 서비스 점검. 라이브 photowall.kr, Pixi 기본, 벽 2×3·8000 천장, 스티커 팩 6, 프레임 17, 플러스/AdSense/하우스 배너, admin 2차(플랜·이벤트·광고·스티커팩). 네컷 시행착오 [`docs/four-cut-trial.md`](docs/four-cut-trial.md) |
+| 2026-08-14 | **네컷 스트립 1차** — 세로 4칸·2×2 감지, 2×6/4×6 박스, 흰색·검정 테마, `cover` 구멍 blit, 사진 분리하기 |
+| 2026-08-14 | **네컷 칸 자르기** — 자르기/더블탭이 네컷이면 칸 1–4 팬·줌. `windows[i]`만 저장, 박스 크기 불변. `baseWindows`로 칸 원본 |
+| 2026-08-14 | **칸 드래그 수정** — 구멍 전체 히트 + dest 비율 visible window 팬 (가운데 드래그로 구도) |
+| 2026-08-18 | **네컷 감지 재작성** — 거터·모서리 색·균등 간격. 브랜드 헤더·검정 프레임 실인화. 테마는 이미지마다 재감지 |
+| 2026-08-18 | **저장 가드** — 빈 씬 덮어쓰기 거절, 없는 `wall-photo://` 412, same-rev 로컬로 클라우드 덮지 않음, GC 오인큐 방지 |
+| 2026-08-21 | **칸 팬/줌** — 편집 시작 시 여유, 모서리 핸들, 휠·핀치 (Pixi/Konva) |
+| 2026-08-21 | **문서** — PROJECT.md를 라이브·네컷·저장 가드·SEO·AdSense 플래그(기본 OFF)와 동기화 |
+| 2026-08-21 | **보안 1부 가드** — Gitleaks CI, `verify:public-env`, RLS/공개 버킷 검증, [`docs/security-checklist.md`](docs/security-checklist.md) |
 
 ---
 

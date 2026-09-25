@@ -2,7 +2,7 @@ import sharp from "sharp";
 import path from "path";
 import fs from "fs";
 
-const assets = "/home/kim/.cursor/projects/home-kim-PhotoWall/assets";
+const assets = process.env.PROMO_ASSETS || path.join(process.cwd(), "promo-src");
 
 async function process(src, dest, width) {
   const trimmed = await sharp(src)
